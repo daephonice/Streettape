@@ -129,6 +129,82 @@ async def fire_due_alerts():
     return sent
 
 
+ARB_UNDERLYING = "NVDA"
+ARB_RICH_SYMBOL = "NVDAB"   # multiplier-normalized, may be != 1 share
+ARB_CHEAP_SYMBOL = "NVDAx"  # multiplier None -> 1:1 share
+ARB_THRESHOLD = 0.01
+ARB_USD_SIZE = 50.0
+
+
+def check_nvda_arb() -> dict | None:
+    """Hardcoded cross-wrapper rule: NVDAB share-normalized price >1% above
+    NVDAx. Not auto-traded — proposal only, sizing is a fixed $50/$50 notional.
+    Returns None if either tape is missing or the gap doesn't clear threshold."""
+    snap = rwa.get_cached_snapshot()
+    tokens = {t["symbol"].upper(): t for t in (snap.get("tokens") or [])}
+    rich = tokens.get(ARB_RICH_SYMBOL.upper())
+    cheap = tokens.get(ARB_CHEAP_SYMBOL.upper())
+    if not rich or not cheap:
+        return None
+    rich_px, cheap_px = rich.get("tokenPrice"), cheap.get("tokenPrice")
+    if not rich_px or not cheap_px:
+        return None
+
+    rich_mult = rich.get("multiplier")
+    cheap_mult = cheap.get("multiplier")
+    normalized = bool(rich_mult) or bool(cheap_mult)
+    rich_norm = rich_px / rich_mult if rich_mult else rich_px
+    cheap_norm = cheap_px / cheap_mult if cheap_mult else cheap_px
+    if not rich_norm or not cheap_norm:
+        return None
+
+    gap = rich_norm / cheap_norm - 1
+    if gap <= ARB_THRESHOLD:
+        return None
+
+    return {
+        "underlying": ARB_UNDERLYING,
+        "rich": rich, "cheap": cheap,
+        "gap": gap,
+        "normalized": normalized,
+        "sizeUsd": ARB_USD_SIZE,
+    }
+
+
+async def _arb_quotes(hit: dict) -> tuple[dict, dict]:
+    """Two independent legs: sell $50 of NVDAB -> USDT, buy $50 USDT -> NVDAx.
+    Price-only (no taker), so swap.quote() falls back to a Pancake deep link
+    whenever the Trading API is unset or errors."""
+    import swap
+    sell_leg = await swap.quote(hit["rich"]["mint"], rwa.USDT, ARB_USD_SIZE / (hit["rich"]["tokenPrice"] or 1))
+    buy_leg = await swap.quote(rwa.USDT, hit["cheap"]["mint"], ARB_USD_SIZE)
+    return sell_leg, buy_leg
+
+
+def _arb_line(label: str, symbol: str, leg: dict) -> str:
+    if leg.get("provider") == "binance_web3" and leg.get("uiOutAmount") is not None:
+        return f"{label} {symbol} · ${ARB_USD_SIZE:.0f} · Trading API quote ~{leg['uiOutAmount']:.4f} out"
+    return f"{label} {symbol} · ${ARB_USD_SIZE:.0f} · PancakeSwap: {leg.get('deepLink') or 'n/a'}"
+
+
+async def arb_text() -> str | None:
+    """Telegram /agent body, or None if the rule isn't currently firing."""
+    import telegram_bot
+    hit = check_nvda_arb()
+    if not hit:
+        return None
+    sell_leg, buy_leg = await _arb_quotes(hit)
+    note = "" if hit["normalized"] else "\n(no share multiplier on file — raw tape price used)"
+    return (
+        f"NVDA cross-wrapper arb · {rwa.format_premium(hit['gap'])} rich\n"
+        f"{_arb_line('SELL', hit['rich']['symbol'], sell_leg)}\n"
+        f"{_arb_line('BUY', hit['cheap']['symbol'], buy_leg)}\n"
+        f"{telegram_bot.WEB_PUBLIC_URL}/t/NVDA"
+        f"{note}\n"
+        f"Not auto-executed — confirm and sign in your own wallet."
+    )
+
+
 async def _loop():
     await asyncio.sleep(15)
     while True:

@@ -492,6 +492,13 @@ async def on_watches(message: Message):
     await message.answer("\n".join(lines))
 
 
+@router.message(Command("agent"))
+async def on_agent(message: Message):
+    import agent
+    text = await agent.arb_text()
+    await message.answer(text or "No arb right now — NVDAB is within 1% of NVDAx.", disable_web_page_preview=True)
+
+
 @router.message()
 async def on_symbol_shortcut(message: Message):
     """Bare /spacex style shortcut per spec §2.2."""
