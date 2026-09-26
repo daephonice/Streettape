@@ -129,7 +129,7 @@ class SwapOrderRequest(BaseModel):
 async def swap_order(body: SwapOrderRequest):
     if body.uiAmount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
-    return swap_mod.quote(body.inputMint, body.outputMint, body.uiAmount)
+    return await swap_mod.quote(body.inputMint, body.outputMint, body.uiAmount, body.taker)
 
 
 class SwapExecuteRequest(BaseModel):
@@ -137,11 +137,34 @@ class SwapExecuteRequest(BaseModel):
     requestId: str | None = None
     provider: str = "pancake"
     txHash: str | None = None
+    # RFQ (executionMode=RFQ) fields
+    userSignature: str | None = None
+    rfqVendor: str | None = None
+    quoteId: str | None = None
+    signingScheme: str = "EIP712"
 
 
 @router.post("/swap/execute")
 async def swap_execute(body: SwapExecuteRequest):
+    if body.provider == "binance_web3" and body.userSignature:
+        try:
+            order = await swap_mod.submit_rfq_order(
+                body.requestId, body.userSignature, body.rfqVendor, body.quoteId, body.signingScheme,
+            )
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+        return {"status": order.get("status", "PENDING_VENDOR"), "provider": "binance_web3", "orderId": order.get("orderId")}
+    if body.provider == "binance_web3" and body.txHash:
+        return {"status": "success", "provider": "binance_web3", "txHash": body.txHash}
     return {"status": "external", "provider": "pancake", "txHash": body.txHash}
+
+
+@router.get("/swap/rfq-status/{order_id}")
+async def swap_rfq_status(order_id: str):
+    try:
+        return await swap_mod.rfq_order_status(order_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 def _ip(request: Request) -> str:
