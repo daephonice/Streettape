@@ -34,6 +34,7 @@ _tokens = {}
 _stock_open = {}
 _updated_at = None
 _task = None
+_tape_stale = False
 
 
 def _touch():
@@ -42,7 +43,10 @@ def _touch():
 
 
 async def _refresh_stocks():
-    records = rwa.get_cached_snapshot().get("tokens") or []
+    snap = rwa.get_cached_snapshot()
+    records = snap.get("tokens") or []
+    global _tape_stale
+    _tape_stale = bool(snap.get("tapeStale"))
     for r in records:
         price = r.get("tokenPrice")
         if not isinstance(price, (int, float)) or price <= 0:
@@ -52,7 +56,7 @@ async def _refresh_stocks():
             "image": r.get("image"), "description": r.get("description"), "url": r.get("url"),
             "supply": None, "price": float(price), "mark": r.get("markPrice"),
             "premium": r.get("premium"), "platform": r.get("platform"), "underlying": r.get("underlying"),
-            "multiplier": r.get("multiplier"),
+            "multiplier": r.get("multiplier"), "noYahoo": r.get("noYahoo", False),
         }
     if records:
         _touch()
@@ -148,8 +152,14 @@ def get_prices():
             "change24h": _pct(s["price"], _stock_open.get(s["symbol"])),
             "mark": s.get("mark"),
             "premium": s.get("premium"),
+            "noYahoo": s.get("noYahoo", False),
         }
-    return {"updatedAt": _updated_at.isoformat() if _updated_at else None, "prices": out, "session": rwa.session_now()}
+    return {
+        "updatedAt": _updated_at.isoformat() if _updated_at else None,
+        "prices": out,
+        "session": rwa.session_now(),
+        "tapeStale": _tape_stale,
+    }
 
 
 def get_assets():

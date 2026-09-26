@@ -87,11 +87,17 @@ async def _yahoo_marks(client: httpx.AsyncClient) -> dict:
     return out
 
 
+_last_tape: dict = {}   # addr(lower) -> {"price": float, "image": str|None} — last good Gecko read
+_tape_stale = False     # true when this refresh cycle hit a 429 and fell back to _last_tape
+
+
 async def _one_gecko(client, addr: str):
     resp = await client.get(f"{GECKO}/networks/bsc/tokens/{addr}")
     if resp.status_code == 429:
         await asyncio.sleep(2)
         resp = await client.get(f"{GECKO}/networks/bsc/tokens/{addr}")
+        if resp.status_code == 429:
+            return "RATE_LIMITED"
     if resp.status_code != 200:
         return None
     attr = resp.json()["data"]["attributes"]
@@ -100,13 +106,17 @@ async def _one_gecko(client, addr: str):
 
 
 async def _gecko_prices(client) -> dict:
+    global _tape_stale
     out = {}
+    rate_limited = False
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     for i in range(0, len(addrs), 5):
         chunk = addrs[i:i + 5]
         try:
             resp = await client.get(f"{GECKO}/networks/bsc/tokens/multi/{','.join(chunk)}")
-            if resp.status_code == 200:
+            if resp.status_code == 429:
+                rate_limited = True
+            elif resp.status_code == 200:
                 data = resp.json().get("data") or []
                 if isinstance(data, dict):
                     data = [data]
@@ -122,11 +132,27 @@ async def _gecko_prices(client) -> dict:
         for a in chunk:
             try:
                 row = await _one_gecko(client, a)
-                if row:
+                if row == "RATE_LIMITED":
+                    rate_limited = True
+                elif row:
                     out[a.lower()] = row
             except Exception:
                 log.info("board: gecko %s skipped", a, exc_info=True)
             await asyncio.sleep(0.2)
+
+    # Fall back to last good read per-address on a 429; only mark stale if we
+    # actually had to reuse something (an address with no prior tape stays null).
+    if rate_limited:
+        used_fallback = False
+        for a in addrs:
+            key = a.lower()
+            if key not in out and key in _last_tape:
+                out[key] = _last_tape[key]
+                used_fallback = True
+        _tape_stale = used_fallback
+    else:
+        _tape_stale = False
+    _last_tape.update(out)
     return out
 
 
@@ -174,6 +200,7 @@ def _build_tokens(tapes: dict, marks: dict) -> list[dict]:
             "image": tape.get("image"),
             "tokenPrice": token_price if has_addr else None,
             "markPrice": mark,
+            "noYahoo": not w.get("yahoo"),
             "premium": prem if has_addr else None,
             "status": rwa.premium_status(prem) if has_addr else "flat",
             "description": (
@@ -194,12 +221,12 @@ async def build_snapshot():
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
         tapes = await _gecko_prices(client)
         tokens = _build_tokens(tapes, {})
-        snap = rwa.set_cached_snapshot(tokens, _group(tokens))
+        snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
 
         marks = await _yahoo_marks(client)
 
     tokens = _build_tokens(tapes, marks)
-    snap = rwa.set_cached_snapshot(tokens, _group(tokens))
+    snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
     _persist(tokens)
     return snap
 

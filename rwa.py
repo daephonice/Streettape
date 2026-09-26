@@ -116,12 +116,13 @@ _snapshot_cache = {"fetchedAt": None, "session": None, "tokens": [], "groups": [
 def get_cached_snapshot():
     return _snapshot_cache
 
-def set_cached_snapshot(tokens, groups=None):
+def set_cached_snapshot(tokens, groups=None, tape_stale=False):
     global _snapshot_cache
     _snapshot_cache = {
         "fetchedAt": datetime.now(timezone.utc).isoformat(),
         "session": session_now(),
         "tokens": tokens,
         "groups": groups or [],
+        "tapeStale": tape_stale,
     }
     return _snapshot_cache
