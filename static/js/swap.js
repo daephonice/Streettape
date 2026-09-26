@@ -115,6 +115,7 @@
         </div>
         <button type="button" class="snd-cta swp-cta"></button>
         <p class="swp-est"></p>
+        <span class="swp-mode-chip" hidden></span>
         <p class="swp-note" role="alert"></p>
       </div>`;
     document.body.appendChild(root);
@@ -124,7 +125,7 @@
       backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
-      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'),
+      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), modeChip: q('.swp-mode-chip'),
     });
 
     R.backdrop.addEventListener('click', () => { if (S && !S.busy) close(); });
@@ -245,7 +246,9 @@
         setNote(order.transaction ? '' : 'Opens PancakeSwap to complete the swap');
       } else {
         sess.order = null;
-        setNote('No route found');
+        const c2 = sess.host.getCtx();
+        const platform = ((c2.assets[sess.symbol] || {}).platform || '').toLowerCase();
+        setNote(platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found');
       }
       render();
     } catch (err) {
@@ -320,12 +323,33 @@
     return { bal, amt, usdOut, out };
   }
 
+  // RFQ vs AMM badge: reflects the live quote's executionMode; before a quote
+  // exists, preview from the token's platform (xstocks -> AMM, ondo -> RFQ).
+  function modeLabel(c) {
+    const exec = S.order && S.order.executionMode;
+    if (exec === 'RFQ') return 'RFQ';
+    if (exec === 'SWAP') return 'AMM';
+    const platform = ((c.assets[S.symbol] || {}).platform || '').toLowerCase();
+    if (platform === 'xstocks') return 'AMM';
+    if (platform === 'ondo') return 'RFQ';
+    return '';
+  }
+
   function render() {
     if (!S) return;
     const c = S.host.getCtx();
     const buying = S.side === 'buy';
     R.buy.hidden = !buying;
     R.sell.hidden = buying;
+
+    const mode = modeLabel(c);
+    if (mode) {
+      R.modeChip.hidden = false;
+      R.modeChip.textContent = mode;
+      R.modeChip.className = 'swp-mode-chip swp-mode-' + mode.toLowerCase();
+    } else {
+      R.modeChip.hidden = true;
+    }
 
     if (buying) {
       const d = buyCalc(c);

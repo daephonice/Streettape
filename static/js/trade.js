@@ -126,6 +126,7 @@
         <button type="button" class="trd-info-row" data-info-row hidden>
           <span class="trd-rate" data-rate></span>
           <span class="trd-info-r">
+            <span class="trd-mode-chip" data-mode hidden></span>
             <span class="trd-gasless" data-gasless hidden>${ICON.info}Gasless</span>
             <span class="trd-warn-chip" data-warn hidden></span>
             ${ICON.chevron}
@@ -190,7 +191,7 @@
       balSell: q('.trd-bal-sell'), balBuy: q('.trd-bal-buy'),
       subSell: q('[data-sub="sell"]'), subBuy: q('[data-sub="buy"]'),
       dir: q('.trd-dir'), infoRow: q('[data-info-row]'), rate: q('[data-rate]'),
-      gasless: q('[data-gasless]'), warnChip: q('[data-warn]'),
+      modeChip: q('[data-mode]'), gasless: q('[data-gasless]'), warnChip: q('[data-warn]'),
       note: q('[data-note]'), cta: q('[data-cta]'), keys: q('[data-keys]'),
       tok: q('[data-tok]'), tokBack: q('.trd-tok-back'), tokList: q('[data-tok-list]'),
       infoModal: q('[data-info-modal]'), infoBack: q('.trd-info-back'), infoClose: q('.trd-info-close'),
@@ -422,6 +423,19 @@
   // ---- Render ------------------------------------------------------------------
   function tokenMeta(c, sym) { return c.assets[sym] || { name: sym }; }
 
+  // RFQ vs AMM badge: reflects the live quote's executionMode. Before a quote
+  // exists, preview the expected mode from the buy token's platform so the
+  // row isn't blank while typing (xstocks -> AMM, ondo -> RFQ, bstocks -> API-defined, unknown).
+  function modeLabel(c) {
+    const exec = S.order && S.order.executionMode;
+    if (exec === 'RFQ') return 'RFQ';
+    if (exec === 'SWAP') return 'AMM';
+    const platform = (tokenMeta(c, S.buy).platform || tokenMeta(c, S.sell).platform || '').toLowerCase();
+    if (platform === 'xstocks') return 'AMM';
+    if (platform === 'ondo') return 'RFQ';
+    return '';
+  }
+
   function render() {
     if (!S) return;
     const c = S.host.getCtx();
@@ -495,7 +509,8 @@
     R.subBuy.className = 'trd-card-sub' + (subBuy.includes('(') ? ' neg' : '');
 
     const hasOrder = !!(S.order && S.order.uiOutAmount); // quote-only is fine before connect
-    R.infoRow.hidden = !hasOrder;
+    const mode = modeLabel(c);
+    R.infoRow.hidden = !hasOrder && !mode;
     if (hasOrder) {
       R.rate.textContent = S.order.rate ? `1 ${S.sell} \u2248 ${fmtAmount(S.order.rate)} ${S.buy}` : '';
       R.gasless.hidden = !S.order.gasless;
@@ -506,9 +521,24 @@
       } else {
         R.warnChip.hidden = true;
       }
+    } else {
+      R.rate.textContent = '';
+      R.gasless.hidden = true;
+      R.warnChip.hidden = true;
+    }
+    if (mode) {
+      R.modeChip.hidden = false;
+      R.modeChip.textContent = mode;
+      R.modeChip.className = 'trd-mode-chip trd-mode-' + mode.toLowerCase();
+    } else {
+      R.modeChip.hidden = true;
     }
 
-    R.note.textContent = S.swapping ? '' : (S.note || '');
+    if (!S.swapping && !S.note && S.order && !S.order.uiOutAmount && mode === 'RFQ') {
+      R.note.textContent = 'No RFQ inventory. AMM still live on xStocks.';
+    } else {
+      R.note.textContent = S.swapping ? '' : (S.note || '');
+    }
 
     renderCta();
   }
@@ -557,7 +587,10 @@
     R.iMin.textContent = o.uiMinReceived ? `${fmtAmount(o.uiMinReceived)} ${S.buy}` : '\u2014';
     const feeBpsTotal = o.feeBps || 0;
     R.iFees.textContent = feeBpsTotal ? `${(feeBpsTotal / 100).toFixed(1)}%` : (feeBps ? `${(feeBps / 100).toFixed(1)}%` : '\u2014');
-    R.iRoutes.textContent = (o.routes && o.routes.length) ? o.routes.join(', ') : '\u2014';
+    const execLabel = o.executionMode === 'RFQ' ? 'RFQ' : o.executionMode === 'SWAP' ? 'AMM' : '';
+    R.iRoutes.textContent = (o.routes && o.routes.length)
+      ? o.routes.join(', ') + (execLabel ? ` (${execLabel})` : '')
+      : '\u2014';
     const c = S.host.getCtx();
     R.iIn.innerHTML = '';
     R.iIn.appendChild(document.createTextNode(shortMint((c.assets[S.sell] || {}).mint) + ' '));
