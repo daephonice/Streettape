@@ -77,13 +77,26 @@ async def fire_due_alerts():
     if not telegram_bot.BOT_TOKEN:
         return 0
     report = scan_gaps()
+    if report["session"].get("cashOpen"):
+        return 0
     by_sym = {h["symbol"].upper(): h for h in report["hits"]}
+    snap = rwa.get_cached_snapshot()
+    groups_by_und = {g["underlying"]: g for g in snap.get("groups") or []}
     sent = 0
     now = datetime.now(timezone.utc)
     for w in _watches():
         thresh = w.threshold if getattr(w, "threshold", None) not in (None, 0) else DEFAULT_THRESHOLD
-        hit = by_sym.get((w.symbol or "").upper())
-        if not hit or abs(hit["premium"]) < thresh:
+        wrapper = rwa.by_symbol(w.symbol)
+        if not wrapper:
+            continue
+        underlying = wrapper["underlying"]
+        siblings = [t for t in (snap.get("tokens") or []) if t.get("underlying") == underlying]
+        hit = max(
+            (t for t in siblings if t.get("premium") is not None and abs(t["premium"]) >= thresh),
+            key=lambda t: abs(t["premium"]),
+            default=None,
+        )
+        if not hit:
             continue
         last = w.last_alert_at
         if last is not None:
@@ -91,11 +104,21 @@ async def fire_due_alerts():
                 last = last.replace(tzinfo=timezone.utc)
             if now - last < COOLDOWN:
                 continue
+        group = groups_by_und.get(underlying)
+        cheapest_sym = group.get("cheapest") if group else None
+        cta = ""
+        if cheapest_sym and cheapest_sym.upper() != hit["symbol"].upper():
+            cheap = by_sym.get(cheapest_sym.upper()) or next(
+                (t for t in siblings if t["symbol"].upper() == cheapest_sym.upper()), None
+            )
+            if cheap and cheap.get("url"):
+                cta = f"\nCheaper wrapper: {cheap['symbol']} {rwa.format_premium(cheap['premium'])} — {cheap['url']}"
         text = (
             f"StreetTape alert · {report['session'].get('label')}\n"
             f"<b>{hit['symbol']}</b> {rwa.format_premium(hit['premium'])} vs mark\n"
             f"Tape ${hit['tokenPrice']:.2f} · Mark ${hit['markPrice']:.2f}\n"
-            f"{hit.get('deepLink') or ''}"
+            f"{telegram_bot.WEB_PUBLIC_URL}/t/{underlying}"
+            f"{cta}"
         )
         try:
             await telegram_bot.send_alert(w.chat_id, text)
