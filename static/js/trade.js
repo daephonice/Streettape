@@ -585,33 +585,57 @@
   // ---- Swap ------------------------------------------------------------------
   async function doSwap() {
     if (!S || S.swapping || !S.order || !S.order.uiOutAmount) return;
-    if (!S.order.transaction && S.order.deepLink) { window.open(S.order.deepLink, '_blank', 'noopener'); return; }
-    if (!S.order.transaction) { scheduleQuote(); return; }
+    if (S.order.executionMode !== 'RFQ' && !S.order.transaction && S.order.deepLink) {
+      window.open(S.order.deepLink, '_blank', 'noopener'); return;
+    }
+    if (S.order.executionMode !== 'RFQ' && !S.order.transaction) { scheduleQuote(); return; }
     const sess = S;
     sess.swapping = true;
     sess.note = '';
     render();
     try {
-      let signed;
-      try {
-        signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);
-      } catch (err) {
-        const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
-        throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the transaction');
-      }
-      if (S !== sess) return;
-
-      if (!signed.signedTransactionBase64) {
-        // Wallet could only sign-and-send itself (already broadcast) — nothing
-        // to relay through Ultra's /execute.
-      } else {
+      if (sess.order.executionMode === 'RFQ') {
+        let userSignature;
+        try {
+          userSignature = await window.MarktapeWallet.signTypedData(sess.order.typedDataToSign);
+        } catch (err) {
+          const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
+          throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the order');
+        }
+        if (S !== sess) return;
         const res = await postJSON('/api/swap/execute', {
-          signedTransaction: signed.signedTransactionBase64,
+          provider: 'binance_web3',
+          userSignature,
           requestId: sess.order.requestId,
-          provider: sess.order.provider || 'ultra',
+          rfqVendor: sess.order.rfqVendor,
+          quoteId: sess.order.quoteId,
+          signingScheme: sess.order.signingScheme,
         });
-        if (res.status && res.status !== 'Success' && res.status !== 'success') {
-          throw new Error('Swap failed on-chain, please try again');
+        if (res.status === 'FAILED' || res.status === 'EXPIRED' || res.status === 'CANCELLED') {
+          throw new Error('Swap failed, please try again');
+        }
+      } else {
+        let signed;
+        try {
+          signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);
+        } catch (err) {
+          const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
+          throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the transaction');
+        }
+        if (S !== sess) return;
+
+        if (!signed.signedTransactionBase64) {
+          // Wallet could only sign-and-send itself (already broadcast) — nothing
+          // to relay through /execute.
+        } else {
+          const res = await postJSON('/api/swap/execute', {
+            signedTransaction: signed.signedTransactionBase64,
+            requestId: sess.order.requestId,
+            provider: sess.order.provider || 'binance_web3',
+          });
+          if (res.status && res.status !== 'Success' && res.status !== 'success') {
+            throw new Error('Swap failed on-chain, please try again');
+          }
         }
       }
 

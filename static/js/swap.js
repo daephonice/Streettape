@@ -390,24 +390,46 @@
         if (host.onSent) host.onSent();
         return;
       }
-      let signed;
-      try {
-        signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);
-      } catch (err) {
-        const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
-        throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the transaction');
-      }
-      if (S !== sess) return;
-
-      if (signed.signature || signed.signedTransactionBase64) {
+      if (sess.order.executionMode === 'RFQ') {
+        let userSignature;
+        try {
+          userSignature = await window.MarktapeWallet.signTypedData(sess.order.typedDataToSign);
+        } catch (err) {
+          const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
+          throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the order');
+        }
+        if (S !== sess) return;
         const res = await postJSON('/api/swap/execute', {
-          signedTransaction: signed.signedTransactionBase64,
-          txHash: signed.signature,
+          provider: 'binance_web3',
+          userSignature,
           requestId: sess.order.requestId,
-          provider: sess.order.provider || 'pancake',
+          rfqVendor: sess.order.rfqVendor,
+          quoteId: sess.order.quoteId,
+          signingScheme: sess.order.signingScheme,
         });
-        if (res.status && res.status !== 'Success' && res.status !== 'success') {
-          throw new Error('Swap failed on-chain, please try again');
+        if (res.status === 'FAILED' || res.status === 'EXPIRED' || res.status === 'CANCELLED') {
+          throw new Error('Swap failed, please try again');
+        }
+      } else {
+        let signed;
+        try {
+          signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);
+        } catch (err) {
+          const rejected = (err && err.code === 4001) || /reject|declin|denied|cancel/i.test(String((err && err.message) || ''));
+          throw new Error(rejected ? 'Cancelled' : 'Wallet could not sign the transaction');
+        }
+        if (S !== sess) return;
+
+        if (signed.signature || signed.signedTransactionBase64) {
+          const res = await postJSON('/api/swap/execute', {
+            signedTransaction: signed.signedTransactionBase64,
+            txHash: signed.signature,
+            requestId: sess.order.requestId,
+            provider: sess.order.provider || 'pancake',
+          });
+          if (res.status && res.status !== 'Success' && res.status !== 'success') {
+            throw new Error('Swap failed on-chain, please try again');
+          }
         }
       }
 

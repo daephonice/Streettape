@@ -126,6 +126,15 @@
     throw new Error("Swaps open on PancakeSwap");
   }
 
+  async function signTypedData(typedDataJsonString) {
+    const state = window.__marktapeWallet;
+    if (!state || !state.provider) throw new Error("Wallet not connected");
+    return state.provider.request({
+      method: "eth_signTypedData_v4",
+      params: [state.address, typedDataJsonString],
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     const btn = document.getElementById("mkt-connect-btn");
     if (btn) btn.addEventListener("click", () => {
@@ -154,6 +163,7 @@
     listAvailableWallets,
     signTransactionBase64,
     signTransactionForSend,
+    signTypedData,
     getAddress,
     disconnect,
     getProvider,
