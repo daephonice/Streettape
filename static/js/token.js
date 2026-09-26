@@ -49,6 +49,8 @@
     points: [],       // [[ms, price], ...] history for the selected range (single-series)
     multiChart: null, // { mark: [[ms,px]], wrappers: { SYM: [[ms,px]] } } for group pages
     group: null,      // /api/token/{underlying} result once loaded (group pages only)
+    session: null,    // { cashOpen, ... } from /api/prices
+    tapeStale: false,
   };
 
   // ---- Formatting ---------------------------------------------------------
@@ -114,14 +116,29 @@
       els.stats.hidden = !show;
       if (show) {
         els.mc.textContent = p.mc ? fmtCompact(p.mc) : '—';
-        els.mark.textContent = p.mark ? fmtPrice(p.mark) : '—';
-        if (p.premium === null || p.premium === undefined || !isFinite(p.premium)) {
+        if (p.noYahoo) {
+          els.mark.textContent = 'No Yahoo mark. Tape only.';
+          els.mark.className = 'tk-empty-note';
+        } else {
+          els.mark.textContent = p.mark ? fmtPrice(p.mark) : '—';
+          els.mark.className = '';
+        }
+        if (p.noYahoo) {
+          els.prem.textContent = '—';
+          els.prem.className = '';
+        } else if (p.premium === null || p.premium === undefined || !isFinite(p.premium)) {
           els.prem.textContent = '—';
           els.prem.className = '';
         } else {
           const pctv = Number((p.premium * 100).toFixed(1));
-          els.prem.textContent = (pctv > 0 ? '+' : '') + pctv + '%';
-          els.prem.className = pctv > 0 ? 'pos' : pctv < 0 ? 'neg' : 'flat';
+          const tiny = Math.abs(pctv) < 0.3;
+          if (tiny && state.session && state.session.cashOpen) {
+            els.prem.textContent = 'Gap usually prints after 16:00 ET.';
+            els.prem.className = 'tk-empty-note';
+          } else {
+            els.prem.textContent = (pctv > 0 ? '+' : '') + pctv + '%';
+            els.prem.className = pctv > 0 ? 'pos' : pctv < 0 ? 'neg' : 'flat';
+          }
         }
       }
     }
@@ -366,6 +383,8 @@
     try {
       const data = await getJSON('/api/prices');
       state.prices = data.prices || {};
+      state.session = data.session || null;
+      state.tapeStale = !!data.tapeStale;
       render();
     } catch (err) { /* keep last prices */ } finally {
       pricesBusy = false;
@@ -425,6 +444,13 @@
         const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = fmtPrice(w.tokenPrice);
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem ' + premCls(w.premium); prem.textContent = fmtPrem(w.premium);
         cell.appendChild(val); cell.appendChild(prem);
+        if (state.tapeStale) {
+          const note = document.createElement('span'); note.className = 'hm-tape-note'; note.textContent = 'tape delayed';
+          cell.appendChild(note);
+        }
+      } else if (!w || !w.address) {
+        const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = '— no tape';
+        cell.appendChild(val);
       } else {
         const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = '—';
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem flat'; prem.textContent = '—';

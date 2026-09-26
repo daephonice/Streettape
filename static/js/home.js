@@ -54,6 +54,7 @@
     groupsLoaded: false,
     news: null,
     stocksOpen: false,
+    tapeStale: false,
   };
 
   // ---- Formatting ---------------------------------------------------------
@@ -304,7 +305,9 @@
   }
 
   function updateStockRow(node, g) {
-    node.querySelector('.hm-stk-mark').textContent = g.markPrice ? fmtPrice(g.markPrice) : '—';
+    const noYahoo = g.wrappers.every((w) => w.noYahoo);
+    const markEl = node.querySelector('.hm-stk-mark');
+    markEl.textContent = noYahoo ? 'Tape only' : (g.markPrice ? fmtPrice(g.markPrice) : '—');
 
     ['xstocks', 'ondo', 'bstocks'].forEach((plat, i) => {
       const w = g.wrappers.find((x) => x.platform === plat);
@@ -314,6 +317,9 @@
       if (w && w.tokenPrice) {
         holder.appendChild(h('span', 'hm-tape-val', fmtPrice(w.tokenPrice)));
         holder.appendChild(h('span', 'hm-tape-prem ' + premCls(w.premium), fmtPrem(w.premium)));
+        if (state.tapeStale) holder.appendChild(h('span', 'hm-tape-note', 'tape delayed'));
+      } else if (!w || !w.address) {
+        holder.appendChild(h('span', 'hm-tape-val', '— no tape'));
       } else {
         holder.appendChild(h('span', 'hm-tape-val', '—'));
         holder.appendChild(h('span', 'hm-tape-prem flat', '—'));
@@ -596,6 +602,7 @@
       const data = await getJSON('/api/board');
       state.groups = data.groups || [];
       state.session = data.session || null;
+      state.tapeStale = !!data.tapeStale;
       state.groupsLoaded = true;
       renderStocks();
       renderSession();
