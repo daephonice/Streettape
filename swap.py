@@ -62,6 +62,7 @@ def _fallback_quote(input_mint: str, output_mint: str, ui_amount: float) -> dict
         "transferFeeBps": 0,
         "provider": "pancake",
         "executionMode": "SWAP",
+        "sim": None,
     }
 
 
@@ -171,6 +172,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                     "provider": "binance_web3",
                     "executionMode": exec_mode,
                     "needsWallet": True,
+                    "sim": None,
                 }
 
             swap_params = {
@@ -215,6 +217,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 # carry the route's own quoteId, so fall back to that.
                 result["quoteId"] = rfq.get("orderId") or quote_id
                 result["uiMinReceived"] = out_ui  # RFQ is a firm quote, no slippage
+                result["sim"] = {"ok": None, "gas": None, "error": None, "note": "N/A for RFQ — poll /order/{id} after submit"}
             else:
                 tx = swap_data["tx"]
                 built_tx = {
@@ -229,11 +232,50 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                     built_tx["gasPrice"] = hex(int(tx["gasPrice"]))
                 result["transaction"] = built_tx
                 result["uiMinReceived"] = _from_units(tx.get("minReceiveAmount"), to_dec) if tx.get("minReceiveAmount") else None
+                result["sim"] = await simulate_transaction(built_tx, taker)
 
             return result
     except Exception:
         log.warning("binance web3 quote failed, falling back to pancake", exc_info=True)
         return _fallback_quote(input_mint, output_mint, ui_amount)
+
+
+async def simulate_transaction(built_tx: dict, taker: str) -> dict:
+    """Transaction API dry-run of an already-built SWAP tx, before the wallet
+    popup. Best-effort: any failure to reach/parse the simulate endpoint
+    degrades to {"ok": None, "error": ...} rather than blocking the quote —
+    the wallet's own simulation is still the final safety net.
+    Path is our best read of the same Binance Web3 "Transaction API" family
+    as quote/swap (unverified against a live response as of writing — see
+    DEVEX.md for the first real call's exact body)."""
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=15.0) as client:
+        with devlog.timed() as t:
+            try:
+                data = await _request(client, "POST", "/api/v1/dex/aggregator/tx/simulate", json_body={
+                    "binanceChainId": CHAIN_ID,
+                    "from": built_tx.get("from") or taker,
+                    "to": built_tx["to"],
+                    "data": built_tx["data"],
+                    "value": built_tx.get("value", "0x0"),
+                })
+            except Exception as e:
+                devlog.log_call(
+                    what="tx sim", url=f"{BASE_URL}/api/v1/dex/aggregator/tx/simulate",
+                    status="exception", ms=t.ms,
+                    expected="200 with { success, gasUsed } or similar",
+                    error=str(e),
+                )
+                return {"ok": None, "gas": None, "error": str(e)}
+    ok = bool(data.get("success", data.get("ok", True)))
+    gas = data.get("gasUsed") or data.get("gas")
+    err = None if ok else (data.get("error") or data.get("message") or "simulation failed")
+    devlog.log_call(
+        what="tx sim", url=f"{BASE_URL}/api/v1/dex/aggregator/tx/simulate", status="n/a", ms=t.ms,
+        expected="200 with { success, gasUsed } or similar",
+        actual=f"ok={ok} gas={gas}" + (f" error={err}" if err else ""),
+        body=str(data),
+    )
+    return {"ok": ok, "gas": gas, "error": err}
 
 
 async def submit_rfq_order(request_id: str, user_signature: str, vendor: str, quote_id: str, signing_scheme: str = "EIP712") -> dict:
