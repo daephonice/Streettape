@@ -293,6 +293,7 @@ a.hm-action-btn { cursor: pointer; }
 .hm-stk-row .hm-sym-text { flex-shrink: 1; }
 .hm-stk-chg { font-size: 13px; font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: 2px; }
 .hm-stk-mark { font-size: 13px; font-variant-numeric: tabular-nums; flex-shrink: 0; margin-left: 2px; color: var(--hm-muted); }
+.hm-stk-fair { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--hm-muted); margin-top: 2px; }
 .hm-n-line { line-height: 1.45; }
 .hm-n-dot { margin: 0 4px; }
 .hm-stocks .hm-n-toggle { margin-top: 10px; color: var(--accent); }
