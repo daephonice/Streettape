@@ -116,6 +116,14 @@
     {% endif %}
   </section>
 
+  {% if not token %}
+  <section class="hm-news" id="tk-news-sec">
+    <h2 class="hm-news-title">News</h2>
+    <div id="tk-news-list"></div>
+    <p class="hm-news-empty" id="tk-news-empty" hidden>No news available yet</p>
+  </section>
+  {% endif %}
+
   <p class="tk-legal">Economic exposure only. Not shares, not for US persons, not advice. Swaps sign in your wallet. StreetTape does not custody funds.</p>
 </div>
 
