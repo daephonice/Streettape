@@ -35,6 +35,7 @@ class Watch(Base):
     id = Column(Integer, primary_key=True)
     chat_id = Column(BigInteger, nullable=False, index=True)
     symbol = Column(String, nullable=False, index=True)
+    underlying = Column(String, nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     threshold = Column(Float, nullable=True)
     last_alert_at = Column(DateTime(timezone=True), nullable=True)

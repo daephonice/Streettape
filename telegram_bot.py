@@ -4,10 +4,11 @@ main.py's startup event, same pattern as Daephon Casino's telegram_bot).
 
 Commands (spec §2.2):
   /start [SYMBOL]   3-line pitch + site link. With a payload, show that card.
-  /board            Compact list of every symbol: SYMBOL  premium%  tape vs mark
-  /t SYMBOL | /symbol   Full card + site link + PancakeSwap link
-  /watch SYMBOL     Persist chat_id+symbol (max 5 per chat)
-  /unwatch SYMBOL   Remove
+  /board            Grouped list: UNDERLYING mark  b%  on%  x%
+  /session          Current market session + NY close countdown
+  /t SYMBOL | /symbol   Full wrapper card + site link + PancakeSwap link
+  /watch NAME       Persist chat_id+underlying (max 5 per chat). NVDA/NVIDIA/NVDAx/NVDAB all resolve to NVDA.
+  /unwatch NAME     Remove
   /watches          List this chat's watches
 
 Watches currently just mean "included in the hourly digest" (not sent yet).
@@ -51,24 +52,6 @@ def _row_for(symbol: str) -> dict | None:
     return next((t for t in snap.get("tokens", []) if t["symbol"].upper() == symbol_u), None)
 
 
-def _resolve_symbol(text: str) -> str | None:
-    """Name or ticker -> canonical symbol among the 8 tokenized stocks + BNB, or None."""
-    text_u = text.strip().upper().lstrip("/")
-    if not text_u:
-        return None
-    if text_u == "BNB":
-        return "BNB"
-    row = _row_for(text_u)
-    if row:
-        return row["symbol"].upper()
-    # fall back to matching by name
-    snap = rwa.get_cached_snapshot()
-    for t in snap.get("tokens", []):
-        if (t.get("name") or "").strip().upper() == text_u:
-            return t["symbol"].upper()
-    return None
-
-
 def _card_text(row: dict) -> str:
     pct = rwa.format_premium(row["premium"])
     return (
@@ -77,11 +60,6 @@ def _card_text(row: dict) -> str:
         f"Tape ${row['tokenPrice']:.2f} · Mark ${row['markPrice']:.2f}\n"
         f"{WEB_PUBLIC_URL}/t/{row['symbol']}"
     )
-
-
-def _board_line(row: dict) -> str:
-    pct = rwa.format_premium(row["premium"])
-    return f"{row['symbol']:<10} {pct:>7}   ${row['tokenPrice']:.2f} vs ${row['markPrice']:.2f}"
 
 
 def _live_rows() -> list[dict]:
@@ -209,7 +187,7 @@ def _is_watching(chat_id: int, symbol: str) -> bool:
         db.close()
 
 
-def _add_watch(chat_id: int, symbol: str) -> str:
+def _add_watch(chat_id: int, symbol: str, underlying: str | None = None) -> str:
     """Returns 'added' | 'exists' | 'cap'."""
     symbol_u = symbol.upper()
     db = SessionLocal()
@@ -222,7 +200,7 @@ def _add_watch(chat_id: int, symbol: str) -> str:
         count = db.execute(select(Watch.id).where(Watch.chat_id == chat_id)).scalars().all()
         if len(count) >= MAX_WATCHES_PER_CHAT:
             return "cap"
-        db.add(Watch(chat_id=chat_id, symbol=symbol_u))
+        db.add(Watch(chat_id=chat_id, symbol=symbol_u, underlying=underlying))
         db.commit()
         return "added"
     finally:
@@ -406,14 +384,27 @@ async def on_start(message: Message, command: CommandObject):
         _live_boards[message.chat.id] = sent.message_id
 
 
+def _wrapper_tag(platform: str) -> str:
+    return {"bstocks": "b", "ondo": "on", "xstocks": "x"}.get(platform, platform[:2])
+
+
+def _group_line(g: dict) -> str:
+    mark = f"${g['markPrice']:.2f}" if g.get("markPrice") else "—"
+    parts = []
+    for w in g["wrappers"]:
+        pct = rwa.format_premium(w["premium"])
+        parts.append(f"{_wrapper_tag(w['platform'])} {pct}")
+    return f"{g['underlying']:<6} {mark:>9}   " + "  ".join(parts)
+
+
 @router.message(Command("board"))
 async def on_board(message: Message):
     snap = rwa.get_cached_snapshot()
-    tokens = snap.get("tokens", [])
-    if not tokens:
+    groups = snap.get("groups") or []
+    if not groups:
         await message.answer("Board is warming up — try again in a moment.")
         return
-    lines = [_board_line(t) for t in tokens]
+    lines = [_group_line(g) for g in groups]
     text = "<code>" + "\n".join(lines) + "</code>"
     await message.answer(text)
 
@@ -433,49 +424,40 @@ async def on_t(message: Message, command: CommandObject):
     await message.answer(text, disable_web_page_preview=True)
 
 
-async def _send_token_menu(message: Message, symbol_u: str) -> None:
-    chat_id = message.chat.id
-    text = _token_menu_text(symbol_u, chat_id)
-    if not text:
-        return
-    sent = await message.answer(
-        text, reply_markup=_token_menu_markup(chat_id, symbol_u), disable_web_page_preview=True
-    )
-    async with _token_menus_lock:
-        _token_menus[chat_id] = sent.message_id
-
-
 @router.message(Command("watch"))
 async def on_watch(message: Message, command: CommandObject):
     arg = (command.args or "").strip()
     if not arg:
-        await message.answer("Usage: /watch SPACEX")
+        await message.answer("Usage: /watch NVDA")
         return
-    symbol_u = _resolve_symbol(arg)
-    if not symbol_u:
+    underlying = rwa.resolve_underlying(arg)
+    if not underlying:
         await message.answer(f"Unknown symbol: {arg}")
         return
 
-    result = _add_watch(message.chat.id, symbol_u)
+    result = _add_watch(message.chat.id, underlying, underlying=underlying)
     if result == "cap":
         await message.answer(f"Watch limit reached ({MAX_WATCHES_PER_CHAT}). /unwatch one first.")
         return
-    await _send_token_menu(message, symbol_u)
+    entry = rwa.by_underlying(underlying)
+    label = entry["name"] if entry else underlying
+    verb = "Watching" if result == "added" else "Already watching"
+    await message.answer(f"{verb} {underlying} ({label}). /session for market hours, /board for the tape.")
 
 
 @router.message(Command("unwatch"))
 async def on_unwatch(message: Message, command: CommandObject):
     arg = (command.args or "").strip()
     if not arg:
-        await message.answer("Usage: /unwatch SPACEX")
+        await message.answer("Usage: /unwatch NVDA")
         return
-    symbol_u = _resolve_symbol(arg)
-    if not symbol_u:
+    underlying = rwa.resolve_underlying(arg)
+    if not underlying:
         await message.answer(f"Unknown symbol: {arg}")
         return
 
-    _remove_watch(message.chat.id, symbol_u)
-    await _send_token_menu(message, symbol_u)
+    removed = _remove_watch(message.chat.id, underlying)
+    await message.answer(f"Unwatched {underlying}." if removed else f"Not watching {underlying}.")
 
 
 @router.message(Command("watches"))
@@ -486,10 +468,21 @@ async def on_watches(message: Message):
     finally:
         db.close()
     if not rows:
-        await message.answer("No watches yet. /watch SPACEX to start.")
+        await message.answer("No watches yet. /watch NVDA to start.")
         return
-    lines = [w.symbol for w in rows]
+    lines = [w.underlying or w.symbol for w in rows]
     await message.answer("\n".join(lines))
+
+
+@router.message(Command("session"))
+async def on_session(message: Message):
+    s = rwa.session_now()
+    text = (
+        f"<b>{s['label']}</b>\n"
+        f"ET {s['et']} · WAT {s['wat']} · UTC {s['utc'][11:16]}\n"
+        f"Next NY close in {s['nyCloseInSec'] // 3600}h {(s['nyCloseInSec'] % 3600) // 60}m ({s['nyCloseAtWat']} WAT)"
+    )
+    await message.answer(text)
 
 
 @router.message(Command("agent"))

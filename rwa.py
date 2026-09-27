@@ -61,6 +61,29 @@ def by_symbol(symbol: str):
     s = (symbol or "").upper()
     return next((w for w in wrappers() if w["symbol"].upper() == s), None)
 
+def by_underlying(underlying: str):
+    """Universe entry for an underlying ticker/name, or None. Matches on
+    underlying code, Yahoo ticker, or display name (e.g. NVDA / NVDA / NVIDIA)."""
+    u = (underlying or "").upper()
+    return next((e for e in UNIVERSE if u in {
+        (e.get("underlying") or "").upper(),
+        (e.get("yahoo") or "").upper(),
+        (e.get("name") or "").upper(),
+    }), None)
+
+def resolve_underlying(text: str):
+    """Free text (ticker, wrapper symbol, or name) -> canonical underlying code,
+    or None. NVDA / NVIDIA / NVDAx / NVDAB / NVDAon all -> 'NVDA'."""
+    t = (text or "").strip().upper().lstrip("/")
+    if not t:
+        return None
+    if by_underlying(t):
+        return by_underlying(t)["underlying"]
+    w = by_symbol(t)
+    if w:
+        return w["underlying"]
+    return None
+
 def premium(token_price, mark_price):
     if not mark_price or not token_price:
         return None

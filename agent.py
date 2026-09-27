@@ -86,10 +86,9 @@ async def fire_due_alerts():
     now = datetime.now(timezone.utc)
     for w in _watches():
         thresh = w.threshold if getattr(w, "threshold", None) not in (None, 0) else DEFAULT_THRESHOLD
-        wrapper = rwa.by_symbol(w.symbol)
-        if not wrapper:
+        underlying = getattr(w, "underlying", None) or (rwa.by_symbol(w.symbol) or {}).get("underlying")
+        if not underlying:
             continue
-        underlying = wrapper["underlying"]
         siblings = [t for t in (snap.get("tokens") or []) if t.get("underlying") == underlying]
         hit = max(
             (t for t in siblings if t.get("premium") is not None and abs(t["premium"]) >= thresh),
