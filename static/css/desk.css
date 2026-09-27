@@ -676,6 +676,11 @@ html.hld-lock, html.hld-lock body { overflow: hidden; }
 .tk-arb-net.neg { color: var(--neg, #fb7185); }
 .tk-arb-line { margin: 8px 0 2px; font-size: 13px; }
 .tk-arb-note { margin: 0; font-size: 12px; color: var(--hm-muted); }
+.tk-arb-legs { display: flex; gap: 8px; margin-top: 12px; }
+.tk-arb-leg-btn { flex: 1; padding: 10px; border-radius: 12px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+.tk-arb-leg-btn.sell { background: var(--neg, #fb7185); color: #1a0b0e; }
+.tk-arb-leg-btn.buy { background: var(--pos, #4ade80); color: #062012; }
+.tk-arb-disclaimer { margin: 10px 0 0; font-size: 11px; color: var(--hm-muted); }
 .tk-pos-head { display: flex; align-items: center; gap: 7px; }
 .tk-pos-head h2 { flex: 1; margin: 0; font-size: 18px; font-weight: 600; }
 .tk-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hm-text); }
