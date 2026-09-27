@@ -193,7 +193,8 @@ def _load_cache() -> None:
             latest.setdefault(r.symbol, r)
         _cache = [
             {"id": latest[s].id, "symbol": s.upper(), "body": latest[s].body,
-             "publishedAt": latest[s].published_at.isoformat()}
+             "publishedAt": latest[s].published_at.isoformat(),
+             "underlying": (rwa.by_symbol(s) or {}).get("underlying", s.upper())}
             for s in symbols if s in latest
         ]
     finally:
