@@ -290,6 +290,10 @@
     head.appendChild(h('span', 'hm-stk-mark'));
     row.appendChild(head);
 
+    const fair = h('div', 'hm-stk-fair');
+    fair.hidden = true;
+    row.appendChild(fair);
+
     const tape = h('div', 'hm-tape-row');
     tape.appendChild(h('div', 'hm-tape-cell'));
     tape.appendChild(h('div', 'hm-tape-cell'));
@@ -308,6 +312,13 @@
     const noYahoo = g.wrappers.every((w) => w.noYahoo);
     const markEl = node.querySelector('.hm-stk-mark');
     markEl.textContent = noYahoo ? 'Tape only' : (g.markPrice ? fmtPrice(g.markPrice) : '—');
+
+    const fairEl = node.querySelector('.hm-stk-fair');
+    const showFair = !noYahoo && g.fairPrice && state.session && !state.session.cashOpen;
+    fairEl.hidden = !showFair;
+    if (showFair) {
+      fairEl.textContent = `Fair ${fmtPrice(g.fairPrice)} (${state.session.label})`;
+    }
 
     ['xstocks', 'ondo', 'bstocks'].forEach((plat, i) => {
       const w = g.wrappers.find((x) => x.platform === plat);
