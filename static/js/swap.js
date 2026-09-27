@@ -243,7 +243,13 @@
       sess.quoting = false;
       if (order.uiOutAmount || order.deepLink) {
         sess.order = order;
-        setNote(order.transaction ? '' : 'Opens PancakeSwap to complete the swap');
+        if (order.sim && order.sim.ok === false) {
+          setNote(order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert');
+        } else if (order.sim && order.sim.ok && order.sim.gas) {
+          setNote(`Simulated OK · ~${order.sim.gas} gas`);
+        } else {
+          setNote(order.transaction ? '' : 'Opens PancakeSwap to complete the swap');
+        }
       } else {
         sess.order = null;
         const c2 = sess.host.getCtx();
@@ -365,6 +371,7 @@
       else if (d.over) setCta(`Insufficient ${S.cur} balance`, true);
       else if (S.quoting) setCta('Getting price...', true, true);
       else if (!S.order || !S.order.uiOutAmount) setCta(`Buy with ${S.raw.replace(/\.$/, '')} ${S.cur}`, true);
+      else if (S.order.sim && S.order.sim.ok === false) setCta('Simulation failed', true);
       else setCta(`Buy with ${S.raw.replace(/\.$/, '')} ${S.cur}`, false);
       if (d.v > 0 && d.out > 0) {
         const m = multiplierOf(c, S.symbol);
@@ -387,6 +394,7 @@
       else if (!(d.amt > 0)) setCta('Select an amount', true);
       else if (S.quoting) setCta('Getting price...', true, true);
       else if (!S.order || !S.order.uiOutAmount) setCta(`Sell ${trunc(d.amt, TOKEN_DEC)} ${S.symbol}`, true);
+      else if (S.order.sim && S.order.sim.ok === false) setCta('Simulation failed', true);
       else setCta(`Sell ${trunc(d.amt, TOKEN_DEC)} ${S.symbol}`, false);
       if (d.amt > 0 && d.out > 0) {
         const m = multiplierOf(c, S.symbol);
@@ -435,6 +443,9 @@
           throw new Error('Swap failed, please try again');
         }
       } else {
+        if (sess.order.sim && sess.order.sim.ok === false) {
+          throw new Error(sess.order.sim.error || 'Simulation failed — swap would revert');
+        }
         let signed;
         try {
           signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);

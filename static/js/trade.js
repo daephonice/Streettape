@@ -405,7 +405,13 @@
       sess.quoting = false;
       if (order.uiOutAmount) {
         sess.order = order;
-        sess.note = '';
+        if (order.sim && order.sim.ok === false) {
+          sess.note = order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert';
+        } else if (order.sim && order.sim.ok && order.sim.gas) {
+          sess.note = `Simulated OK · ~${order.sim.gas} gas`;
+        } else {
+          sess.note = '';
+        }
       } else {
         sess.order = null;
         sess.note = order.transaction ? '' : (order.deepLink ? 'Opens PancakeSwap to complete the swap' : 'No route found');
@@ -564,6 +570,7 @@
     if (amt > bal * (1 + 1e-9)) { b.textContent = 'Insufficient Balance'; b.disabled = true; return; }
     if (S.quoting) { b.textContent = 'Getting Price....'; b.disabled = true; return; }
     if (!S.order || !S.order.uiOutAmount) { b.textContent = 'Swap'; b.disabled = true; return; }
+    if (S.order.sim && S.order.sim.ok === false) { b.textContent = 'Simulation failed'; b.disabled = true; return; }
     b.textContent = 'Swap';
     b.disabled = false;
   }
@@ -648,6 +655,9 @@
           throw new Error('Swap failed, please try again');
         }
       } else {
+        if (sess.order.sim && sess.order.sim.ok === false) {
+          throw new Error(sess.order.sim.error || 'Simulation failed — swap would revert');
+        }
         let signed;
         try {
           signed = await window.MarktapeWallet.signTransactionForSend(sess.order.transaction);
