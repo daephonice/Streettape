@@ -488,8 +488,11 @@ async def on_session(message: Message):
 @router.message(Command("agent"))
 async def on_agent(message: Message):
     import agent
-    text = await agent.arb_text()
-    await message.answer(text or "No arb right now — NVDAB is within 1% of NVDAx.", disable_web_page_preview=True)
+    parts = (message.text or "").split(maxsplit=1)
+    underlying = parts[1].strip().upper() if len(parts) > 1 else None
+    text = await agent.arb_text(underlying)
+    fallback = f"No arb right now — {underlying} wrappers are within 1% of each other." if underlying else "No arb right now — every underlying's wrappers are within 1% of each other."
+    await message.answer(text or fallback, disable_web_page_preview=True)
 
 
 @router.message()

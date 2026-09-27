@@ -114,8 +114,21 @@ async def get_token(symbol: str):
 
 
 @router.get("/agent/scan")
-async def api_agent_scan(threshold: float | None = None):
-    return agent.scan_gaps(threshold)
+async def api_agent_scan(threshold: float | None = None, underlying: str | None = None):
+    report = agent.scan_gaps(threshold)
+    hits = agent.check_cross_arb(underlying)[:5]  # quoting is a network round-trip per hit
+    report["arbs"] = [await agent.net_arb_quote(h) for h in hits]
+    return report
+
+
+@router.get("/agent/arb/{underlying}")
+async def api_agent_arb(underlying: str, size_usd: float = 50.0):
+    """Single-underlying rotate quote for the token page's 'Rotate $N' button."""
+    hits = agent.check_cross_arb(underlying)
+    if not hits:
+        return {"underlying": underlying.upper(), "hit": None}
+    priced = await agent.net_arb_quote(hits[0], size_usd)
+    return {"underlying": underlying.upper(), "hit": priced}
 
 
 class SwapOrderRequest(BaseModel):
