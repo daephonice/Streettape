@@ -555,8 +555,28 @@
     try {
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
+      if (IS_GROUP) loadArb();
     } catch (err) {
       setTimeout(loadGroup, 3000);
+    }
+  }
+
+  const arbEls = { card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note') };
+  async function loadArb() {
+    if (!arbEls.card) return;
+    try {
+      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}`);
+      const hit = data.hit;
+      if (!hit) { arbEls.card.hidden = true; return; }
+      arbEls.card.hidden = false;
+      arbEls.net.textContent = (hit.viable ? '+' : '') + Math.round(hit.netBps) + ' bps';
+      arbEls.net.className = 'tk-arb-net ' + (hit.viable ? 'pos' : 'neg');
+      arbEls.line.textContent = `Sell ${hit.richSymbol} \u2192 Buy ${hit.cheapSymbol} \u00b7 $${hit.sizeUsd.toFixed(0)} each leg`;
+      arbEls.note.textContent = hit.viable
+        ? `Gross ${Math.round(hit.grossBps)} bps, ~${Math.round(hit.costBps)} bps costs.`
+        : `Gross ${Math.round(hit.grossBps)} bps doesn't clear ~${Math.round(hit.costBps)} bps in costs — not viable at $${hit.sizeUsd.toFixed(0)}.`;
+    } catch (err) {
+      arbEls.card.hidden = true;
     }
   }
 
@@ -725,4 +745,5 @@
   setInterval(tickBalances, BALANCE_MS);
   setInterval(loadChart, CHART_MS);
   setInterval(loadNews, 60000);
+  if (IS_GROUP) setInterval(loadArb, 30000);
 })();
