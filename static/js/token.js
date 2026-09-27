@@ -155,7 +155,7 @@
       const assetMeta = state.assets[SYMBOL] || {};
       const m = assetMeta.multiplier || null;
       const note = sharesNote(amount, m);
-      els.posAmt.textContent = note || `${fmtAmount(amount)} ${SYMBOL}`;
+      els.posAmt.textContent = note || `${fmtAmount(amount)} ${SYMBOL} · est. shares n/a`;
       const delta = amount * (p.price - open24h(p)); // 24h move of the position
       const pi = pct(p.change24h);
       els.posDelta.textContent = fmtDelta(delta);
