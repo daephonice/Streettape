@@ -57,6 +57,8 @@ async def _refresh_stocks():
             "supply": None, "price": float(price), "mark": r.get("markPrice"),
             "premium": r.get("premium"), "platform": r.get("platform"), "underlying": r.get("underlying"),
             "multiplier": r.get("multiplier"), "noYahoo": r.get("noYahoo", False),
+            "fairPrice": r.get("fairPrice"), "premiumToOfficial": r.get("premiumToOfficial"),
+            "premiumToFair": r.get("premiumToFair"),
         }
     if records:
         _touch()
@@ -153,6 +155,9 @@ def get_prices():
             "mark": s.get("mark"),
             "premium": s.get("premium"),
             "noYahoo": s.get("noYahoo", False),
+            "fairPrice": s.get("fairPrice"),
+            "premiumToOfficial": s.get("premiumToOfficial"),
+            "premiumToFair": s.get("premiumToFair"),
         }
     return {
         "updatedAt": _updated_at.isoformat() if _updated_at else None,

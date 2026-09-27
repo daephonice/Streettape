@@ -17,6 +17,7 @@ from sqlalchemy import select
 
 import rwa
 import rwa_api
+import fair
 import devlog
 from database import SessionLocal
 from models import PriceSnapshot
@@ -199,13 +200,19 @@ def _group(tokens):
                 if cheapest and richest and cheapest["tokenPrice"] else None
             ),
             "absPremium": max((abs(r["premium"] or 0) for r in rows), default=0),
+            "fairPrice": rows[0].get("fairPrice"),
+            "premiumToFair": (
+                rwa.premium(cheapest["tokenPrice"], rows[0]["fairPrice"])
+                if cheapest and rows[0].get("fairPrice") else None
+            ),
         })
     groups.sort(key=lambda g: g["absPremium"], reverse=True)
     return groups
 
 
-def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> list[dict]:
+def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_marks: dict | None = None) -> list[dict]:
     official = official or {}
+    fair_marks = fair_marks or {}
     tokens = []
     for w in rwa.wrappers():
         has_addr = bool(w.get("address"))
@@ -216,6 +223,9 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> lis
         mark = off.get("markPrice") if off.get("markPrice") is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
         multiplier = off.get("multiplier") if off.get("multiplier") is not None else w.get("multiplier")
         prem = rwa.premium(token_price, mark) if token_price and mark else None
+        fm = fair_marks.get(w["underlying"]) or {}
+        fair_price = fm.get("fairPrice")
+        prem_fair = rwa.premium(token_price, fair_price) if token_price and fair_price else None
         # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
         # never a Trade link. hasTape is the single flag templates/JS gate on.
         tokens.append({
@@ -239,6 +249,9 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> lis
             "url": f"https://pancakeswap.finance/swap?chain=bsc&outputCurrency={w['address']}" if has_addr else None,
             "multiplier": multiplier,
             "markSource": "rwa" if off.get("markPrice") is not None else ("yahoo" if mark else None),
+            "fairPrice": fair_price,
+            "premiumToOfficial": prem if has_addr else None,
+            "premiumToFair": prem_fair if has_addr else None,
         })
     tokens.sort(key=lambda t: abs(t["premium"] or 0), reverse=True)
     return tokens
@@ -285,14 +298,18 @@ async def build_snapshot():
     }
     skip_tickers = {u["yahoo"] for u in rwa.UNIVERSE if u["underlying"] in covered_und and u.get("yahoo")}
 
+    cash_open = rwa.session_now()["cashOpen"]
+    underlyings = [u["underlying"] for u in rwa.UNIVERSE]
+    fair_marks = await asyncio.to_thread(fair.synthetic_marks, underlyings, cash_open)
+
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
         tapes = await _gecko_prices(client, remaining_addrs)
-        tokens = _build_tokens(tapes, {}, official)
+        tokens = _build_tokens(tapes, {}, official, fair_marks)
         snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
 
         marks = await _yahoo_marks(client, skip_tickers)
 
-    tokens = _build_tokens(tapes, marks, official)
+    tokens = _build_tokens(tapes, marks, official, fair_marks)
     snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
     _persist(tokens)
     return snap
