@@ -389,12 +389,12 @@ def _wrapper_tag(platform: str) -> str:
 
 
 def _group_line(g: dict) -> str:
-    mark = f"${g['markPrice']:.2f}" if g.get("markPrice") else "—"
-    parts = []
-    for w in g["wrappers"]:
-        pct = rwa.format_premium(w["premium"])
-        parts.append(f"{_wrapper_tag(w['platform'])} {pct}")
-    return f"{g['underlying']:<6} {mark:>9}   " + "  ".join(parts)
+    tags = "/".join(_wrapper_tag(w["platform"]) for w in g["wrappers"])
+    if g.get("noYahoo"):
+        return f"{g['underlying']:<6} No Yahoo mark. Tape only.   {tags}"
+    off = rwa.format_premium(g.get("premiumToOfficial"))
+    fair = rwa.format_premium(g.get("premiumToFair")) if g.get("fairPrice") else "—"
+    return f"{g['underlying']:<6} off{off:>7}  fair{fair:>7}  {tags}"
 
 
 @router.message(Command("board"))

@@ -201,10 +201,15 @@ def _group(tokens):
             ),
             "absPremium": max((abs(r["premium"] or 0) for r in rows), default=0),
             "fairPrice": rows[0].get("fairPrice"),
+            "premiumToOfficial": (
+                rwa.premium(cheapest["tokenPrice"], rows[0].get("markPrice"))
+                if cheapest and rows[0].get("markPrice") else None
+            ),
             "premiumToFair": (
                 rwa.premium(cheapest["tokenPrice"], rows[0]["fairPrice"])
                 if cheapest and rows[0].get("fairPrice") else None
             ),
+            "noYahoo": all(r.get("noYahoo") for r in rows),
         })
     groups.sort(key=lambda g: g["absPremium"], reverse=True)
     return groups
