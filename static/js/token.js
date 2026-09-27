@@ -463,10 +463,20 @@
   function applyGroup(g) {
     state.group = g;
     // Trade the cheapest rail unless the URL named a specific wrapper (e.g. legacy /t/NVDAx).
-    const focusW = g.wrappers.find((w) => w.symbol === FOCUS);
+    // A wrapper with no on-chain address has no tape — never auto-selected or
+    // treated as tradeable, even if it's the one the URL asked for.
+    const focusW = g.wrappers.find((w) => w.symbol === FOCUS && w.hasTape);
     const cheapW = g.wrappers.find((w) => w.symbol === g.cheapest);
-    const tradeW = focusW || cheapW || g.wrappers[0];
-    if (!tradeW) return;
+    const anyTradeable = g.wrappers.find((w) => w.hasTape);
+    const tradeW = focusW || cheapW || anyTradeable;
+    if (!tradeW) {
+      // No wrapper for this underlying has a contract yet — nothing to trade.
+      if (els.bar) els.bar.hidden = true;
+      SYMBOL = (g.wrappers.find((w) => w.symbol === FOCUS) || g.wrappers[0] || {}).symbol || SYMBOL;
+      page.dataset.symbol = SYMBOL;
+      return;
+    }
+    if (els.bar) els.bar.hidden = false;
     SYMBOL = tradeW.symbol;
     page.dataset.symbol = SYMBOL;
 

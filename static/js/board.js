@@ -86,7 +86,9 @@
       <div class="mkt-card-chart">
         <svg class="mkt-sparkline" data-symbol="${t.symbol}" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
       </div>
-      <a href="/t/${t.symbol}#swap" class="mkt-trade-btn">Trade</a>
+      ${t.hasTape
+        ? `<a href="/t/${t.symbol}#swap" class="mkt-trade-btn">Trade</a>`
+        : `<span class="mkt-trade-btn mkt-trade-btn-disabled" aria-disabled="true">— no tape</span>`}
     `;
     return div;
   }
