@@ -912,3 +912,6 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 .tk-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .tk-legend-empty { font-size: 12px; color: var(--hm-muted, #9d9ea2); font-style: italic; }
 .tk-line-wrapper { fill: none; stroke-width: 1.5px; }
+
+/* Dead rail: no contract for this wrapper — never looks like a live Buy */
+.mkt-trade-btn-disabled { opacity: 0.45; pointer-events: none; cursor: default; text-align: center; }
