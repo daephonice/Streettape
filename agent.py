@@ -205,6 +205,86 @@ async def arb_text() -> str | None:
     )
 
 
+FLATTEN_THRESHOLD = 0.02
+OPS_CHAT_ID = int(os.getenv("OPS_CHAT_ID", "0") or 0)
+_last_flatten_week: tuple[int, int] | None = None
+
+
+def _flatten_chat_ids() -> list[int]:
+    ids = {w.chat_id for w in _watches()}
+    if OPS_CHAT_ID:
+        ids.add(OPS_CHAT_ID)
+    return list(ids)
+
+
+def flatten_candidates() -> list[dict]:
+    snap = rwa.get_cached_snapshot()
+    return [
+        t for t in (snap.get("tokens") or [])
+        if t.get("premium") is not None and t["premium"] > FLATTEN_THRESHOLD
+    ]
+
+
+async def _flatten_line(t: dict) -> str:
+    import swap
+    px = t.get("tokenPrice") or 0
+    if px <= 0:
+        return f"SELL {t['symbol']} · {rwa.format_premium(t['premium'])} rich · price unavailable"
+    leg = await swap.quote(t["mint"], rwa.USDT, 50.0 / px)
+    if leg.get("provider") == "binance_web3" and leg.get("uiOutAmount") is not None:
+        detail = f"Trading API quote ~{leg['uiOutAmount']:.4f} USDT out"
+    else:
+        detail = f"PancakeSwap: {leg.get('deepLink') or 'n/a'}"
+    return f"SELL {t['symbol']} · {rwa.format_premium(t['premium'])} rich · ${50:.0f} · {detail}"
+
+
+async def flatten_text() -> str | None:
+    """Sunday 18:00-18:59 UTC body: every wrapper >2% rich, sell quotes. None if
+    nothing clears the bar right now (used by both the weekly loop and any
+    manual check)."""
+    import telegram_bot
+    hits = flatten_candidates()
+    if not hits:
+        return None
+    hits.sort(key=lambda t: t["premium"], reverse=True)
+    lines = [await _flatten_line(t) for t in hits]
+    return (
+        "Weekly flatten · wrappers >2% rich\n"
+        + "\n".join(lines)
+        + f"\n{telegram_bot.WEB_PUBLIC_URL}/board\n"
+        + "Not auto-executed — confirm and sign in your own wallet."
+    )
+
+
+async def fire_flatten() -> int:
+    """Sunday 18:00 UTC window, once per ISO week (in-memory guard, no DB)."""
+    global _last_flatten_week
+    import telegram_bot
+    if not telegram_bot.BOT_TOKEN:
+        return 0
+    now = datetime.now(timezone.utc)
+    if now.isoweekday() != 7 or now.hour != 18:
+        return 0
+    iso = now.isocalendar()
+    week_key = (iso[0], iso[1])
+    if _last_flatten_week == week_key:
+        return 0
+
+    text = await flatten_text()
+    _last_flatten_week = week_key  # mark tried regardless, so a quiet week doesn't retry all hour
+    if not text:
+        return 0
+
+    sent = 0
+    for chat_id in _flatten_chat_ids():
+        try:
+            await telegram_bot.send_alert(chat_id, text)
+            sent += 1
+        except Exception:
+            log.warning("agent: flatten send failed chat=%s", chat_id, exc_info=True)
+    return sent
+
+
 async def _loop():
     await asyncio.sleep(15)
     while True:
@@ -212,6 +292,10 @@ async def _loop():
             await fire_due_alerts()
         except Exception:
             log.exception("agent: scan failed")
+        try:
+            await fire_flatten()
+        except Exception:
+            log.exception("agent: flatten check failed")
         await asyncio.sleep(SCAN_SECONDS)
 
 
