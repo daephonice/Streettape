@@ -38,6 +38,7 @@
     about: $('tk-about'), aboutText: $('tk-about-text'), more: $('tk-readmore'),
     logo: $('tk-logo'), symText: $('tk-sym-text'), aboutName: $('tk-about-name'), urlLink: $('tk-url-link'), urlText: $('tk-url-text'),
     tapeRow: $('tk-tape-row'),
+    newsList: $('tk-news-list'), newsEmpty: $('tk-news-empty'),
   };
 
   const state = {
@@ -510,6 +511,63 @@
     }
   }
 
+  // ---- News (this underlying only) -----------------------------------------
+  function fmtAgo(iso) {
+    const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (s < 60) return 'now';
+    if (s < 3600) return Math.floor(s / 60) + 'm';
+    if (s < 86400) return Math.floor(s / 3600) + 'h';
+    return Math.floor(s / 86400) + 'd';
+  }
+
+  function buildNewsItem(item) {
+    const art = document.createElement('article');
+    art.className = 'hm-news-item';
+
+    const head = document.createElement('div');
+    head.className = 'hm-n-head';
+    const time = document.createElement('span');
+    time.className = 'hm-n-time';
+    time.textContent = fmtAgo(item.publishedAt);
+    head.appendChild(time);
+    art.appendChild(head);
+
+    const body = document.createElement('p');
+    body.className = 'hm-n-body';
+    body.textContent = item.body;
+    art.appendChild(body);
+
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'hm-n-toggle';
+    toggle.hidden = true;
+    const tText = document.createElement('span');
+    tText.className = 'hm-n-toggle-text';
+    tText.textContent = 'Show More';
+    toggle.appendChild(tText);
+    toggle.addEventListener('click', () => {
+      const open = art.classList.toggle('expanded');
+      tText.textContent = open ? 'Show Less' : 'Show More';
+    });
+    art.appendChild(toggle);
+
+    requestAnimationFrame(() => {
+      toggle.hidden = !(body.scrollHeight > body.clientHeight + 1);
+    });
+    return art;
+  }
+
+  async function loadNews() {
+    if (!els.newsList || !UNDERLYING) return;
+    try {
+      const data = await getJSON('/api/news');
+      const items = (data.items || []).filter((i) => i.underlying === UNDERLYING);
+      els.newsList.textContent = '';
+      items.forEach((i) => els.newsList.appendChild(buildNewsItem(i)));
+      els.newsEmpty.hidden = items.length > 0;
+    } catch (err) { /* keep last news */ }
+  }
+
   // ---- Actions ------------------------------------------------------------
   function connect() {
     if (window.MarktapeWallet) window.MarktapeWallet.connectWithPicker();
@@ -613,7 +671,9 @@
   }
   tickPrices();
   tickBalances();
+  loadNews();
   setInterval(tickPrices, PRICE_MS);
   setInterval(tickBalances, BALANCE_MS);
   setInterval(loadChart, CHART_MS);
+  setInterval(loadNews, 60000);
 })();
