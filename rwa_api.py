@@ -145,3 +145,39 @@ async def get_official_snapshot(addresses: list[str]) -> dict | None:
         log.warning("rwa_api: snapshot pass failed, falling back", exc_info=True)
         return None
     return out or None
+
+
+def _row_from_listing(item: dict) -> dict | None:
+    """Normalize one rwa/tokens or rwa/search item to rwa.merge_dynamic()'s
+    shape. Skips anything without a real on-chain address."""
+    addr = item.get("tokenAddress") or item.get("address")
+    und = item.get("underlying") or item.get("underlyingSymbol")
+    platform = item.get("platform") or item.get("issuer")
+    if not addr or not und or not platform:
+        return None
+    return {
+        "underlying": str(und).upper(),
+        "name": item.get("underlyingName") or item.get("name"),
+        "yahoo": item.get("yahooTicker") or (str(und).upper() if item.get("assetType") != "index" else None),
+        "platform": str(platform).lower(),
+        "address": addr,
+        "symbol": item.get("symbol"),
+        "multiplier": item.get("multiplier"),
+    }
+
+
+async def get_dynamic_universe() -> list[dict] | None:
+    """rwa/tokens rows normalized for rwa.merge_dynamic(). None if RWA Data
+    is unset/parked/the call fails — caller keeps the static seed as-is."""
+    if not available():
+        return None
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+            rows = await tokens(client)
+    except Exception:
+        log.info("rwa_api: tokens listing failed", exc_info=True)
+        return None
+    if not rows:
+        return None
+    out = [r for r in (_row_from_listing(item) for item in rows) if r]
+    return out or None

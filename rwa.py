@@ -1,5 +1,13 @@
 """BNB tokenized-stock universe + mark/tape math.
 Tape = GeckoTerminal. Mark = Yahoo last cash print. Both free, no key.
+
+UNIVERSE below is the seed catalog (hand-maintained, always present even with
+no RWA Data key). merge_dynamic() folds in whatever RWA Data's rwa/tokens +
+rwa/search actually list — new underlyings, new wrappers on known underlyings,
+and a real `address` for a seed row that had none (e.g. AAPLB). It never
+invents a contract: a wrapper with no address from either source stays
+address: None and callers must treat that as "no tape, no Buy" — see
+board.py's hasTape / "— no tape" handling.
 """
 from __future__ import annotations
 from datetime import datetime, timezone, timedelta
@@ -56,6 +64,48 @@ def wrappers():
         for w in u["wrappers"]:
             out.append({**w, "underlying": u["underlying"], "yahoo": u["yahoo"], "name": u["name"]})
     return out
+
+
+_PLATFORM_SUFFIX = {"xstocks": "x", "ondo": "on", "bstocks": "B"}
+
+
+def _guess_symbol(underlying: str, platform: str) -> str:
+    return f"{underlying}{_PLATFORM_SUFFIX.get(platform, platform)}"
+
+
+def merge_dynamic(discovered: list[dict]):
+    """Fold RWA Data rows into UNIVERSE in place. Each item:
+    {"underlying", "name", "yahoo", "platform", "address", "symbol"(optional),
+    "multiplier"(optional)}. Only ever fills in real data:
+    - known underlying + known platform + seed row has no address -> patch
+      that row's address in (never touches a seed row that already has one)
+    - known underlying + new platform -> append a new wrapper row
+    - unknown underlying -> append a new UNIVERSE entry
+    Never removes a row and never fabricates an address for anything not
+    present in `discovered`."""
+    by_und = {u["underlying"]: u for u in UNIVERSE}
+    for row in discovered:
+        und = (row.get("underlying") or "").upper()
+        platform = row.get("platform")
+        addr = row.get("address")
+        if not und or not platform or not addr:
+            continue
+        entry = by_und.get(und)
+        if entry is None:
+            entry = {"underlying": und, "yahoo": row.get("yahoo"), "name": row.get("name") or und, "wrappers": []}
+            UNIVERSE.append(entry)
+            by_und[und] = entry
+        existing = next((w for w in entry["wrappers"] if w["platform"] == platform), None)
+        if existing is None:
+            entry["wrappers"].append({
+                "symbol": row.get("symbol") or _guess_symbol(und, platform),
+                "platform": platform, "address": addr, "multiplier": row.get("multiplier"),
+            })
+        elif not existing.get("address"):
+            existing["address"] = addr
+            if row.get("multiplier") is not None:
+                existing["multiplier"] = row.get("multiplier")
+
 
 def by_symbol(symbol: str):
     s = (symbol or "").upper()

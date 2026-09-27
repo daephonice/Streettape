@@ -8,6 +8,7 @@ per-ticker, all run concurrently so one slow/dead host can't stall the rest.
 from __future__ import annotations
 
 import os
+import time
 import asyncio
 import logging
 
@@ -215,6 +216,8 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> lis
         mark = off.get("markPrice") if off.get("markPrice") is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
         multiplier = off.get("multiplier") if off.get("multiplier") is not None else w.get("multiplier")
         prem = rwa.premium(token_price, mark) if token_price and mark else None
+        # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
+        # never a Trade link. hasTape is the single flag templates/JS gate on.
         tokens.append({
             "symbol": w["symbol"],
             "name": w["name"],
@@ -222,6 +225,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> lis
             "platform": w["platform"],
             "mint": w["address"],
             "address": w["address"],
+            "hasTape": has_addr,
             "image": tape.get("image"),
             "tokenPrice": token_price if has_addr else None,
             "markPrice": mark,
@@ -240,12 +244,33 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> lis
     return tokens
 
 
+CATALOG_REFRESH_SECONDS = int(os.getenv("BOARD_CATALOG_REFRESH_SECONDS", "1800"))  # 30 min
+_last_catalog_sync = 0.0
+
+
+async def _sync_catalog():
+    """Fold RWA Data's live listing into rwa.UNIVERSE. Runs on its own slow
+    cadence (catalog changes rarely) — separate from the per-cycle price
+    refresh. No-ops when RWA Data is unset/parked (get_dynamic_universe
+    returns None), leaving the static seed untouched."""
+    global _last_catalog_sync
+    now = time.monotonic()
+    if now - _last_catalog_sync < CATALOG_REFRESH_SECONDS:
+        return
+    _last_catalog_sync = now
+    discovered = await rwa_api.get_dynamic_universe()
+    if discovered:
+        rwa.merge_dynamic(discovered)
+
+
 async def build_snapshot():
     """RWA Data (official mark + official tape) tried first per wrapper address.
     Any address it didn't cover this cycle (unset key, parked, timeout, miss)
     falls through to the existing Gecko tape + Yahoo mark path, published
     immediately with marks null then patched in place once Yahoo lands —
     unchanged from before, so a dead Yahoo/RWA Data never blocks rows."""
+    await _sync_catalog()
+
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     official = await rwa_api.get_official_snapshot(addrs) or {}
     remaining_addrs = [a for a in addrs if a.lower() not in official]
