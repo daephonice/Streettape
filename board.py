@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy import select
 
 import rwa
+import rwa_api
 import devlog
 from database import SessionLocal
 from models import PriceSnapshot
@@ -84,8 +85,9 @@ async def _yahoo_one(client: httpx.AsyncClient, tkr: str) -> tuple[str, float | 
     return tkr, fallback
 
 
-async def _yahoo_marks(client: httpx.AsyncClient) -> dict:
-    tickers = sorted({u["yahoo"] for u in rwa.UNIVERSE if u.get("yahoo")})
+async def _yahoo_marks(client: httpx.AsyncClient, skip_tickers: set | None = None) -> dict:
+    skip = skip_tickers or set()
+    tickers = sorted({u["yahoo"] for u in rwa.UNIVERSE if u.get("yahoo") and u["yahoo"] not in skip})
     results = await asyncio.gather(*(_yahoo_one(client, tkr) for tkr in tickers), return_exceptions=True)
     out = {}
     for r in results:
@@ -124,11 +126,11 @@ async def _one_gecko(client, addr: str):
     return {"price": float(px) if px else None, "image": attr.get("image_url")}
 
 
-async def _gecko_prices(client) -> dict:
+async def _gecko_prices(client, addrs: list | None = None) -> dict:
     global _tape_stale
     out = {}
     rate_limited = False
-    addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
+    addrs = addrs if addrs is not None else [w["address"] for w in rwa.wrappers() if w.get("address")]
     for i in range(0, len(addrs), 5):
         chunk = addrs[i:i + 5]
         try:
@@ -201,13 +203,17 @@ def _group(tokens):
     return groups
 
 
-def _build_tokens(tapes: dict, marks: dict) -> list[dict]:
+def _build_tokens(tapes: dict, marks: dict, official: dict | None = None) -> list[dict]:
+    official = official or {}
     tokens = []
     for w in rwa.wrappers():
         has_addr = bool(w.get("address"))
-        tape = (tapes.get(w["address"].lower()) if has_addr else None) or {}
-        token_price = tape.get("price")
-        mark = marks.get(w["yahoo"]) if w.get("yahoo") else None
+        addr_l = w["address"].lower() if has_addr else None
+        off = official.get(addr_l) or {} if has_addr else {}
+        tape = (tapes.get(addr_l) if has_addr else None) or {}
+        token_price = off.get("price") if off.get("price") is not None else tape.get("price")
+        mark = off.get("markPrice") if off.get("markPrice") is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
+        multiplier = off.get("multiplier") if off.get("multiplier") is not None else w.get("multiplier")
         prem = rwa.premium(token_price, mark) if token_price and mark else None
         tokens.append({
             "symbol": w["symbol"],
@@ -227,24 +233,41 @@ def _build_tokens(tapes: dict, marks: dict) -> list[dict]:
                 if has_addr else f"{w['name']} has no confirmed {w['platform']} wrapper yet."
             ),
             "url": f"https://pancakeswap.finance/swap?chain=bsc&outputCurrency={w['address']}" if has_addr else None,
-            "multiplier": w.get("multiplier"),
+            "multiplier": multiplier,
+            "markSource": "rwa" if off.get("markPrice") is not None else ("yahoo" if mark else None),
         })
     tokens.sort(key=lambda t: abs(t["premium"] or 0), reverse=True)
     return tokens
 
 
 async def build_snapshot():
-    """Tape (Gecko) publishes the snapshot immediately with marks null.
-    Marks (Yahoo) patch it in place once they land, so a dead Yahoo never
-    blocks stock rows, the session chip's board copy, or news from appearing."""
+    """RWA Data (official mark + official tape) tried first per wrapper address.
+    Any address it didn't cover this cycle (unset key, parked, timeout, miss)
+    falls through to the existing Gecko tape + Yahoo mark path, published
+    immediately with marks null then patched in place once Yahoo lands —
+    unchanged from before, so a dead Yahoo/RWA Data never blocks rows."""
+    addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
+    official = await rwa_api.get_official_snapshot(addrs) or {}
+    remaining_addrs = [a for a in addrs if a.lower() not in official]
+
+    # Only skip a ticker's Yahoo fetch if every wrapper under that underlying
+    # already got an official mark — a partially-covered underlying still
+    # needs Yahoo for its uncovered wrappers' premium math.
+    covered_und = {
+        u["underlying"] for u in rwa.UNIVERSE
+        if all((w["address"].lower() in official) for w in u["wrappers"] if w.get("address"))
+        and any(w.get("address") for w in u["wrappers"])
+    }
+    skip_tickers = {u["yahoo"] for u in rwa.UNIVERSE if u["underlying"] in covered_und and u.get("yahoo")}
+
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
-        tapes = await _gecko_prices(client)
-        tokens = _build_tokens(tapes, {})
+        tapes = await _gecko_prices(client, remaining_addrs)
+        tokens = _build_tokens(tapes, {}, official)
         snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
 
-        marks = await _yahoo_marks(client)
+        marks = await _yahoo_marks(client, skip_tickers)
 
-    tokens = _build_tokens(tapes, marks)
+    tokens = _build_tokens(tapes, marks, official)
     snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
     _persist(tokens)
     return snap
