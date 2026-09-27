@@ -13,6 +13,7 @@ import httpx
 
 import prices
 import rwa
+import devlog
 
 log = logging.getLogger("swap")
 
@@ -88,9 +89,18 @@ async def _request(client: httpx.AsyncClient, method: str, path: str, params: di
     req.headers["X-OC-APIKEY"] = API_KEY
     req.headers["X-OC-TIMESTAMP"] = timestamp
     req.headers["X-OC-SIGN"] = sig
-    resp = await client.send(req)
+    full_url = str(req.url)
+    with devlog.timed() as t:
+        resp = await client.send(req)
     data = resp.json()
-    if data.get("code") not in (0, None) or not data.get("success", True):
+    ok = data.get("code") in (0, None) and data.get("success", True)
+    devlog.log_call(
+        what=f"Binance Web3 {method.upper()} {path}", url=full_url, status=resp.status_code, ms=t.ms,
+        expected="code 0 / success true with data payload",
+        actual="ok" if ok else f"code={data.get('code')} msg={data.get('msg')}",
+        body=None if ok else str(data),
+    )
+    if not ok:
         raise RuntimeError(data.get("msg") or f"Binance Web3 API error {data.get('code')}")
     return data.get("data")
 
@@ -188,6 +198,11 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 "executionMode": exec_mode,
                 "deepLink": pancake_link(input_mint, output_mint),
             }
+            devlog.log_call(
+                what=f"quote mode={exec_mode} {input_mint[:8]}->{output_mint[:8]}",
+                url=f"{BASE_URL}/api/v1/dex/aggregator/swap", status="n/a", ms=0,
+                actual=f"rate={result['rate']} priceImpactPct={result['priceImpactPct']} vendor={result['routes']}",
+            )
 
             if exec_mode == "RFQ":
                 rfq = swap_data.get("rfq") or {}
@@ -223,15 +238,25 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
 
 async def submit_rfq_order(request_id: str, user_signature: str, vendor: str, quote_id: str, signing_scheme: str = "EIP712") -> dict:
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=15.0) as client:
-        return await _request(client, "POST", "/api/v1/dex/aggregator/order/submit", json_body={
-            "requestId": request_id,
-            "userSignature": user_signature,
-            "vendor": vendor,
-            "quoteId": quote_id,
-            "signingScheme": signing_scheme,
-        })
+        try:
+            return await _request(client, "POST", "/api/v1/dex/aggregator/order/submit", json_body={
+                "requestId": request_id,
+                "userSignature": user_signature,
+                "vendor": vendor,
+                "quoteId": quote_id,
+                "signingScheme": signing_scheme,
+            })
+        except Exception as e:
+            devlog.log_call(what="RFQ order submit", url=f"{BASE_URL}/api/v1/dex/aggregator/order/submit",
+                             status="exception", ms=0, error=str(e))
+            raise
 
 
 async def rfq_order_status(order_id: str) -> dict:
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=15.0) as client:
-        return await _request(client, "GET", f"/api/v1/dex/aggregator/order/{order_id}")
+        try:
+            return await _request(client, "GET", f"/api/v1/dex/aggregator/order/{order_id}")
+        except Exception as e:
+            devlog.log_call(what="RFQ order status", url=f"{BASE_URL}/api/v1/dex/aggregator/order/{order_id}",
+                             status="exception", ms=0, error=str(e))
+            raise

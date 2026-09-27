@@ -15,6 +15,7 @@ import httpx
 from sqlalchemy import select
 
 import rwa
+import devlog
 from database import SessionLocal
 from models import PriceSnapshot
 
@@ -56,19 +57,28 @@ def _last_known_mark(tkr: str) -> float | None:
 
 async def _yahoo_one(client: httpx.AsyncClient, tkr: str) -> tuple[str, float | None]:
     for host in YAHOO_HOSTS:
+        url = f"{host}/{tkr}"
         try:
-            resp = await client.get(f"{host}/{tkr}", params={"interval": "1d", "range": "5d"}, timeout=YAHOO_TIMEOUT)
+            with devlog.timed() as t:
+                resp = await client.get(url, params={"interval": "1d", "range": "5d"}, timeout=YAHOO_TIMEOUT)
             resp.raise_for_status()
             result = (resp.json().get("chart") or {}).get("result") or []
             if not result:
+                devlog.log_call(what=f"mark fetch {tkr}", url=url, status=resp.status_code, ms=t.ms,
+                                 expected="chart.result[0].meta.regularMarketPrice", actual="empty result array")
                 continue
             meta = result[0].get("meta") or {}
             px = meta.get("regularMarketPrice") or meta.get("chartPreviousClose") or meta.get("previousClose")
+            devlog.log_call(what=f"mark fetch {tkr}", url=url, status=resp.status_code, ms=t.ms,
+                             expected="regularMarketPrice present", actual=f"price={px}")
             if px:
                 return tkr, float(px)
         except httpx.TimeoutException:
+            devlog.log_call(what=f"mark fetch {tkr}", url=url, status="timeout", ms=YAHOO_TIMEOUT * 1000,
+                             error=f"timed out after {YAHOO_TIMEOUT}s")
             log.warning("board: yahoo %s timed out on %s", tkr, host)
-        except Exception:
+        except Exception as e:
+            devlog.log_call(what=f"mark fetch {tkr}", url=url, status="exception", ms=0, error=str(e))
             log.warning("board: yahoo %s failed on %s", tkr, host, exc_info=True)
     fallback = await asyncio.to_thread(_last_known_mark, tkr)
     return tkr, fallback
@@ -92,16 +102,25 @@ _tape_stale = False     # true when this refresh cycle hit a 429 and fell back t
 
 
 async def _one_gecko(client, addr: str):
-    resp = await client.get(f"{GECKO}/networks/bsc/tokens/{addr}")
+    url = f"{GECKO}/networks/bsc/tokens/{addr}"
+    with devlog.timed() as t:
+        resp = await client.get(url)
     if resp.status_code == 429:
         await asyncio.sleep(2)
-        resp = await client.get(f"{GECKO}/networks/bsc/tokens/{addr}")
+        with devlog.timed() as t2:
+            resp = await client.get(url)
         if resp.status_code == 429:
+            devlog.log_call(what=f"rwa/price tape {addr}", url=url, status=429, ms=t.ms + t2.ms,
+                             expected="200 with data.attributes.price_usd", actual="429 rate limited (both tries)")
             return "RATE_LIMITED"
     if resp.status_code != 200:
+        devlog.log_call(what=f"rwa/price tape {addr}", url=url, status=resp.status_code, ms=t.ms,
+                         expected="200 with data.attributes.price_usd", body=resp.text)
         return None
     attr = resp.json()["data"]["attributes"]
     px = attr.get("price_usd")
+    devlog.log_call(what=f"rwa/price tape {addr}", url=url, status=resp.status_code, ms=t.ms,
+                     expected="data.attributes.price_usd", actual=f"price_usd={px}")
     return {"price": float(px) if px else None, "image": attr.get("image_url")}
 
 

@@ -1,6 +1,9 @@
 import logging
 import time
 
+import devlog
+devlog.t0()
+
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(name)s: %(message)s", force=True)
 
 from fastapi import FastAPI

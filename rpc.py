@@ -11,7 +11,11 @@ import logging
 
 import httpx
 
+import devlog
+
 log = logging.getLogger("rpc")
+
+_SIM_METHODS = {"eth_call", "eth_estimateGas", "eth_sendRawTransaction"}
 
 PUBLIC_RPCS = (
     "https://bsc-dataseed.binance.org",
@@ -76,38 +80,55 @@ async def call(method: str, params):
         urls = list(endpoints())
         _parked.clear()
 
+    tag = f"tx sim ({method})" if method in _SIM_METHODS else f"rpc {method}"
     last = None
     for url in urls:
         _id += 1
         try:
-            resp = await _http().post(url, json={"jsonrpc": "2.0", "id": _id, "method": method, "params": params})
+            with devlog.timed() as t:
+                resp = await _http().post(url, json={"jsonrpc": "2.0", "id": _id, "method": method, "params": params})
             try:
                 body = resp.json()
             except Exception:
                 body = None
             if _rate_limited(resp.status_code, body):
+                devlog.log_call(what=tag, url=url, status=resp.status_code, ms=t.ms,
+                                 expected="200 with result", actual="rate limited, parking endpoint")
                 _park(url, f"http {resp.status_code}")
                 last = RuntimeError(f"rpc {resp.status_code} at {url}")
                 continue
             resp.raise_for_status()
             if not isinstance(body, dict):
+                devlog.log_call(what=tag, url=url, status=resp.status_code, ms=t.ms,
+                                 expected="JSON object with result", actual="non-dict body", body=str(body))
                 last = RuntimeError(f"bad json at {url}")
                 _park(url, "bad json")
                 continue
             if body.get("error"):
+                devlog.log_call(what=tag, url=url, status=resp.status_code, ms=t.ms,
+                                 expected="result, no error", actual="RPC-level error", body=str(body.get("error")))
                 last = RuntimeError(body["error"])
                 if _rate_limited(200, body):
                     _park(url, "rpc rate limit")
                     continue
                 raise last
+            devlog.log_call(what=tag, url=url, status=resp.status_code, ms=t.ms,
+                             expected="result", actual=f"result={_snip_result(body.get('result'))}")
             _live = url
             return body["result"]
         except httpx.HTTPError as e:
+            devlog.log_call(what=tag, url=url, status="exception", ms=0, error=str(e))
             last = e
             _park(url, type(e).__name__)
         except RuntimeError:
             raise
         except Exception as e:
+            devlog.log_call(what=tag, url=url, status="exception", ms=0, error=str(e))
             last = e
             _park(url, type(e).__name__)
     raise last or RuntimeError("all BSC RPCs failed")
+
+
+def _snip_result(r):
+    s = str(r)
+    return s if len(s) <= 120 else s[:120] + "…"
