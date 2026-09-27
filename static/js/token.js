@@ -561,7 +561,10 @@
     }
   }
 
-  const arbEls = { card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note') };
+  const arbEls = {
+    card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note'),
+    legs: $('tk-arb-legs'), sellBtn: $('tk-arb-sell'), buyBtn: $('tk-arb-buy'),
+  };
   async function loadArb() {
     if (!arbEls.card) return;
     try {
@@ -575,6 +578,13 @@
       arbEls.note.textContent = hit.viable
         ? `Gross ${Math.round(hit.grossBps)} bps, ~${Math.round(hit.costBps)} bps costs.`
         : `Gross ${Math.round(hit.grossBps)} bps doesn't clear ~${Math.round(hit.costBps)} bps in costs — not viable at $${hit.sizeUsd.toFixed(0)}.`;
+      if (arbEls.legs) {
+        arbEls.legs.hidden = false;
+        arbEls.sellBtn.textContent = `Sell ${hit.richSymbol}`;
+        arbEls.buyBtn.textContent = `Buy ${hit.cheapSymbol}`;
+        arbEls.sellBtn.onclick = () => openSwap('sell', hit.richSymbol);
+        arbEls.buyBtn.onclick = () => openSwap('buy', hit.cheapSymbol);
+      }
     } catch (err) {
       arbEls.card.hidden = true;
     }
@@ -647,9 +657,9 @@
     window.MarktapeSend.open({ symbol: SYMBOL, getCtx, onSent: refreshBalances });
   });
 
-  function openSwap(side) {
+  function openSwap(side, sym) {
     if (!state.address) { connect(); return; }
-    if (window.MarktapeSwap) window.MarktapeSwap.open({ side, symbol: SYMBOL, getCtx, onDone: refreshBalances });
+    if (window.MarktapeSwap) window.MarktapeSwap.open({ side, symbol: sym || SYMBOL, getCtx, onDone: refreshBalances });
   }
   els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));
