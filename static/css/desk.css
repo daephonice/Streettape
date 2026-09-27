@@ -668,6 +668,14 @@ html.hld-lock, html.hld-lock body { overflow: hidden; }
 
 .tk-sec { padding: 0 14px; }
 .tk-pos { margin-top: 18px; }
+.tk-arb { margin-top: 18px; }
+.tk-arb-head { display: flex; align-items: center; justify-content: space-between; }
+.tk-arb-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.tk-arb-net { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 15px; }
+.tk-arb-net.pos { color: var(--pos, #4ade80); }
+.tk-arb-net.neg { color: var(--neg, #fb7185); }
+.tk-arb-line { margin: 8px 0 2px; font-size: 13px; }
+.tk-arb-note { margin: 0; font-size: 12px; color: var(--hm-muted); }
 .tk-pos-head { display: flex; align-items: center; gap: 7px; }
 .tk-pos-head h2 { flex: 1; margin: 0; font-size: 18px; font-weight: 600; }
 .tk-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--hm-text); }
