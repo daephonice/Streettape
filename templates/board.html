@@ -100,7 +100,11 @@
         <svg class="mkt-sparkline" data-symbol="{{ t.symbol }}" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
       </div>
 
+      {% if t.hasTape %}
       <a href="/t/{{ t.symbol }}#swap" class="mkt-trade-btn">Trade</a>
+      {% else %}
+      <span class="mkt-trade-btn mkt-trade-btn-disabled" aria-disabled="true">— no tape</span>
+      {% endif %}
     </div>
     {% endfor %}
   </div>
