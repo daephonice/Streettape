@@ -31,6 +31,7 @@
   const els = {
     price: $('tk-price'), chg: $('tk-chg'), chgAbs: $('tk-chg-abs'), chgPct: $('tk-chg-pct'),
     stats: $('tk-stats'), mc: $('tk-mc'), mark: $('tk-mark'), prem: $('tk-prem'),
+    fairRow: $('tk-fair-row'), fair: $('tk-fair'), premFairRow: $('tk-prem-fair-row'), premFair: $('tk-prem-fair'),
     plot: $('tk-plot'), axis: $('tk-axis'), noHist: $('tk-nohist'), ranges: $('tk-ranges'),
     pos: $('tk-pos'), posVal: $('tk-pos-val'), posAmt: $('tk-pos-amt'), posDelta: $('tk-pos-delta'), posPct: $('tk-pos-pct'), posPnl: $('tk-pos-pnl'),
     bar: $('tk-bar'), send: $('tk-send'), sell: $('tk-sell'), buy: $('tk-buy'), lend: $('tk-lend'),
@@ -139,6 +140,22 @@
           } else {
             els.prem.textContent = (pctv > 0 ? '+' : '') + pctv + '%';
             els.prem.className = pctv > 0 ? 'pos' : pctv < 0 ? 'neg' : 'flat';
+          }
+        }
+        // Synthetic mark only adds information when cash is shut (equals
+        // official mark while the cash session is open).
+        const showFair = !p.noYahoo && p.fairPrice && state.session && !state.session.cashOpen;
+        if (els.fairRow) els.fairRow.hidden = !showFair;
+        if (els.premFairRow) els.premFairRow.hidden = !showFair;
+        if (showFair) {
+          els.fair.textContent = fmtPrice(p.fairPrice);
+          if (p.premiumToFair === null || p.premiumToFair === undefined || !isFinite(p.premiumToFair)) {
+            els.premFair.textContent = '—';
+            els.premFair.className = '';
+          } else {
+            const fpct = Number((p.premiumToFair * 100).toFixed(1));
+            els.premFair.textContent = (fpct > 0 ? '+' : '') + fpct + '%';
+            els.premFair.className = fpct > 0 ? 'pos' : fpct < 0 ? 'neg' : 'flat';
           }
         }
       }
