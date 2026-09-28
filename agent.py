@@ -234,6 +234,19 @@ def _arb_line(label: str, symbol: str, leg: dict, size_usd: float) -> str:
     return f"{label} {symbol} · ${size_usd:.0f} · PancakeSwap: {leg.get('deepLink') or 'n/a'}"
 
 
+def official_vs_fair_line(underlying: str) -> str:
+    """Official/fair price line for an underlying; fair shown only while cash is shut."""
+    snap = rwa.get_cached_snapshot()
+    g = next((g for g in snap.get("groups") or [] if g["underlying"].upper() == underlying.upper()), None)
+    if not g or g.get("noYahoo") or not g.get("markPrice"):
+        return ""
+    session = snap.get("session") or rwa.session_now()
+    out = f"Official ${g['markPrice']:.2f}"
+    if g.get("fairPrice") and not session.get("cashOpen"):
+        out += f" · Fair ${g['fairPrice']:.2f} ({session.get('label')})"
+    return out + "\n"
+
+
 async def arb_text(underlying: str | None = None) -> str | None:
     """Telegram /agent body: best cross-wrapper gap across the whole board
     (or just `underlying` if given), net of estimated costs. None if nothing
@@ -251,6 +264,7 @@ async def arb_text(underlying: str | None = None) -> str | None:
     )
     return (
         f"{priced['underlying']} cross-wrapper arb · {rwa.format_premium(priced['gap'])} rich · {viability}\n"
+        f"{official_vs_fair_line(priced['underlying'])}"
         f"{_arb_line('SELL', priced['richSymbol'], priced['sellLeg'], priced['sizeUsd'])}\n"
         f"{_arb_line('BUY', priced['cheapSymbol'], priced['buyLeg'], priced['sizeUsd'])}\n"
         f"{telegram_bot.WEB_PUBLIC_URL}/t/{priced['underlying']}"
@@ -271,11 +285,12 @@ def _flatten_chat_ids() -> list[int]:
     return list(ids)
 
 
-def flatten_candidates() -> list[dict]:
+def flatten_candidates(underlying: str | None = None) -> list[dict]:
     snap = rwa.get_cached_snapshot()
     return [
         t for t in (snap.get("tokens") or [])
         if t.get("premium") is not None and t["premium"] > FLATTEN_THRESHOLD
+        and (not underlying or (t.get("underlying") or "").upper() == underlying.upper())
     ]
 
 
@@ -292,12 +307,12 @@ async def _flatten_line(t: dict) -> str:
     return f"SELL {t['symbol']} · {rwa.format_premium(t['premium'])} rich · ${50:.0f} · {detail}"
 
 
-async def flatten_text() -> str | None:
+async def flatten_text(underlying: str | None = None) -> str | None:
     """Sunday 18:00-18:59 UTC body: every wrapper >2% rich, sell quotes. None if
     nothing clears the bar right now (used by both the weekly loop and any
     manual check)."""
     import telegram_bot
-    hits = flatten_candidates()
+    hits = flatten_candidates(underlying)
     if not hits:
         return None
     hits.sort(key=lambda t: t["premium"], reverse=True)
@@ -308,6 +323,19 @@ async def flatten_text() -> str | None:
         + f"\n{telegram_bot.WEB_PUBLIC_URL}/board\n"
         + "Not auto-executed — confirm and sign in your own wallet."
     )
+
+
+async def agent_text(underlying: str | None = None) -> str | None:
+    """Telegram /agent body: live cross-wrapper arb, then the flatten list
+    (wrappers >2% rich; scoped to `underlying` if given). None if both are quiet."""
+    parts = []
+    arb = await arb_text(underlying)
+    if arb:
+        parts.append(arb)
+    flat = await flatten_text(underlying)
+    if flat:
+        parts.append(flat)
+    return "\n\n".join(parts) or None
 
 
 async def fire_flatten() -> int:

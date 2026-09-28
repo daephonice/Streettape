@@ -10,6 +10,7 @@ Commands (spec §2.2):
   /watch NAME       Persist chat_id+underlying (max 5 per chat). NVDA/NVIDIA/NVDAx/NVDAB all resolve to NVDA.
   /unwatch NAME     Remove
   /watches          List this chat's watches
+  /agent [NAME]     Live cross-wrapper arb (net of costs) + flatten list (>2% rich)
 
 Watches currently just mean "included in the hourly digest" (not sent yet).
 No premium-threshold alert loop.
@@ -52,12 +53,24 @@ def _row_for(symbol: str) -> dict | None:
     return next((t for t in snap.get("tokens", []) if t["symbol"].upper() == symbol_u), None)
 
 
+def _fair_line(row: dict) -> str:
+    """Official vs fair line; fair shown only while cash is shut."""
+    if row.get("noYahoo") or not row.get("markPrice"):
+        return ""
+    session = rwa.get_cached_snapshot().get("session") or rwa.session_now()
+    out = f"Official ${row['markPrice']:.2f}"
+    if row.get("fairPrice") and not session.get("cashOpen"):
+        out += f" · Fair ${row['fairPrice']:.2f} ({rwa.format_premium(row.get('premiumToFair'))})"
+    return out + "\n"
+
+
 def _card_text(row: dict) -> str:
     pct = rwa.format_premium(row["premium"])
     return (
         f"<b>{row['symbol']}</b> — {row.get('name', '')}\n"
         f"{pct} vs mark\n"
         f"Tape ${row['tokenPrice']:.2f} · Mark ${row['markPrice']:.2f}\n"
+        f"{_fair_line(row)}"
         f"{WEB_PUBLIC_URL}/t/{row['symbol']}"
     )
 
@@ -249,6 +262,9 @@ def _token_menu_text(symbol: str, chat_id: int | None = None) -> str | None:
         f"<b>{prefix}{row['symbol']}</b> — {row.get('name', '')}",
         f"Tape ${row['tokenPrice']:.2f} · Mark ${row['markPrice']:.2f} · {pct}",
     ]
+    fair = _fair_line(row).strip()
+    if fair:
+        lines.append(fair)
     if asset.get("description"):
         lines.append(f"\n{asset['description']}")
 
@@ -486,12 +502,21 @@ async def on_session(message: Message):
 
 
 @router.message(Command("agent"))
-async def on_agent(message: Message):
+async def on_agent(message: Message, command: CommandObject):
     import agent
-    parts = (message.text or "").split(maxsplit=1)
-    underlying = parts[1].strip().upper() if len(parts) > 1 else None
-    text = await agent.arb_text(underlying)
-    fallback = f"No arb right now — {underlying} wrappers are within 1% of each other." if underlying else "No arb right now — every underlying's wrappers are within 1% of each other."
+    arg = (command.args or "").strip()
+    underlying = None
+    if arg:
+        underlying = rwa.resolve_underlying(arg)
+        if not underlying:
+            await message.answer(f"Unknown symbol: {arg}")
+            return
+    text = await agent.agent_text(underlying)
+    fallback = (
+        f"Nothing to act on — {underlying} wrappers are within 1% of each other and none is >2% rich."
+        if underlying else
+        "Nothing to act on — wrappers are within 1% of each other and none is >2% rich."
+    )
     await message.answer(text or fallback, disable_web_page_preview=True)
 
 
