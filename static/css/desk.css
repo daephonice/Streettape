@@ -242,6 +242,10 @@ a.hm-action-btn { cursor: pointer; }
 .hm-row-side { text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 .hm-side-top { font-size: 16px; font-weight: 500; }
 .hm-side-bot { margin-top: 2px; font-size: 13px; color: var(--hm-muted); }
+.hm-hold-prem { margin-top: 2px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.hm-hold-prem.pos { color: var(--pos, #4ade80); }
+.hm-hold-prem.neg { color: var(--neg, #fb7185); }
+.hm-hold-prem.flat { color: var(--hm-muted); }
 
 /* News */
 .hm-news { margin-top: 32px; }
