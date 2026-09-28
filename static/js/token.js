@@ -515,32 +515,27 @@
       if (els.urlText) els.urlText.textContent = tradeW.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
     }
 
-    // Lend: Venus Core Pool (collateral only, chainId 56) for the three listed bStocks;
-    // demo vault for other bStocks; "not collateral" note for xStocks/Ondo.
+    // Lend: Venus Core Pool (collateral only, chainId 56) for the three
+    // listed bStocks. Nothing else is listed as Venus collateral — no mock
+    // vault stands in for it.
     const VENUS_BSTOCKS = new Set(['NVDAB', 'TSLAB', 'SPCXB']);
     const VENUS_URL = 'https://app.venus.io/core-pool/markets?chainId=56';
     if (els.lend) {
       const label = $('tk-lend-label');
-      els.lend.classList.remove('not-collateral');
-      els.lend.removeAttribute('target');
-      els.lend.removeAttribute('rel');
-      if (tradeW.platform === 'bstocks' && VENUS_BSTOCKS.has(tradeW.symbol)) {
-        els.lend.hidden = false;
+      els.lend.hidden = false;
+      if (VENUS_BSTOCKS.has(tradeW.symbol)) {
+        els.lend.classList.remove('not-collateral');
         els.lend.href = VENUS_URL;
         els.lend.target = '_blank';
         els.lend.rel = 'noopener noreferrer';
         if (label) label.textContent = 'Lend on Venus';
         els.bar.classList.add('can-lend');
-      } else if (tradeW.platform === 'bstocks') {
-        els.lend.hidden = false;
-        els.lend.href = `/lend/${encodeURIComponent(tradeW.symbol)}`;
-        if (label) label.textContent = 'Lend (demo)';
-        els.bar.classList.add('can-lend');
       } else {
-        els.lend.hidden = false;
-        els.lend.href = '#';
         els.lend.classList.add('not-collateral');
-        if (label) label.textContent = 'Not Venus collateral';
+        els.lend.href = '#';
+        els.lend.removeAttribute('target');
+        els.lend.removeAttribute('rel');
+        if (label) label.textContent = 'Not listed as Venus collateral';
         els.bar.classList.remove('can-lend');
       }
     }

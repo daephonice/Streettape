@@ -3,7 +3,7 @@
  *   /api/board            grouped tape board (mark + per-wrapper premiums)
  *   /api/balances/{addr}  wallet holdings
  *   /api/news             news feed
- * Send is wallet-gated. Swap → /swap. Lend → /lend.
+ * Send is wallet-gated. Swap → /swap. Lend → Venus (external, real markets only).
  */
 (function () {
   const PRICE_MS = 1000;
