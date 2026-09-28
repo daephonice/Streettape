@@ -74,11 +74,6 @@ async def get_balances(address: str) -> dict:
                     holdings[sym] = amt
         except Exception:
             log.info("balances: %s failed", sym, exc_info=True)
-    try:
-        import lend as lend_mod
-        lend_mod.overlay_holdings(address, holdings)
-    except Exception:
-        log.warning("balances: lend overlay failed", exc_info=True)
 
     price_data = (prices.get_prices() or {}).get("prices") or {}
     holding_marks = {}

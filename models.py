@@ -46,27 +46,6 @@ class Watch(Base):
     )
 
 
-class LendPosition(Base):
-    """Mock isolated-vault position: one wallet × one tokenized stock × one debt token."""
-    __tablename__ = "lend_positions"
-
-    id = Column(Integer, primary_key=True)
-    wallet = Column(String, nullable=False, index=True)
-    collateral_symbol = Column(String, nullable=False)
-    debt_symbol = Column(String, nullable=False)
-    col_amount = Column(Float, nullable=False, default=0)
-    debt_amount = Column(Float, nullable=False, default=0)
-    debt_index = Column(Float, nullable=False, default=1)
-    status = Column(String, nullable=False, default="open")
-    opened_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-    last_accrued_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
-
-    __table_args__ = (
-        Index("ix_lend_wallet_vault", "wallet", "collateral_symbol", "debt_symbol", unique=True),
-    )
-
-
 class NewsItem(Base):
     """Homepage news feed entry for one tokenized-stock symbol. Price / change / MC
     shown next to it are live, read from the price cache — not stored here."""
