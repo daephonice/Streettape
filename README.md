@@ -10,3 +10,9 @@ pip install -r requirements.txt
 cp .env.example .env
 uvicorn main:app --reload
 ```
+
+## Agentic Wallet skill
+
+`skills/` — skill + CLI that call `/api/board`, `/api/agent/scan`, `/api/swap/order`.
+Install: `npx skills add <owner>/Streettape --skill streettape-desk` (or copy the folder into your agent's skills dir).
+Set `STREETTAPE_URL` to point at another deployment.
