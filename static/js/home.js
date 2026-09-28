@@ -186,7 +186,10 @@
       const open = p.change24h === null || p.change24h === undefined ? p.price : p.price / (1 + p.change24h / 100);
       total += value;
       prev += amount * open;
-      rows.push({ symbol: sym, amount, price: p.price, change: p.change24h, value });
+      rows.push({
+        symbol: sym, amount, price: p.price, change: p.change24h, value,
+        premiumToOfficial: p.premiumToOfficial, premiumToFair: p.premiumToFair,
+      });
     });
     rows.sort((a, b) => b.value - a.value);
     return { rows, total, delta: total - prev, deltaPct: prev > 0 ? (total / prev - 1) * 100 : 0 };
@@ -351,6 +354,9 @@
     const sub = row.querySelector('.hm-sub');
     sub.appendChild(h('span', 'hm-sub-price'));
     sub.appendChild(h('span', 'hm-pill'));
+    const prem = h('div', 'hm-hold-prem');
+    prem.hidden = true;
+    row.querySelector('.hm-row-side').appendChild(prem);
     return row;
   }
 
@@ -361,6 +367,18 @@
     setPct(pill, item.change);
     node.querySelector('.hm-side-top').textContent = fmtUsd(item.value);
     node.querySelector('.hm-side-bot').textContent = fmtAmount(item.amount);
+    const prem = node.querySelector('.hm-hold-prem');
+    if (prem) {
+      const p = item.premiumToOfficial;
+      if (p === null || p === undefined || !isFinite(p)) {
+        prem.hidden = true;
+      } else {
+        prem.hidden = false;
+        const pct = Number((p * 100).toFixed(1));
+        prem.textContent = `${pct > 0 ? '+' : ''}${pct}% vs official`;
+        prem.className = 'hm-hold-prem ' + (pct > 0 ? 'pos' : pct < 0 ? 'neg' : 'flat');
+      }
+    }
   }
 
   function renderStocks() {
