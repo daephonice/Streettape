@@ -15,3 +15,14 @@ with a connected taker address once network access is available; the
 `devlog.log_call(what="tx sim", ...)` entry it produces (success or error)
 will append below with the exact response/error body — do not hand-write
 one in its place.
+
+## Pending: first Address Portfolio lookup
+`portfolio.get_token_holdings()` (used by `balances.py` ahead of the public
+RPC `balanceOf` loop) calls `GET /api/v1/portfolio/tokens` on
+`https://web3.binance.com/wallet` via `swap._request`, so its result is
+logged automatically as `Binance Web3 GET /api/v1/portfolio/tokens`. Path
+and response shape (`tokens`/`list`, `contractAddress`/`tokenAddress`,
+`balance`/`amount`, `decimals`) are our best-guess reading of the same
+Wallet/Address Portfolio product line — unverified against a live call.
+Connect a real wallet with holdings once network access is available; the
+first real entry replaces this placeholder.
