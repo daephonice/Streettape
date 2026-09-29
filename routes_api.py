@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -140,6 +140,20 @@ async def api_agent_scan(threshold: float | None = None, underlying: str | None 
     hits = agent.check_cross_arb(underlying)[:5]  # quoting is a network round-trip per hit
     report["arbs"] = [await agent.net_arb_quote(h) for h in hits]
     return report
+
+
+@router.get("/agent/studio/tick")
+async def api_agent_studio_tick(size_usd: float = 50.0, threshold: float | None = None,
+                                x_studio_token: str | None = Header(default=None)):
+    """Scheduled-job entrypoint for BNB Agent Studio (call every 60s)."""
+    if agent.STUDIO_TOKEN and x_studio_token != agent.STUDIO_TOKEN:
+        raise HTTPException(status_code=401, detail="bad token")
+    return await agent.studio_tick(size_usd, threshold)
+
+
+@router.get("/agent/identity")
+async def api_agent_identity():
+    return agent.identity_card()
 
 
 @router.get("/agent/arb/{underlying}")

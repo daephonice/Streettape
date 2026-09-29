@@ -41,6 +41,11 @@ app.include_router(routes_pages.router)
 app.include_router(routes_api.router)
 
 
+@app.get("/agent-registration.json", include_in_schema=False)
+async def agent_registration():
+    return agent.identity_card()
+
+
 @app.on_event("startup")
 async def _start_background_tasks():
     board.start_board_refresh_task()

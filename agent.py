@@ -367,6 +367,90 @@ async def fire_flatten() -> int:
     return sent
 
 
+# ---- BNB Agent Studio / ERC-8004 -------------------------------------------
+# Same scan logic as the internal loop, exposed as a stateless tick a
+# scheduler (Agent Studio job, 60s) can call. Proposal-only: never signs.
+STUDIO_TOKEN = os.getenv("AGENT_STUDIO_TOKEN", "")
+ERC8004_REGISTRY = os.getenv("ERC8004_IDENTITY_REGISTRY", "")
+ERC8004_AGENT_ID = os.getenv("ERC8004_AGENT_ID", "")
+ERC8004_CHAIN_ID = os.getenv("ERC8004_CHAIN_ID", "56")
+_studio_seen: dict[str, datetime] = {}
+
+
+def _public_url() -> str:
+    u = os.getenv("WEB_PUBLIC_URL", "").strip().rstrip("/")
+    return u if u.startswith("http") else (f"https://{u}" if u else "")
+
+
+def identity_card() -> dict:
+    """ERC-8004 registration file. Host it at /agent-registration.json and pass
+    that URL to the Identity Registry's register(agentURI)."""
+    base = _public_url()
+    card = {
+        "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+        "name": "StreetTape Desk",
+        "description": "Proposal-only tokenized-stock desk on BNB Chain: flags wrappers rich vs the last cash print, "
+                       "finds cross-wrapper rotations net of costs, quotes flatten sells. Never signs or auto-executes.",
+        "image": f"{base}/static/img/bnb.svg" if base else "",
+        "services": [
+            {"name": "web", "endpoint": f"{base}/board"},
+            {"name": "scan", "endpoint": f"{base}/api/agent/studio/tick"},
+            {"name": "skill", "endpoint": f"{base}/api/agent/scan"},
+        ],
+        "x402Support": False,
+        "active": True,
+        "supportedTrust": ["reputation"],
+    }
+    if ERC8004_REGISTRY and ERC8004_AGENT_ID:
+        card["registrations"] = [{
+            "agentId": int(ERC8004_AGENT_ID),
+            "agentRegistry": f"eip155:{ERC8004_CHAIN_ID}:{ERC8004_REGISTRY}",
+        }]
+    return card
+
+
+async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = None) -> dict:
+    """One scheduled scan: cross-wrapper arbs (net of cost), >2% flatten
+    candidates, and cash-shut premium alerts. `new` marks symbols not proposed
+    in the last COOLDOWN, so the scheduler can notify only on fresh ones."""
+    now = datetime.now(timezone.utc)
+    gaps = scan_gaps(threshold)
+    session = gaps["session"]
+    arbs = []
+    for h in check_cross_arb(size_usd=size_usd)[:5]:
+        q = await net_arb_quote(h, size_usd)
+        key = f"arb:{q['underlying']}"
+        seen = _studio_seen.get(key)
+        q["new"] = bool(q["viable"]) and (seen is None or now - seen >= COOLDOWN)
+        if q["new"]:
+            _studio_seen[key] = now
+        arbs.append(q)
+    alerts = []
+    if not session.get("cashOpen"):
+        for h in gaps["hits"]:
+            key = f"alert:{h['symbol'].upper()}"
+            seen = _studio_seen.get(key)
+            fresh = seen is None or now - seen >= COOLDOWN
+            if fresh:
+                _studio_seen[key] = now
+            alerts.append({**h, "new": fresh})
+    flatten = [
+        {"symbol": t["symbol"], "premium": t["premium"], "tokenPrice": t.get("tokenPrice"), "mint": t.get("mint"),
+         "sizeUsd": size_usd, "deepLink": t.get("url")}
+        for t in sorted(flatten_candidates(), key=lambda t: t["premium"], reverse=True)
+    ]
+    return {
+        "agent": "streettape-desk",
+        "mode": "proposal-only",
+        "at": now.isoformat(),
+        "session": session,
+        "arbs": arbs,
+        "alerts": alerts,
+        "flatten": flatten,
+        "note": "Not auto-executed - confirm and sign in your own wallet.",
+    }
+
+
 async def _loop():
     await asyncio.sleep(15)
     while True:
