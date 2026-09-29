@@ -71,7 +71,7 @@ async def _get(client: httpx.AsyncClient, path: str, params: dict | None = None)
     with devlog.timed() as t:
         resp = await client.send(req)
     if resp.status_code in (401, 403):
-        devlog.log_call(what=f"rwa/price official {path}", url=full_url, status=resp.status_code, ms=t.ms,
+        devlog.log_call(what=f"rwa official {path}", url=full_url, status=resp.status_code, ms=t.ms,
                          expected="200 with data payload", actual="auth rejected — parking RWA Data",
                          body=resp.text)
         _park(f"http {resp.status_code}")
@@ -79,12 +79,12 @@ async def _get(client: httpx.AsyncClient, path: str, params: dict | None = None)
     try:
         data = resp.json()
     except Exception:
-        devlog.log_call(what=f"rwa/price official {path}", url=full_url, status=resp.status_code, ms=t.ms,
+        devlog.log_call(what=f"rwa official {path}", url=full_url, status=resp.status_code, ms=t.ms,
                          expected="JSON body", actual="non-JSON response", body=resp.text)
         raise RuntimeError(f"RWA Data non-JSON response at {path}")
     ok = resp.status_code == 200 and data.get("code") in (0, None) and data.get("success", True)
     devlog.log_call(
-        what=f"rwa/price official {path}", url=full_url, status=resp.status_code, ms=t.ms,
+        what=f"rwa official {path}", url=full_url, status=resp.status_code, ms=t.ms,
         expected="code 0 / success true with data payload",
         actual="ok" if ok else f"code={data.get('code')} msg={data.get('msg')}",
         body=None if ok else str(data)[:300],
@@ -181,3 +181,37 @@ async def get_dynamic_universe() -> list[dict] | None:
         return None
     out = [r for r in (_row_from_listing(item) for item in rows) if r]
     return out or None
+
+
+_devcheck_last = 0.0
+DEVCHECK_MIN_INTERVAL = 60.0
+
+
+async def devcheck(underlying: str = "NVDA") -> dict:
+    """Fire the RWA Data endpoints not used by the board (platforms, search,
+    underlying_profile, underlying_market) once so devlog records them.
+    Rate-limited; returns per-endpoint ok/error summary."""
+    global _devcheck_last
+    if not configured():
+        return {"ok": False, "error": "BINANCE_WEB3_API_KEY/SECRET_KEY unset"}
+    if time.time() < _parked_until:
+        return {"ok": False, "error": "parked after auth failure"}
+    now = time.time()
+    if now - _devcheck_last < DEVCHECK_MIN_INTERVAL:
+        return {"ok": False, "error": "rate-limited"}
+    _devcheck_last = now
+    calls = {
+        "platforms": lambda c: platforms(c),
+        "search": lambda c: search(c, underlying),
+        "underlying_profile": lambda c: underlying_profile(c, underlying),
+        "underlying_market": lambda c: underlying_market(c, underlying),
+    }
+    out = {}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+        for name, fn in calls.items():
+            try:
+                data = await fn(client)
+                out[name] = {"ok": True, "items": len(data) if isinstance(data, (list, dict)) else None}
+            except Exception as e:
+                out[name] = {"ok": False, "error": str(e)[:200]}
+    return {"ok": all(v["ok"] for v in out.values()), "results": out}

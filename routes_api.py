@@ -12,6 +12,7 @@ import news
 import swap as swap_mod
 import agent
 import market_stats
+import rwa_api
 
 log = logging.getLogger("routes_api")
 router = APIRouter(prefix="/api")
@@ -21,6 +22,11 @@ router = APIRouter(prefix="/api")
 async def health():
     snap = rwa.get_cached_snapshot()
     return {"ok": True, "fetchedAt": snap.get("fetchedAt"), "session": snap.get("session")}
+
+
+@router.get("/_devcheck")
+async def api_devcheck():
+    return await rwa_api.devcheck()
 
 
 @router.get("/board")

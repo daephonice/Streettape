@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import time
 
 import devlog
@@ -19,6 +20,7 @@ import prices
 import news
 import telegram_bot
 import agent
+import rwa_api
 
 
 def init_db(retries: int = 8, delay: int = 2):
@@ -46,3 +48,4 @@ async def _start_background_tasks():
     news.start_news_task()
     telegram_bot.start_telegram_bot_task()
     agent.start_agent_task()
+    asyncio.create_task(rwa_api.devcheck())
