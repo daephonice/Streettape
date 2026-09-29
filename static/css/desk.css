@@ -367,6 +367,7 @@ a.hm-action-btn { cursor: pointer; }
 .bd-w-sym { font-size: 13px; font-weight: 700; }
 .bd-r { display: flex; align-items: baseline; justify-content: space-between; font-size: 12px; color: var(--hm-muted); }
 .bd-r b { font-size: 13px; font-weight: 600; color: var(--hm-text); font-variant-numeric: tabular-nums; }
+.bd-fair-in { margin: 8px 0 0; font-size: 11px; color: var(--hm-muted); font-variant-numeric: tabular-nums; }
 .bd-r-fair b { color: var(--hm-star, #eaaa08); }
 .bd-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
 .bd-bl { font-size: 10px; color: var(--hm-dim); }
