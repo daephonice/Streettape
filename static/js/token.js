@@ -550,7 +550,7 @@
     try {
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
-      if (IS_GROUP) loadArb();
+      if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); }
     } catch (err) {
       setTimeout(loadGroup, 3000);
     }
@@ -559,7 +559,10 @@
   const arbEls = {
     card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note'),
     legs: $('tk-arb-legs'), sellBtn: $('tk-arb-sell'), buyBtn: $('tk-arb-buy'),
+    rotateBtn: $('tk-rotate-btn'), flattenBtn: $('tk-flatten-btn'),
   };
+  const QUICK_SIZE_USD = 10;
+
   async function loadArb() {
     if (!arbEls.card) return;
     try {
@@ -582,6 +585,59 @@
       }
     } catch (err) {
       arbEls.card.hidden = true;
+    }
+  }
+
+  // "Rotate $10": quotes the cross-wrapper arb at a small fixed size and, if
+  // viable, opens the sell/buy legs the same way the leg buttons above do.
+  async function rotateQuick() {
+    if (!arbEls.rotateBtn) return;
+    arbEls.rotateBtn.disabled = true;
+    try {
+      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${QUICK_SIZE_USD}`);
+      const hit = data.hit;
+      if (!hit) { arbEls.rotateBtn.textContent = 'No rotate available'; return; }
+      if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${QUICK_SIZE_USD} · not viable`; return; }
+      openSwap('sell', hit.richSymbol);
+      openSwap('buy', hit.cheapSymbol);
+    } catch (err) {
+      arbEls.rotateBtn.textContent = 'Rotate failed';
+    } finally {
+      arbEls.rotateBtn.disabled = false;
+    }
+  }
+
+  // "Flatten $10": sells the richest wrapper for this underlying if it's
+  // >2% rich (agent.flatten_candidates' bar), same fixed-size pattern.
+  async function flattenQuick() {
+    if (!arbEls.flattenBtn) return;
+    arbEls.flattenBtn.disabled = true;
+    try {
+      const data = await getJSON(`/api/agent/flatten/${encodeURIComponent(UNDERLYING)}?size_usd=${QUICK_SIZE_USD}`);
+      const hit = data.hit;
+      if (!hit) { arbEls.flattenBtn.hidden = true; return; }
+      arbEls.flattenBtn.hidden = false;
+      openSwap('sell', hit.symbol);
+    } catch (err) {
+      arbEls.flattenBtn.textContent = 'Flatten failed';
+    } finally {
+      arbEls.flattenBtn.disabled = false;
+    }
+  }
+
+  if (arbEls.rotateBtn) arbEls.rotateBtn.addEventListener('click', rotateQuick);
+  if (arbEls.flattenBtn) arbEls.flattenBtn.addEventListener('click', flattenQuick);
+
+  // Flatten button visibility follows whether this underlying currently has
+  // a >2% rich wrapper — checked once per group load, same cadence as arb.
+  async function refreshFlattenVisibility() {
+    if (!arbEls.flattenBtn) return;
+    try {
+      const data = await getJSON(`/api/agent/flatten/${encodeURIComponent(UNDERLYING)}?size_usd=${QUICK_SIZE_USD}`);
+      arbEls.flattenBtn.hidden = !data.hit;
+      if (data.hit) arbEls.flattenBtn.textContent = `Flatten $${QUICK_SIZE_USD} (${data.hit.symbol})`;
+    } catch (err) {
+      arbEls.flattenBtn.hidden = true;
     }
   }
 
@@ -750,5 +806,8 @@
   setInterval(tickBalances, BALANCE_MS);
   setInterval(loadChart, CHART_MS);
   setInterval(loadNews, 60000);
-  if (IS_GROUP) setInterval(loadArb, 30000);
+  if (IS_GROUP) {
+    setInterval(loadArb, 30000);
+    setInterval(refreshFlattenVisibility, 30000);
+  }
 })();
