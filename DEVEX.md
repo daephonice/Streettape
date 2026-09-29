@@ -168,7 +168,360 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 
 ### 2026-09-29 — desk front door (`/`, hero rotate line, Lend removed)
 
-- Session: <fill: WEEKEND | AFTER-HOURS | PRE-MARKET | CASH OPEN>
-- What we hit: <fill: first `GET /api/agent/scan` (quotes both legs per hit), first `GET /api/agent/arb/{underlying}?size_usd=50`, first swap quote after Rotate>
-- What came back: <fill: from /api/_devex — first occurrence of each outcome: good quote, RFQ-needs-wallet 40001, 429, 404>
-- What we changed because of it: <fill>
+- Session: PRE-MARKET (chip; 09:26 ET / 14:26 WAT). Wallet pass ran again at CASH OPEN (~09:39 ET).
+- What we hit: `GET /api/agent/scan`; `GET /api/agent/arb/NVDA?size_usd=50`; `/t/TSLA#rotate` in a wallet dApp browser (Sell TSLAon, Buy TSLAB, Rotate $50, Flatten $10).
+- What came back (log, first of each): good quote, LiquidMesh, ~100 ms (NVDAB/TSLAB legs). RFQ without wallet, HTTP 200 `code=40001 userWalletAddress is required for RFQ (Ondo) quote` at 13:23:13 UTC, then fallback to Pancake link. 429 `code=42900 Rate limit exceeded` on NVDAon and SPCX legs in the same scan. `rwa/price` with `tokenAddress`, `tokenContractAddress` and `binanceChainId=56` still returned 200 + `code=40001 Parameter tokenContractAddresses is required` (plural) on all 3 calls, so the price-confirmation item stays open. No 404s. Scan best: TSLAon rich vs TSLAB, gross 1881 bps, net 1876 bps; page showed +1933 bps a minute later.
+- What we changed because of it: Sell TSLAon and Flatten did nothing. Server keys prices/assets by uppercase symbol (`TSLAON`); the page looked up `TSLAon`, missed, and the swap sheet returned silently. TSLAB is already uppercase, so Buy worked. Page now resolves the uppercase key, opens a Pancake link if the sheet can't open, and Rotate opens Sell first, Buy on close. Next: send `tokenContractAddresses` to `rwa/price`.
+
+## 2026-09-29T13:18:04+00:00 — rwa official /api/v1/dex/market/rwa/platforms
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/platforms`
+- Status: `200`  Latency: `172ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+- Time-to-first-call from process start: `5.8s`
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/tokens
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/tokens`
+- Status: `200`  Latency: `327ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0xc845b2894dBddd03858fd2D643B4eF725fE0849d&tokenContractAddress=0xc845b2894dBddd03858fd2D643B4eF725fE0849d&binanceChainId=56`
+- Status: `200`  Latency: `95ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=Parameter tokenContractAddresses is required
+- Body: `{'code': 40001, 'msg': 'Parameter tokenContractAddresses is required', 'data': None, 'timestamp': 1790687885098, 'success': False}`
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0xc845b2894dBddd03858fd2D643B4eF725fE0849d&binanceChainId=56`
+- Status: `200`  Latency: `101ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/search
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/search?keyword=NVDA`
+- Status: `200`  Latency: `270ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/underlying-profile
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-profile?tokenContractAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&binanceChainId=56`
+- Status: `429`  Latency: `82ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'timestamp': 1790687885229, 'code': 42900, 'data': ''}`
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&binanceChainId=56`
+- Status: `429`  Latency: `79ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'timestamp': 1790687885309, 'msg': 'Rate limit exceeded', 'data': '', 'code': 42900}`
+
+
+## 2026-09-29T13:18:05+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75&tokenContractAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75&binanceChainId=56`
+- Status: `429`  Latency: `84ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'code': 42900, 'timestamp': 1790687885482, 'msg': 'Rate limit exceeded', 'data': ''}`
+
+
+## 2026-09-29T13:18:06+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75&tokenContractAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75&binanceChainId=56`
+- Status: `200`  Latency: `89ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=Parameter tokenContractAddresses is required
+- Body: `{'code': 40001, 'msg': 'Parameter tokenContractAddresses is required', 'data': None, 'timestamp': 1790687886572, 'success': False}`
+
+
+## 2026-09-29T13:18:06+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&tokenContractAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&binanceChainId=56`
+- Status: `200`  Latency: `85ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=Parameter tokenContractAddresses is required
+- Body: `{'code': 40001, 'msg': 'Parameter tokenContractAddresses is required', 'data': None, 'timestamp': 1790687886958, 'success': False}`
+
+
+## 2026-09-29T13:18:07+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0x8aD3c73F833d3F9A523aB01476625F269aEB7Cf0&binanceChainId=56`
+- Status: `200`  Latency: `97ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:18:09+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0x9d275685dC284C8eB1C79f6ABA7a63Dc75ec890a&binanceChainId=56`
+- Status: `200`  Latency: `91ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch AAPL
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AAPL`
+- Status: `200`  Latency: `25ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=338.4
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch AMD
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AMD`
+- Status: `200`  Latency: `25ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=607.87
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch TSLA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/TSLA`
+- Status: `200`  Latency: `27ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=357.45
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch META
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/META`
+- Status: `200`  Latency: `33ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=715.62
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch NVDA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/NVDA`
+- Status: `200`  Latency: `38ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=228.86
+
+
+## 2026-09-29T13:18:14+00:00 — mark fetch QQQ
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/QQQ`
+- Status: `200`  Latency: `50ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=736.53
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch TSLA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/TSLA`
+- Status: `200`  Latency: `37ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=357.45
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch AMD
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AMD`
+- Status: `200`  Latency: `38ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=607.87
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch META
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/META`
+- Status: `200`  Latency: `38ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=715.62
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch NVDA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/NVDA`
+- Status: `200`  Latency: `38ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=228.86
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch QQQ
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/QQQ`
+- Status: `200`  Latency: `42ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=736.53
+
+
+## 2026-09-29T13:19:06+00:00 — mark fetch AAPL
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AAPL`
+- Status: `200`  Latency: `60ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=338.4
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch META
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/META`
+- Status: `200`  Latency: `21ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=715.62
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch AMD
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AMD`
+- Status: `200`  Latency: `26ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=607.87
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch TSLA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/TSLA`
+- Status: `200`  Latency: `26ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=357.45
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch NVDA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/NVDA`
+- Status: `200`  Latency: `40ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=228.86
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch QQQ
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/QQQ`
+- Status: `200`  Latency: `46ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=736.53
+
+
+## 2026-09-29T13:19:59+00:00 — mark fetch AAPL
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AAPL`
+- Status: `200`  Latency: `53ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=338.4
+
+
+## 2026-09-29T13:23:13+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=117906468660905536&fromTokenAddress=0x2494b603319d4D9F9715c9f4496d9E0364B59d93&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `101ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=userWalletAddress is required for RFQ (Ondo) quote
+- Body: `{'code': 40001, 'msg': 'userWalletAddress is required for RFQ (Ondo) quote', 'data': None, 'timestamp': 1790688193795, 'success': False}`
+
+
+## 2026-09-29T13:23:13+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 200: userWalletAddress is required for RFQ (Ondo) quote
+
+
+## 2026-09-29T13:23:13+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0x5b1910eaad6450e50f816082aa078c41f10c292f`
+- Status: `200`  Latency: `104ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=69434707117849912&fromTokenAddress=0x7425889fe94f9d693e8daefe88bcced6acfef4c0&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `103ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0xD7dF5863A3e742F0c767768cDfcb63f09E0422f6`
+- Status: `200`  Latency: `97ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=userWalletAddress is required for RFQ (Ondo) quote
+- Body: `{'code': 40001, 'msg': 'userWalletAddress is required for RFQ (Ondo) quote', 'data': None, 'timestamp': 1790688194117, 'success': False}`
+
+
+## 2026-09-29T13:23:14+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 200: userWalletAddress is required for RFQ (Ondo) quote
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=216394883761526528&fromTokenAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `105ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75`
+- Status: `429`  Latency: `87ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'data': '', 'code': 42900, 'timestamp': 1790688194322}`
+
+
+## 2026-09-29T13:23:14+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 429: Rate limit exceeded
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=337966467311257856&fromTokenAddress=0x68fa48b1c2fe52b3d776e1953e0e782b5044ce28&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `429`  Latency: `91ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'timestamp': 1790688194420, 'code': 42900, 'data': ''}`
+
+
+## 2026-09-29T13:23:14+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 429: Rate limit exceeded
+
+
+## 2026-09-29T13:23:14+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1`
+- Status: `429`  Latency: `85ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'timestamp': 1790688194512, 'code': 42900, 'data': ''}`
+
+
+## 2026-09-29T13:23:14+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 429: Rate limit exceeded
+
+
+## 2026-09-29T13:26:57+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=117906468660905536&fromTokenAddress=0x2494b603319d4D9F9715c9f4496d9E0364B59d93&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `106ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=userWalletAddress is required for RFQ (Ondo) quote
+- Body: `{'code': 40001, 'msg': 'userWalletAddress is required for RFQ (Ondo) quote', 'data': None, 'timestamp': 1790688417418, 'success': False}`
+
+
+## 2026-09-29T13:26:57+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: HTTP 200: userWalletAddress is required for RFQ (Ondo) quote
+
+
+
+## Call summary (this process, all calls including repeats)
+
+| Calls | Label | Status | Outcome |
+|---|---|---|---|
+| 14 | mark fetch AAPL | 200 | price=#.# |
+| 14 | mark fetch AMD | 200 | price=#.# |
+| 14 | mark fetch TSLA | 200 | price=#.# |
+| 14 | mark fetch META | 200 | price=#.# |
+| 14 | mark fetch NVDA | 200 | price=#.# |
+| 14 | mark fetch QQQ | 200 | price=#.# |
+| 10 | Binance Web3 GET /api/v1/dex/aggregator/quote | 200 | ok |
+| 7 | rwa official /api/v1/dex/market/rwa/underlying-market | 200 | ok |
+| 7 | Binance Web3 GET /api/v1/dex/aggregator/quote | 200 | code=# msg=userWalletAddress is required for RFQ (Ondo) quote |
+| 7 | quote fallback -> pancake | n/a | fell back: RuntimeError: HTTP #: userWalletAddress is required for RFQ (Ondo) qu |
+| 7 | Binance Web3 GET /api/v1/dex/aggregator/quote | 429 | code=# msg=Rate limit exceeded |
+| 7 | quote fallback -> pancake | n/a | fell back: RuntimeError: HTTP #: Rate limit exceeded |
+| 6 | rwa official /api/v1/dex/market/rwa/price | 200 | code=# msg=Parameter tokenContractAddresses is required |
+| 1 | rwa official /api/v1/dex/market/rwa/platforms | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/tokens | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/search | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/underlying-profile | 429 | code=# msg=Rate limit exceeded |
+| 1 | rwa official /api/v1/dex/market/rwa/underlying-market | 429 | code=# msg=Rate limit exceeded |
+| 1 | rwa official /api/v1/dex/market/rwa/price | 429 | code=# msg=Rate limit exceeded |
