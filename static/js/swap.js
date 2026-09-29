@@ -484,7 +484,9 @@
   function close() {
     if (!S) return;
     clearTimeout(S.quoteTimer);
+    const onClose = S.host.onClose;
     S = null;
+    if (onClose) setTimeout(onClose, ANIM_MS + 80);
     R.input.blur();
     R.backdrop.classList.remove('open');
     R.sheet.classList.remove('open');
@@ -494,16 +496,16 @@
 
   function open(host) {
     const c = host.getCtx();
-    if (S || !c.address || !c.prices[host.symbol]) return;
+    if (S || !c.address || !c.prices[host.symbol]) return false;
     const cur = PAY.find((s) => s !== host.symbol);
-    if (!c.prices[cur]) return;
+    if (!c.prices[cur]) return false;
     build();
     S = {
       host, address: c.address, side: host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
       cur, raw: '', pct: 25, busy: false,
       order: null, quoting: false, quoteTimer: null, quoteReq: 0,
     };
-    R.title.textContent = `${S.side === 'buy' ? 'Buy' : 'Sell'} ${S.symbol}`;
+    R.title.textContent = `${S.side === 'buy' ? 'Buy' : 'Sell'} ${host.label || S.symbol}`;
     R.input.value = '';
     setNote('');
     renderCur();
@@ -521,6 +523,7 @@
     } else {
       scheduleQuote();
     }
+    return true;
   }
 
   window.MarktapeSwap = { open };

@@ -582,8 +582,9 @@
       const hit = data.hit;
       if (!hit) { arbEls.rotateBtn.textContent = 'No rotate available'; return; }
       if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${ROTATE_USD} · not viable`; return; }
-      openSwap('sell', hit.richSymbol);
-      openSwap('buy', hit.cheapSymbol);
+      // One sheet at a time: sell leg first, buy leg opens when it closes.
+      const opened = openSwap('sell', hit.richSymbol, () => openSwap('buy', hit.cheapSymbol));
+      if (!opened) openSwap('buy', hit.cheapSymbol);
     } catch (err) {
       arbEls.rotateBtn.textContent = 'Rotate failed';
     } finally {
@@ -692,9 +693,31 @@
     window.MarktapeSend.open({ symbol: SYMBOL, getCtx, onSent: refreshBalances });
   });
 
-  function openSwap(side, sym) {
-    if (!state.address) { connect(); return; }
-    if (window.MarktapeSwap) window.MarktapeSwap.open({ side, symbol: sym || SYMBOL, getCtx, onDone: refreshBalances });
+  // Server keys prices/assets/holdings by UPPERCASE symbol (TSLAon -> TSLAON).
+  function keyFor(sym) {
+    const u = String(sym || '').toUpperCase();
+    return state.prices[u] || (state.assets || {})[u] ? u : sym;
+  }
+
+  function pancakeLink(side, key) {
+    const mint = ((state.assets || {})[key] || {}).mint;
+    if (!mint) return null;
+    const usdt = '0x55d398326f99059fF775485246999027B3197955';
+    return side === 'sell'
+      ? `https://pancakeswap.finance/swap?chain=bsc&inputCurrency=${mint}&outputCurrency=${usdt}`
+      : `https://pancakeswap.finance/swap?chain=bsc&inputCurrency=${usdt}&outputCurrency=${mint}`;
+  }
+
+  // Returns true if the in-app sheet opened; else falls back to a Pancake link.
+  function openSwap(side, sym, onClose) {
+    if (!state.address) { connect(); return false; }
+    const label = sym || SYMBOL;
+    const key = keyFor(label);
+    const ok = window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose });
+    if (ok) return true;
+    const link = pancakeLink(side, key);
+    if (link) window.open(link, '_blank', 'noopener');
+    return false;
   }
   els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));
