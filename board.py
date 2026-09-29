@@ -288,6 +288,9 @@ async def build_snapshot():
     immediately with marks null then patched in place once Yahoo lands —
     unchanged from before, so a dead Yahoo/RWA Data never blocks rows."""
     await _sync_catalog()
+    pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
+             for u in rwa.UNIVERSE if any(w.get("address") for w in u["wrappers"])]
+    asyncio.create_task(rwa_api.refresh_mcaps(pairs))
 
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     official = await rwa_api.get_official_snapshot(addrs) or {}

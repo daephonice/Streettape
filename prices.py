@@ -11,6 +11,7 @@ import httpx
 from sqlalchemy import select
 
 import rwa
+import rwa_api
 from database import SessionLocal
 from models import PriceSnapshot
 
@@ -158,6 +159,7 @@ def get_prices():
             "fairPrice": s.get("fairPrice"),
             "premiumToOfficial": s.get("premiumToOfficial"),
             "premiumToFair": s.get("premiumToFair"),
+            "mc": rwa_api.get_mcap(s.get("underlying")),
         }
     return {
         "updatedAt": _updated_at.isoformat() if _updated_at else None,

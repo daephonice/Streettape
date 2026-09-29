@@ -33,6 +33,13 @@ Source: real responses from the deployed app, hit from a browser. The wallet in 
 3. **`underlying-market` returned a different missing-parameter error.** `Parameter binanceChainId is required`. Same endpoint family, but the error names only one missing field at a time, so it took a round trip per endpoint. Fix: send `tokenContractAddress` plus `binanceChainId=56` to both.
 4. **After the fix all four return data.** `platforms` 2 items, `search` 1, `underlying-profile` 9, `underlying-market` 6 (NVDAB, `0x02fca66c1d1afb4e2a7884261eb00f63598a7436`, BSC). I have not yet checked the field-level contents against `board.py`'s expectations.
 
+### RWA Data: what `underlying-profile` and `underlying-market` actually return (NVDAB)
+
+10. **Profile fields:** `platformId` (`bstock`), `underlyingTicker`, `underlyingFullName`, `assetType`, `tokenToShareRatio` (`1.000778223752807865`), `protections.collateralReport` (`supported: true`, but `description` and `url` both `null`), and `companyInfo` (CEO, website, industry, English and Chinese descriptions, empty `conceptsEn`/`conceptsCn`).
+11. **`tokenToShareRatio` is not 1.0.** Our seed catalog carries `multiplier: 1.0` for bStocks. The live ratio for NVDAB is 1.00078, so a price normalized with the seed value is about 0.08% off. Not yet wired into the arb math.
+12. **Market data is the underlying's, not the token's.** `marketData.marketCap` is `5526282420000.00` (NVIDIA the company, about $5.5T). `totalShares` is `null`, so a per-token cap cannot be derived. Also present: `high52W`, `low52W`, `volumeShares24H`, `dividendYield`, `latestDividend`, `peRatioTTM`, `pbRatio`. Returned `null`: `referencePrice`, `avgDailyVolume1Y`, `turnoverRate`, `amplitude`. Numbers come back as strings. The app now shows this as "Underlying mcap", refreshed hourly.
+13. **Session state is in the response.** `statusInfo` has `openState`, `reasonCode` (`TRADING`), `marketStatus`, `nextOpenTime`, `nextCloseTime`. In this call `nextOpenTime`/`nextCloseTime` were `null`, so we still compute sessions ourselves in `rwa.session_now()`.
+
 ### Trading API: quote and swap build with a taker
 
 5. **Quote without a wallet works.** BNB to NVDAB, 0.005 BNB: provider `binance_web3`, route `LiquidMesh`, `uiOutAmount` about 0.01654, rate about 3.31 NVDAB per BNB, `transaction: null`, `needsWallet: true`.

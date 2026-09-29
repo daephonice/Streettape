@@ -586,7 +586,7 @@ def _digest_text(symbol: str) -> str | None:
         lines.append(f"Mark ${entry['mark']:.2f}")
     mc = _fmt_mc(entry.get("mc"))
     if mc:
-        lines.append(f"Market cap {mc}")
+        lines.append(f"Underlying market cap {mc}")
     lines.append(f"{symbol} just moved {sign}{change1h:.1f}% in the last hr")
     return "\n".join(lines)
 

@@ -223,3 +223,47 @@ async def devcheck(underlying: str = "NVDA", address: str = "0x02fca66c1d1afb4e2
             except Exception as e:
                 out[name] = {"ok": False, "error": str(e)[:200]}
     return {"ok": all(v["ok"] for v in out.values()), "results": out}
+
+
+MCAP_REFRESH_SECONDS = 3600.0
+_mcaps: dict[str, float] = {}
+_mcap_last = 0.0
+
+
+def get_mcap(underlying: str | None) -> float | None:
+    """Underlying company's market cap (USD) from RWA Data underlying-market."""
+    return _mcaps.get((underlying or "").upper())
+
+
+async def refresh_mcaps(pairs: list[tuple[str, str]]) -> None:
+    """pairs: (underlying, one wrapper address). Hourly; keeps old values on failure."""
+    global _mcap_last
+    if not available() or time.time() - _mcap_last < MCAP_REFRESH_SECONDS:
+        return
+    _mcap_last = time.time()
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+        for und, addr in pairs:
+            try:
+                data = await underlying_market(client, addr)
+                mc = float(((data or {}).get("marketData") or {}).get("marketCap"))
+                if mc > 0:
+                    _mcaps[und.upper()] = mc
+            except Exception:
+                log.warning("mcap refresh failed for %s", und, exc_info=True)
+
+
+async def mcap_report(pairs: list[tuple[str, str]]) -> dict:
+    """Per-underlying marketCap (or error) straight from underlying-market. Debug/DevEx aid."""
+    if not available():
+        return {"ok": False, "error": "unset or parked"}
+    out = {}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+        for und, addr in pairs:
+            try:
+                data = await underlying_market(client, addr)
+                md = (data or {}).get("marketData") or {}
+                out[und] = {"marketCap": md.get("marketCap"), "totalShares": md.get("totalShares"),
+                            "openState": ((data or {}).get("statusInfo") or {}).get("openState")}
+            except Exception as e:
+                out[und] = {"error": str(e)[:200]}
+    return out

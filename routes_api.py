@@ -36,6 +36,13 @@ async def api_swapcheck(input: str = rwa.NATIVE, output: str = "0x02fca66c1d1afb
     return await swap_mod.quote(input, output, amount, taker)
 
 
+@router.get("/_mcapcheck")
+async def api_mcapcheck():
+    pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
+             for u in rwa.UNIVERSE if any(w.get("address") for w in u["wrappers"])]
+    return {"mcaps": await rwa_api.mcap_report(pairs), "cached": rwa_api._mcaps}
+
+
 @router.get("/_devex")
 async def api_devex():
     import os
