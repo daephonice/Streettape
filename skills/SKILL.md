@@ -1,6 +1,8 @@
 ---
 name: streettape-desk
 description: Use in an agentic wallet for tokenized-stock questions on BNB Chain — "what's rich vs Friday", "quote $50 flatten", "rotate into cheapest NVDA", "alert only cash-shut". Calls the StreetTape APIs; never computes prices itself.
+dependencies:
+  - binance-agentic-wallet
 ---
 
 # streettape-desk
@@ -9,6 +11,7 @@ Base URL: `https://streettape.up.railway.app` (override with `STREETTAPE_URL`).
 All prices, premiums, gaps, costs and quotes come from the API. Never estimate them. Quote, don't sign: trades are confirmed and signed in the user's own wallet.
 
 Tool: `python skills/streettape.py <command>` (stdlib only, prints JSON).
+Build/sign goes through the official `binance-agentic-wallet` skill when `BINANCE_AW_CMD` is set; otherwise StreetTape's `/api/swap/order` builds the quote. Signing only with `quote ... --sign` after the user says yes.
 
 | User says | Command | Endpoint |
 |---|---|---|
@@ -16,7 +19,7 @@ Tool: `python skills/streettape.py <command>` (stdlib only, prints JSON).
 | "quote $50 flatten" | `flatten [--usd 50] [--taker 0x..]` | `GET /api/board` + `POST /api/swap/order` |
 | "rotate into cheapest NVDA" | `rotate NVDA` | `GET /api/agent/scan?underlying=NVDA` |
 | "alert only cash-shut" | `alerts [--threshold 0.015]` | `GET /api/agent/scan` |
-| raw quote | `quote <inputMint> <outputMint> <uiAmount> [--taker 0x..]` | `POST /api/swap/order` |
+| raw quote | `quote <inputMint> <outputMint> <uiAmount> [--taker 0x..] [--sign]` | `POST /api/swap/order` |
 
 ## Rules
 - **rich vs Friday**: report `premium` per token (tape vs last cash-print mark; Friday close is the mark while cash is shut). Positive = rich, negative = cheap. Show `session.label`.

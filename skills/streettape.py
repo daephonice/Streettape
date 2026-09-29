@@ -3,6 +3,8 @@
 import argparse
 import json
 import os
+import shlex
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -11,6 +13,10 @@ import urllib.request
 BASE = os.getenv("STREETTAPE_URL", "https://streettape.up.railway.app").rstrip("/")
 USDT = "0x55d398326f99059fF775485246999027B3197955"
 FLATTEN_MIN = 0.02
+# Official `binance-agentic-wallet` skill entrypoint (installed via
+# `npx skills add binance-agentic-wallet`). Contract: JSON request on stdin,
+# JSON result on stdout. Set to the skill's CLI, e.g. "npx skills run binance-agentic-wallet swap".
+AW_CMD = os.getenv("BINANCE_AW_CMD", "").strip()
 
 
 def call(path, params=None, body=None):
@@ -27,6 +33,28 @@ def call(path, params=None, body=None):
         sys.exit(json.dumps({"error": e.code, "detail": e.read().decode()[:500]}))
     except Exception as e:
         sys.exit(json.dumps({"error": str(e)}))
+
+
+def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
+    """Build (and, only if sign=True, sign) via the official Agentic Wallet skill.
+    Falls back to StreetTape /api/swap/order when BINANCE_AW_CMD is unset or fails."""
+    if not AW_CMD:
+        return None
+    req = {"chain": "bsc", "chainId": 56, "fromToken": input_mint, "toToken": output_mint,
+           "amount": amount, "wallet": taker, "sign": bool(sign), "dryRun": not sign}
+    try:
+        r = subprocess.run(shlex.split(AW_CMD), input=json.dumps(req), capture_output=True, text=True, timeout=60)
+        if r.returncode != 0:
+            return None
+        res = json.loads(r.stdout)
+    except Exception:
+        return None
+    return {"provider": "binance_agentic_wallet", "signed": bool(sign), **(res if isinstance(res, dict) else {"result": res})}
+
+
+def order(input_mint, output_mint, amount, taker=None, sign=False):
+    return aw_swap(input_mint, output_mint, amount, taker, sign) or call("/api/swap/order", body={
+        "inputMint": input_mint, "outputMint": output_mint, "uiAmount": amount, "taker": taker})
 
 
 def out(obj):
@@ -46,10 +74,7 @@ def cmd_board(a):
 
 
 def cmd_quote(a):
-    out(call("/api/swap/order", body={
-        "inputMint": a.input_mint, "outputMint": a.output_mint,
-        "uiAmount": a.amount, "taker": a.taker,
-    }))
+    out(order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign))
 
 
 def cmd_flatten(a):
@@ -59,10 +84,7 @@ def cmd_flatten(a):
     rich.sort(key=lambda t: t["premium"], reverse=True)
     legs = []
     for t in rich:
-        q = call("/api/swap/order", body={
-            "inputMint": t["mint"], "outputMint": USDT,
-            "uiAmount": a.usd / t["tokenPrice"], "taker": a.taker,
-        })
+        q = order(t["mint"], USDT, a.usd / t["tokenPrice"], a.taker)
         legs.append({"symbol": t["symbol"], "premium": t["premium"], "sizeUsd": a.usd, "quote": q})
     out({"session": snap.get("session"), "flatten": legs,
          "note": "Not auto-executed — confirm and sign in your own wallet."})
@@ -94,7 +116,9 @@ def main():
     b = s.add_parser("board"); b.add_argument("--min", type=float, default=0.0); b.set_defaults(f=cmd_board)
     q = s.add_parser("quote")
     q.add_argument("input_mint"); q.add_argument("output_mint"); q.add_argument("amount", type=float)
-    q.add_argument("--taker"); q.set_defaults(f=cmd_quote)
+    q.add_argument("--taker")
+    q.add_argument("--sign", action="store_true", help="sign via official skill; only after the user confirmed")
+    q.set_defaults(f=cmd_quote)
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
     f.add_argument("--taker"); f.set_defaults(f=cmd_flatten)
     r = s.add_parser("rotate"); r.add_argument("underlying"); r.set_defaults(f=cmd_rotate)
