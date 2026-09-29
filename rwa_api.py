@@ -13,6 +13,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import asyncio
 import logging
 import os
 import time
@@ -226,6 +227,19 @@ async def devcheck(underlying: str = "NVDA", address: str = "0x02fca66c1d1afb4e2
 
 
 MCAP_REFRESH_SECONDS = 3600.0
+MCAP_RETRY_SECONDS = 300.0
+MCAP_GAP = 2.0  # seconds between underlying-market calls; limit is undocumented, so stay conservative
+
+
+async def _underlying_market_retry(client, addr):
+    for attempt in range(4):
+        try:
+            return await underlying_market(client, addr)
+        except Exception as e:
+            if "rate limit" in str(e).lower() and attempt < 3:
+                await asyncio.sleep(3.0 * (attempt + 1))
+                continue
+            raise
 _mcaps: dict[str, float] = {}
 _mcap_last = 0.0
 
@@ -241,15 +255,23 @@ async def refresh_mcaps(pairs: list[tuple[str, str]]) -> None:
     if not available() or time.time() - _mcap_last < MCAP_REFRESH_SECONDS:
         return
     _mcap_last = time.time()
+    failed = False
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
-        for und, addr in pairs:
+        for i, (und, addr) in enumerate(pairs):
+            if i:
+                await asyncio.sleep(MCAP_GAP)
             try:
-                data = await underlying_market(client, addr)
+                data = await _underlying_market_retry(client, addr)
                 mc = float(((data or {}).get("marketData") or {}).get("marketCap"))
                 if mc > 0:
                     _mcaps[und.upper()] = mc
+                else:
+                    failed = True
             except Exception:
+                failed = True
                 log.warning("mcap refresh failed for %s", und, exc_info=True)
+    if failed:  # retry sooner than the hourly cadence
+        _mcap_last = time.time() - MCAP_REFRESH_SECONDS + MCAP_RETRY_SECONDS
 
 
 async def mcap_report(pairs: list[tuple[str, str]]) -> dict:
@@ -258,9 +280,11 @@ async def mcap_report(pairs: list[tuple[str, str]]) -> dict:
         return {"ok": False, "error": "unset or parked"}
     out = {}
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
-        for und, addr in pairs:
+        for i, (und, addr) in enumerate(pairs):
+            if i:
+                await asyncio.sleep(MCAP_GAP)
             try:
-                data = await underlying_market(client, addr)
+                data = await _underlying_market_retry(client, addr)
                 md = (data or {}).get("marketData") or {}
                 out[und] = {"marketCap": md.get("marketCap"), "totalShares": md.get("totalShares"),
                             "openState": ((data or {}).get("statusInfo") or {}).get("openState")}
