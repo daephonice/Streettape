@@ -104,7 +104,12 @@ async def tokens(client: httpx.AsyncClient):
 
 
 async def price(client: httpx.AsyncClient, address: str | None = None, symbol: str | None = None):
-    return await _get(client, "/api/v1/dex/market/rwa/price", {"tokenAddress": address, "symbol": symbol})
+    # binanceChainId is mandatory (live log: 40001 "Parameter binanceChainId is required").
+    # Sibling endpoints name the address tokenContractAddress, so send both spellings.
+    return await _get(client, "/api/v1/dex/market/rwa/price", {
+        "tokenAddress": address, "tokenContractAddress": address,
+        "binanceChainId": BSC_CHAIN_ID, "symbol": symbol,
+    })
 
 
 async def search(client: httpx.AsyncClient, query: str):
@@ -124,22 +129,46 @@ async def underlying_market(client: httpx.AsyncClient, address: str, chain_id: s
                       {"tokenContractAddress": address, "binanceChainId": chain_id})
 
 
+PRICE_GAP = 0.3          # s between price calls; bursts get 429 (code 42900)
+PRICE_PARK_SECONDS = 600.0
+_price_parked_until = 0.0
+
+
 async def get_official_snapshot(addresses: list[str]) -> dict | None:
     """One tape+mark pass over the given wrapper addresses via RWA Data.
     Returns {addr_lower: {"price": float|None, "markPrice": float|None,
     "multiplier": float|None}} or None if RWA Data is unset/parked/fails
-    entirely this cycle — caller falls back to Gecko+Yahoo on None."""
-    if not available():
+    entirely this cycle — caller falls back to Gecko+Yahoo on None.
+    Paced (PRICE_GAP), retries a 429 once, and parks the price endpoint for
+    PRICE_PARK_SECONDS after 3 consecutive non-rate-limit failures."""
+    global _price_parked_until
+    if not available() or time.time() < _price_parked_until:
         return None
     out = {}
+    hard_fails = 0
     try:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
-            for addr in addresses:
-                try:
-                    row = await price(client, address=addr)
-                except Exception:
-                    log.info("rwa_api: price miss for %s", addr, exc_info=True)
-                    continue
+            for i, addr in enumerate(addresses):
+                if i:
+                    await asyncio.sleep(PRICE_GAP)
+                row = None
+                for attempt in range(2):
+                    try:
+                        row = await price(client, address=addr)
+                        hard_fails = 0
+                        break
+                    except Exception as e:
+                        if "rate limit" in str(e).lower() and attempt == 0:
+                            await asyncio.sleep(1.0)
+                            continue
+                        if "rate limit" not in str(e).lower():
+                            hard_fails += 1
+                        log.info("rwa_api: price miss for %s: %s", addr, e)
+                        break
+                if hard_fails >= 3:
+                    _price_parked_until = time.time() + PRICE_PARK_SECONDS
+                    log.warning("rwa_api: price endpoint failing, parked %ss", PRICE_PARK_SECONDS)
+                    break
                 if not row:
                     continue
                 out[addr.lower()] = {

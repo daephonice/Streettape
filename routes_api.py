@@ -49,7 +49,11 @@ async def api_devex():
     import devlog
     if not os.path.exists(devlog.PATH):
         raise HTTPException(status_code=404, detail="No DEVEX log yet")
-    return FileResponse(devlog.PATH, media_type="text/markdown", filename="DEVEX.md")
+    from fastapi.responses import Response
+    with open(devlog.PATH, encoding="utf-8") as f:
+        body = f.read() + devlog.summary_md()
+    return Response(body, media_type="text/markdown",
+                    headers={"Content-Disposition": 'attachment; filename="DEVEX.md"'})
 
 
 @router.get("/board")

@@ -80,7 +80,7 @@ async def call(method: str, params):
         urls = list(endpoints())
         _parked.clear()
 
-    tag = f"tx sim ({method})" if method in _SIM_METHODS else f"rpc {method}"
+    tag = f"rpc {method}"
     last = None
     for url in urls:
         _id += 1

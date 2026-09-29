@@ -14,6 +14,7 @@ error — this is a merge-in speed/coverage boost, never a hard dependency.
 from __future__ import annotations
 
 import logging
+import time
 
 import httpx
 
@@ -24,22 +25,27 @@ log = logging.getLogger("portfolio")
 
 BASE_URL = "https://web3.binance.com/wallet"
 CHAIN_ID = "56"  # BSC
+PARK_SECONDS = 600.0
+_parked_until = 0.0
 
 
 async def get_token_holdings(address: str) -> dict[str, float]:
     """{contract_address_lower: ui_amount} for every BEP-20 the Address
     Portfolio API reports for `address` on BSC. Empty dict on any failure
     or if credentials are unset — caller (balances.py) falls back to RPC."""
-    if not swap.API_KEY or not swap.SECRET_KEY:
+    global _parked_until
+    if not swap.API_KEY or not swap.SECRET_KEY or time.time() < _parked_until:
         return {}
     try:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=10.0) as client:
             data = await swap._request(client, "GET", "/api/v1/portfolio/tokens", params={
                 "chainId": CHAIN_ID,
                 "address": address,
+                "offset": 0,  # the wallet-side skill docs list offset as required; experiment
             })
     except Exception:
         log.info("portfolio: lookup failed for %s", address, exc_info=True)
+        _parked_until = time.time() + PARK_SECONDS  # live log: 19/19 calls -> HTTP 202, non-JSON
         return {}
     if not isinstance(data, dict):
         return {}

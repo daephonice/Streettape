@@ -9,8 +9,10 @@ before any of the startup tasks fire.
 from __future__ import annotations
 
 import os
+import re
 import time
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 
 log = logging.getLogger("devlog")
@@ -20,6 +22,12 @@ ENABLED = os.getenv("DEVEX_LOG", "1") != "0"
 
 _process_start = time.monotonic()
 _first_call_logged = False
+
+# Polling loops (price/mark/balance refreshes) repeat identical calls hundreds of
+# times. Keep the first MAX_PER_SIGNATURE of each distinct (label, status, outcome)
+# and only count the rest; summary_md() reports the counts.
+MAX_PER_SIGNATURE = int(os.getenv("DEVEX_MAX_PER_SIGNATURE", "3"))
+_sig_counts: Counter = Counter()
 
 _HEADER = (
     "# DEVEX.md — StreetTape build log\n\n"
@@ -75,6 +83,10 @@ def log_call(
     if not ENABLED:
         return
     global _first_call_logged
+    sig = (what, str(status), re.sub(r"0x[0-9a-fA-F]{6,}|\d+", "#", actual or error or "")[:80])
+    _sig_counts[sig] += 1
+    if _sig_counts[sig] > MAX_PER_SIGNATURE:
+        return
     try:
         _ensure_file()
         now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -110,3 +122,15 @@ class timed:
     def __exit__(self, exc_type, exc, tb):
         self.ms = (time.monotonic() - self._start) * 1000
         return False
+
+
+def summary_md() -> str:
+    """Markdown table of every distinct call signature seen this process, with
+    total counts (including the repeats that were not written out)."""
+    if not _sig_counts:
+        return ""
+    rows = ["", "## Call summary (this process, all calls including repeats)", "",
+            "| Calls | Label | Status | Outcome |", "|---|---|---|---|"]
+    for (what, status, outcome), n in sorted(_sig_counts.items(), key=lambda x: -x[1]):
+        rows.append(f"| {n} | {what} | {status} | {outcome or 'ok'} |")
+    return "\n".join(rows) + "\n"

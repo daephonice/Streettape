@@ -1,6 +1,8 @@
 """Binance Web3 Trading API: quote + build swap (SWAP or RFQ) on BSC. Falls back to PancakeSwap deep link."""
 from __future__ import annotations
 
+import time
+
 import base64
 import hashlib
 import hmac
@@ -102,7 +104,7 @@ async def _request(client: httpx.AsyncClient, method: str, path: str, params: di
         devlog.log_call(what=f"Binance Web3 {method.upper()} {path}", url=full_url, status=resp.status_code, ms=t.ms,
                         expected="JSON body", actual="non-JSON response", body=resp.text)
         raise RuntimeError(f"non-JSON response ({resp.status_code}) at {path}: {resp.text[:150]}")
-    ok = data.get("code") in (0, None) and data.get("success", True)
+    ok = resp.status_code < 400 and data.get("code") in (0, None) and data.get("success", True)
     devlog.log_call(
         what=f"Binance Web3 {method.upper()} {path}", url=full_url, status=resp.status_code, ms=t.ms,
         expected="code 0 / success true with data payload",
@@ -110,7 +112,7 @@ async def _request(client: httpx.AsyncClient, method: str, path: str, params: di
         body=None if ok else str(data),
     )
     if not ok:
-        raise RuntimeError(data.get("msg") or f"Binance Web3 API error {data.get('code')}")
+        raise RuntimeError(f"HTTP {resp.status_code}: " + str(data.get("msg") or f"Binance Web3 API error {data.get('code')}"))
     return data.get("data")
 
 
@@ -254,6 +256,10 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
         return _fallback_quote(input_mint, output_mint, ui_amount, f"{type(e).__name__}: {str(e)[:300]}")
 
 
+_sim_parked_until = 0.0
+SIM_PARK_SECONDS = 3600.0
+
+
 async def simulate_transaction(built_tx: dict, taker: str) -> dict:
     """Transaction API dry-run of an already-built SWAP tx, before the wallet
     popup. Best-effort: any failure to reach/parse the simulate endpoint
@@ -262,6 +268,9 @@ async def simulate_transaction(built_tx: dict, taker: str) -> dict:
     Path is our best read of the same Binance Web3 "Transaction API" family
     as quote/swap (unverified against a live response as of writing — see
     DEVEX.md for the first real call's exact body)."""
+    global _sim_parked_until
+    if time.time() < _sim_parked_until:
+        return {"ok": None, "gas": None, "error": "simulate endpoint parked (404 earlier)"}
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=15.0) as client:
         with devlog.timed() as t:
             try:
@@ -279,6 +288,8 @@ async def simulate_transaction(built_tx: dict, taker: str) -> dict:
                     expected="200 with { success, gasUsed } or similar",
                     error=str(e),
                 )
+                if "HTTP 404" in str(e):
+                    _sim_parked_until = time.time() + SIM_PARK_SECONDS
                 return {"ok": None, "gas": None, "error": str(e)}
     if not isinstance(data, dict):
         devlog.log_call(

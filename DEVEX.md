@@ -10,8 +10,8 @@ Entries under **Runtime log** append automatically (see `devlog.py`). Everything
 - Built against: Binance Web3 quote/RFQ, RWA Data, Transaction sim, Address Portfolio; GeckoTerminal (tape); Yahoo (last cash print); BSC RPC.
 - Proposal-only by design: the app quotes, flags and alerts; the user signs in their own wallet.
 - Verified against live responses (see below): Binance Web3 quotes and built swap transactions, RFQ wallet requirement, RWA Data (`platforms`, `search`, `underlying-profile`, `underlying-market`), rate limiting, ERC-8004 registration on BSC.
-- **Called live, unusable result:** Transaction sim returned an empty payload (see 2026-09-29 with-wallet session).
-- **Not verified live:** Address Portfolio, `baw` signing, an on-chain swap completing. Marked pending below.
+- **Called live, failed:** `POST /api/v1/dex/aggregator/tx/simulate` returned HTTP 404 (path not valid); `GET /api/v1/portfolio/tokens` returned HTTP 202 with a non-JSON body on 19 of 19 calls; `rwa/price` returned no usable result on 420 of 420 calls (our missing parameter, plus rate limiting). See the runtime findings below.
+- **Not verified live:** `baw` signing. A TSLAB buy did settle on-chain (see wallet-side result).
 
 ## Live observations (2026-09-29, after-hours session)
 
@@ -48,11 +48,17 @@ Source: real responses from the deployed app, hit from a browser. The wallet in 
 5. **Quote without a wallet works.** BNB to NVDAB, 0.005 BNB: provider `binance_web3`, route `LiquidMesh`, `uiOutAmount` about 0.01654, rate about 3.31 NVDAB per BNB, `transaction: null`, `needsWallet: true`.
 6. **Quote with a taker builds a real transaction.** Same pair with my wallet as taker returned `transaction` with `from`, `to` (`0xB44446b0c8E56988c34f7Ff73Ae904982b5FdDA5`), `data`, `value` (`0x11c37937e08000`, 0.005 BNB), `gas` (`0x6ddd0`) and `gasPrice`, routed via LiquidMesh. `uiOutAmount` about 0.01651, `uiMinReceived` about 0.01634.
 7. **`priceImpactPct` again ambiguous.** Values seen at this roughly $3.8 size: 0.0021223299 and 0.001674117 (positive this time). Still cannot tell fraction from percent from a size this small. Unit remains unverified (see observation 2 in the after-hours session).
-8. **Transaction sim returns an empty payload.** With a real taker and a built transaction, `POST /api/v1/dex/aggregator/tx/simulate` returned a success envelope with no `data`. So the endpoint path may be wrong, or it needs different inputs, or it returns nothing on success. The docs I had did not include an example response, so I cannot say which. The app now treats an empty simulate result as `ok: null` and does not block the swap.
+8. **Transaction sim endpoint returns HTTP 404.** With a real taker and a built transaction, `POST /api/v1/dex/aggregator/tx/simulate` answered `404` in about 100 ms (twice: 10:46:16 and 10:48:20 UTC). Earlier I recorded this as "success envelope with empty data"; that was wrong, our logger treated a 404 with no `code` field as success. The path is not valid, and I could not find the correct one in the docs I searched. The 404 body was not captured. The app now treats HTTP >= 400 as a failure and stops calling simulate for an hour after a 404.
+9. **Wallet flagged the built transaction "likely to fail".** At 03:16 WAT (after US close) the wallet's confirmation sheet showed `This transaction is likely to fail` for the Binance-built swap (0.0065 BNB into NVDAB). I cancelled and retried once at 03:20 and it did not go through. **Cause not confirmed.** My working guess is off-hours liquidity or transfer limits on the tokenized stock, since the app itself showed AFTER-HOURS at the time, but I have not reproduced it during market hours and have not decoded the revert. A later buy of TSLAB did complete: `/api/balances/<wallet>` afterwards showed 0.010644 TSLAB and 0.004154 BNB in the test wallet. The Binance quote for that trade returned `binance_web3` via LiquidMesh (see the runtime findings).
 
-### Wallet-side result
+### What the runtime log showed (978 entries, 10:35 to 10:53 UTC, 367 KB before condensing)
 
-9. **Wallet flagged the built transaction "likely to fail".** At 03:16 WAT (after US close) the wallet's confirmation sheet showed `This transaction is likely to fail` for the Binance-built swap (0.0065 BNB into NVDAB). I cancelled and retried once at 03:20 and it did not go through. **Cause not confirmed.** My working guess is off-hours liquidity or transfer limits on the tokenized stock, since the app itself showed AFTER-HOURS at the time, but I have not reproduced it during market hours and have not decoded the revert. No on-chain swap has completed yet.
+16. **`rwa/price` never worked: 0 of 420 calls.** 213 came back HTTP 200 with `code=40001 msg=Parameter binanceChainId is required` (our request left the parameter out), and 207 came back HTTP 429 `code=42900 Rate limit exceeded`. The official mark therefore never came from RWA Data; Gecko plus Yahoo carried the app. The missing parameter was our bug. The API-side oddity: a validation failure returns HTTP 200 with an error code, while a rate limit returns a real HTTP 429. Now sending `binanceChainId=56` (and `tokenContractAddress` alongside `tokenAddress`, since the sibling endpoints use that name). Not yet confirmed working.
+17. **Rate limiting is a short-burst limit, undocumented.** At startup the first five RWA Data calls passed. The next eight, spaced about 80 ms apart, were all rejected with 429. The ninth, 84 ms after the last rejection, passed again. So the window recovers almost immediately, and a client only needs to pace calls, not back off for long. The app now waits 0.3 s between price calls and retries a 429 once after 1 s.
+18. **Quote endpoint outcomes (32 calls).** 13 succeeded, 18 failed with `code=40001 userWalletAddress is required for RFQ (Ondo) quote` (HTTP 200 with an error code), and 1 was HTTP 429 `code=42900`. Every failure fell back to a PancakeSwap deep link. Latency was 89 to 203 ms, except the first two RFQ-without-wallet errors at 2.4 s each.
+19. **Swap build works and is fast.** `GET /api/v1/dex/aggregator/swap` returned in about 98 ms twice: BNB to TSLAB (rate about 2.129, `priceImpactPct` 0.003006) and TSLAB to BNB (rate about 0.470, `priceImpactPct` 0.001542), both routed via LiquidMesh. The `priceImpactPct` unit is still unconfirmed.
+20. **Our own labelling bug: balance reads were logged as "tx sim".** 323 `eth_call` BEP-20 `balanceOf` reads were labelled `tx sim (eth_call)`. They were RPC balance reads, not simulations. The label is now `rpc eth_call`. The only real Transaction API simulate calls are the two 404s above.
+21. **The log itself was mostly noise.** 978 entries in about 18 minutes, dominated by the 45 s price and mark polling loops and the per-balance RPC reads. The logger now keeps the first three of each distinct call and outcome and reports totals in a summary table.
 
 ## Answers to the specific asks
 
@@ -79,13 +85,329 @@ Source: real responses from the deployed app, hit from a browser. The wallet in 
 
 I read the Agent Studio docs and the bounty wording. The special rewards a self-funding seller agent running on Studio's runtime (AWS Bedrock AgentCore, ERC-8183 tasks, x402 payments). StreetTape is deliberately propose-only: it never signs and has no paid endpoint, so there is nothing for x402 to charge for. Building it would mean adding a product feature only to qualify, plus AWS credentials and a Node/`bag` toolchain I could not run from a phone. I did **not** install or run `bag`. I registered the ERC-8004 identity by hand instead (above).
 
-## Transaction API sim: called live, empty result
+## Transaction API sim: called live, HTTP 404
 
-`swap.simulate_transaction()` fires on every SWAP-mode `quote()` that has a built tx (see `swap.py`), logged as `what="tx sim"`. The live scan without a taker had `sim: null`. With a taker (2026-09-29 session, observation 8) the call went out and came back with an empty `data`. The endpoint path (`POST /api/v1/dex/aggregator/tx/simulate`) is still my best reading of the Trading API family and remains **unverified**: I cannot tell a wrong path from a valid empty response. Real entries for this call are in the runtime log below.
+`swap.simulate_transaction()` fires on every SWAP-mode `quote()` that has a built tx. It called `POST /api/v1/dex/aggregator/tx/simulate` twice with a real taker and got HTTP 404 both times. The path was my best reading of the Trading API family and is **wrong or not exposed to this key**. Not fixed: I have no documented replacement path. The wallet's own simulation (the "likely to fail" warning) is the only pre-sign check in use.
 
-## Pending: first Address Portfolio lookup
+## Address Portfolio: called live, no usable response
 
-`portfolio.get_token_holdings()` calls `GET /api/v1/portfolio/tokens` on `https://web3.binance.com/wallet` and is logged automatically. Path and response shape are unverified against a live call. First real entry replaces this placeholder.
+`portfolio.get_token_holdings()` calls `GET https://web3.binance.com/wallet/api/v1/portfolio/tokens?chainId=56&address=<wallet>`, signed like the other calls. All 19 calls returned **HTTP 202 with a non-JSON body** in 10 to 40 ms (median 14 ms), so no holdings ever came back from it. Balances shown in the app came from the public BSC RPC fallback. I don't know whether 202 means "accepted, retry later", a gateway rejection, or a wrong path. The wallet-side `query-address-info` skill documents `offset` as a required parameter on its own endpoint; we did not send it, and the app now sends `offset=0` as an experiment. The app also stops calling for 10 minutes after a failure.
 
-## Runtime log (auto-appended)
 
+## Runtime log (auto-appended, condensed)
+
+The first two occurrences of each distinct call and outcome are kept, in time order. Totals for every call, including the repeats dropped here, are in the table at the end.
+
+## Call summary (runtime log, 10:35 to 10:53 UTC)
+
+| Calls | Label | Status | Outcome |
+|---|---|---|---|
+| 323 | tx sim (eth_call) | 200 | result=# |
+| 213 | rwa official /api/v1/dex/market/rwa/price | 200 | code=# msg=Parameter binanceChainId is required |
+| 207 | rwa official /api/v1/dex/market/rwa/price | 429 | code=# msg=Rate limit exceeded |
+| 21 | mark fetch NVDA | 200 | price=#.# |
+| 21 | mark fetch AMD | 200 | price=#.# |
+| 21 | mark fetch TSLA | 200 | price=#.# |
+| 21 | mark fetch META | 200 | price=#.# |
+| 21 | mark fetch QQQ | 200 | price=#.# |
+| 21 | mark fetch AAPL | 200 | price=#.# |
+| 19 | Binance Web3 GET /api/v1/portfolio/tokens | 202 | non-JSON response |
+| 19 | rpc eth_getBalance | 200 | result=# |
+| 18 | Binance Web3 GET /api/v1/dex/aggregator/quote | 200 | code=# msg=userWalletAddress is required for RFQ (Ondo) quote |
+| 18 | quote fallback -> pancake | n/a | fell back: RuntimeError: userWalletAddress is required for RFQ (Ondo) quote |
+| 13 | Binance Web3 GET /api/v1/dex/aggregator/quote | 200 | ok |
+| 7 | rwa official /api/v1/dex/market/rwa/underlying-market | 200 | ok |
+| 2 | Binance Web3 GET /api/v1/dex/aggregator/swap | 200 | ok |
+| 2 | Binance Web3 POST /api/v1/dex/aggregator/tx/simulate | 404 | ok |
+| 2 | tx sim | n/a | code # but empty data payload |
+| 1 | rwa official /api/v1/dex/market/rwa/platforms | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/tokens | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/search | 200 | ok |
+| 1 | rwa official /api/v1/dex/market/rwa/underlying-profile | 429 | code=# msg=Rate limit exceeded |
+| 1 | rwa official /api/v1/dex/market/rwa/underlying-market | 429 | code=# msg=Rate limit exceeded |
+| 1 | Binance Web3 GET /api/v1/dex/aggregator/quote | 429 | code=# msg=Rate limit exceeded |
+| 1 | quote fallback -> pancake | n/a | fell back: RuntimeError: Rate limit exceeded |
+| 1 | quote mode=SWAP 0xEeeeeE->0x5b1910 | n/a | rate=#.# priceImpactPct=#.# vendor=['LiquidMesh'] |
+| 1 | quote mode=SWAP 0x5b1910->0xEeeeeE | n/a | rate=#.# priceImpactPct=#.# vendor=['LiquidMesh'] |
+
+Rows that show status `404` with outcome `ok`, and the `tx sim` rows saying "empty data payload", come from the old logger treating an HTTP 404 as success. Rows labelled `tx sim (eth_call)` are BSC RPC `balanceOf` reads, mislabelled at the time.
+
+## 2026-09-29T10:35:08+00:00 — rwa official /api/v1/dex/market/rwa/platforms
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/platforms`
+- Status: `200`  Latency: `115ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+- Time-to-first-call from process start: `5.3s`
+
+## 2026-09-29T10:35:08+00:00 — rwa official /api/v1/dex/market/rwa/tokens
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/tokens`
+- Status: `200`  Latency: `286ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/search
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/search?keyword=NVDA`
+- Status: `200`  Latency: `329ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0xc845b2894dBddd03858fd2D643B4eF725fE0849d`
+- Status: `200`  Latency: `203ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=Parameter binanceChainId is required
+- Body: `{'code': 40001, 'msg': 'Parameter binanceChainId is required', 'data': None, 'timestamp': 1790678109093, 'success': False}`
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0xc845b2894dBddd03858fd2D643B4eF725fE0849d&binanceChainId=56`
+- Status: `200`  Latency: `207ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/underlying-profile
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-profile?tokenContractAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&binanceChainId=56`
+- Status: `429`  Latency: `82ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'timestamp': 1790678109170, 'msg': 'Rate limit exceeded', 'data': '', 'code': 42900}`
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0xA9eE28C80f960B889dFbd1902055218cBa016F75`
+- Status: `429`  Latency: `81ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'data': '', 'code': 42900, 'timestamp': 1790678109176}`
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436&binanceChainId=56`
+- Status: `429`  Latency: `84ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'code': 42900, 'timestamp': 1790678109254, 'msg': 'Rate limit exceeded', 'data': ''}`
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0x02fca66c1d1afb4e2a7884261eb00f63598a7436`
+- Status: `429`  Latency: `81ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'code': 42900, 'timestamp': 1790678109257, 'msg': 'Rate limit exceeded', 'data': ''}`
+
+## 2026-09-29T10:35:09+00:00 — rwa official /api/v1/dex/market/rwa/price
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/price?tokenAddress=0x96702be57Cd9777f835117a809C7124fe4ec989A`
+- Status: `200`  Latency: `83ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=Parameter binanceChainId is required
+- Body: `{'code': 40001, 'msg': 'Parameter binanceChainId is required', 'data': None, 'timestamp': 1790678109751, 'success': False}`
+
+## 2026-09-29T10:35:11+00:00 — rwa official /api/v1/dex/market/rwa/underlying-market
+- URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/underlying-market?tokenContractAddress=0x8aD3c73F833d3F9A523aB01476625F269aEB7Cf0&binanceChainId=56`
+- Status: `200`  Latency: `94ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:35:17+00:00 — mark fetch NVDA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/NVDA`
+- Status: `200`  Latency: `26ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=228.86
+
+## 2026-09-29T10:35:17+00:00 — mark fetch AMD
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AMD`
+- Status: `200`  Latency: `31ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=607.87
+
+## 2026-09-29T10:35:17+00:00 — mark fetch TSLA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/TSLA`
+- Status: `200`  Latency: `30ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=357.45
+
+## 2026-09-29T10:35:17+00:00 — mark fetch META
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/META`
+- Status: `200`  Latency: `33ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=715.62
+
+## 2026-09-29T10:35:17+00:00 — mark fetch QQQ
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/QQQ`
+- Status: `200`  Latency: `52ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=736.53
+
+## 2026-09-29T10:35:17+00:00 — mark fetch AAPL
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AAPL`
+- Status: `200`  Latency: `230ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=338.4
+
+## 2026-09-29T10:36:12+00:00 — mark fetch META
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/META`
+- Status: `200`  Latency: `166ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=715.62
+
+## 2026-09-29T10:36:12+00:00 — mark fetch AMD
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AMD`
+- Status: `200`  Latency: `168ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=607.87
+
+## 2026-09-29T10:36:12+00:00 — mark fetch TSLA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/TSLA`
+- Status: `200`  Latency: `171ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=357.45
+
+## 2026-09-29T10:36:12+00:00 — mark fetch NVDA
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/NVDA`
+- Status: `200`  Latency: `179ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=228.86
+
+## 2026-09-29T10:36:12+00:00 — mark fetch QQQ
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/QQQ`
+- Status: `200`  Latency: `180ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=736.53
+
+## 2026-09-29T10:36:12+00:00 — mark fetch AAPL
+- URL: `https://query2.finance.yahoo.com/v8/finance/chart/AAPL`
+- Status: `200`  Latency: `199ms`
+- Docs said: regularMarketPrice present
+- Actually happened: price=338.4
+
+## 2026-09-29T10:42:12+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=118053262639304848&fromTokenAddress=0x2494b603319d4D9F9715c9f4496d9E0364B59d93&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `2367ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=userWalletAddress is required for RFQ (Ondo) quote
+- Body: `{'code': 40001, 'msg': 'userWalletAddress is required for RFQ (Ondo) quote', 'data': None, 'timestamp': 1790678530526, 'success': False}`
+
+## 2026-09-29T10:42:12+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: userWalletAddress is required for RFQ (Ondo) quote
+
+## 2026-09-29T10:42:12+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=23610652527860968&fromTokenAddress=0x2494b603319d4D9F9715c9f4496d9E0364B59d93&toTokenAddress=0x55d398326f99059fF775485246999027B3197955`
+- Status: `200`  Latency: `2452ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=40001 msg=userWalletAddress is required for RFQ (Ondo) quote
+- Body: `{'code': 40001, 'msg': 'userWalletAddress is required for RFQ (Ondo) quote', 'data': None, 'timestamp': 1790678532902, 'success': False}`
+
+## 2026-09-29T10:42:12+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: userWalletAddress is required for RFQ (Ondo) quote
+
+## 2026-09-29T10:42:12+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0x5b1910eaad6450e50f816082aa078c41f10c292f`
+- Status: `200`  Latency: `112ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:43:32+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0x5b1910eaad6450e50f816082aa078c41f10c292f`
+- Status: `200`  Latency: `105ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:43:32+00:00 — Binance Web3 GET /api/v1/dex/aggregator/quote
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote?binanceChainId=56&amount=50000000000000000000&fromTokenAddress=0x55d398326f99059fF775485246999027B3197955&toTokenAddress=0xD7dF5863A3e742F0c767768cDfcb63f09E0422f6`
+- Status: `429`  Latency: `88ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: code=42900 msg=Rate limit exceeded
+- Body: `{'msg': 'Rate limit exceeded', 'data': '', 'code': 42900, 'timestamp': 1790678612792}`
+
+## 2026-09-29T10:43:32+00:00 — quote fallback -> pancake
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/quote`
+- Status: `n/a`  Latency: `0ms`
+- Docs said: Binance quote route
+- Actually happened: fell back: RuntimeError: Rate limit exceeded
+
+## 2026-09-29T10:45:08+00:00 — Binance Web3 GET /api/v1/portfolio/tokens
+- URL: `https://web3.binance.com/wallet/api/v1/portfolio/tokens?chainId=56&address=0x4b957dcf5d914e635cbed97b0b55943c653e4331`
+- Status: `202`  Latency: `14ms`
+- Docs said: JSON body
+- Actually happened: non-JSON response
+
+## 2026-09-29T10:45:09+00:00 — rpc eth_getBalance
+- URL: `https://bsc-mainnet.nodereal.io/v1/af0c96d75dc744049832a80daa8469e8`
+- Status: `200`  Latency: `986ms`
+- Docs said: result
+- Actually happened: result=0x20946154315a00
+
+## 2026-09-29T10:45:09+00:00 — tx sim (eth_call)
+- URL: `https://bsc-mainnet.nodereal.io/v1/af0c96d75dc744049832a80daa8469e8`
+- Status: `200`  Latency: `75ms`
+- Docs said: result
+- Actually happened: result=0x0000000000000000000000000000000000000000000000000000000000000000
+
+## 2026-09-29T10:45:09+00:00 — tx sim (eth_call)
+- URL: `https://bsc-mainnet.nodereal.io/v1/af0c96d75dc744049832a80daa8469e8`
+- Status: `200`  Latency: `584ms`
+- Docs said: result
+- Actually happened: result=0x0000000000000000000000000000000000000000000000000000000000000000
+
+## 2026-09-29T10:45:34+00:00 — Binance Web3 GET /api/v1/portfolio/tokens
+- URL: `https://web3.binance.com/wallet/api/v1/portfolio/tokens?chainId=56&address=0x4b957dcf5d914e635cbed97b0b55943c653e4331`
+- Status: `202`  Latency: `13ms`
+- Docs said: JSON body
+- Actually happened: non-JSON response
+
+## 2026-09-29T10:45:34+00:00 — rpc eth_getBalance
+- URL: `https://bsc-mainnet.nodereal.io/v1/af0c96d75dc744049832a80daa8469e8`
+- Status: `200`  Latency: `291ms`
+- Docs said: result
+- Actually happened: result=0x20946154315a00
+
+## 2026-09-29T10:46:15+00:00 — Binance Web3 GET /api/v1/dex/aggregator/swap
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/swap?binanceChainId=56&amount=5000000000000000&fromTokenAddress=0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE&toTokenAddress=0x5b1910eaad6450e50f816082aa078c41f10c292f&userWalletAddress=0x4b957dcf5d914e635cbed97b0b55943c653e4331&quoteId=9ca3cb8e57894980b236470cec6d57bc&slippagePercent=1`
+- Status: `200`  Latency: `99ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:46:15+00:00 — quote mode=SWAP 0xEeeeeE->0x5b1910
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/swap`
+- Status: `n/a`  Latency: `0ms`
+- Actually happened: rate=2.1288724746018195 priceImpactPct=0.003005687 vendor=['LiquidMesh']
+
+## 2026-09-29T10:46:16+00:00 — Binance Web3 POST /api/v1/dex/aggregator/tx/simulate
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/tx/simulate`
+- Status: `404`  Latency: `98ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:46:16+00:00 — tx sim
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/tx/simulate`
+- Status: `n/a`  Latency: `99ms`
+- Docs said: 200 with { success, gasUsed } or similar
+- Actually happened: code 0 but empty data payload
+- Body: `None`
+
+## 2026-09-29T10:48:20+00:00 — Binance Web3 GET /api/v1/dex/aggregator/swap
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/swap?binanceChainId=56&amount=2661090000000000&fromTokenAddress=0x5b1910eaad6450e50f816082aa078c41f10c292f&toTokenAddress=0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE&userWalletAddress=0x4b957dcf5d914e635cbed97b0b55943c653e4331&quoteId=5ee5bb667d024b0c8bc834fba7da3099&slippagePercent=1`
+- Status: `200`  Latency: `97ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:48:20+00:00 — quote mode=SWAP 0x5b1910->0xEeeeeE
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/swap`
+- Status: `n/a`  Latency: `0ms`
+- Actually happened: rate=0.46998555309963025 priceImpactPct=0.0015417639 vendor=['LiquidMesh']
+
+## 2026-09-29T10:48:20+00:00 — Binance Web3 POST /api/v1/dex/aggregator/tx/simulate
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/tx/simulate`
+- Status: `404`  Latency: `113ms`
+- Docs said: code 0 / success true with data payload
+- Actually happened: ok
+
+## 2026-09-29T10:48:20+00:00 — tx sim
+- URL: `https://web3.binance.com/build/api/v1/dex/aggregator/tx/simulate`
+- Status: `n/a`  Latency: `113ms`
+- Docs said: 200 with { success, gasUsed } or similar
+- Actually happened: code 0 but empty data payload
+- Body: `None`
