@@ -108,6 +108,7 @@ async def price(client: httpx.AsyncClient, address: str | None = None, symbol: s
     # Sibling endpoints name the address tokenContractAddress, so send both spellings.
     return await _get(client, "/api/v1/dex/market/rwa/price", {
         "tokenAddress": address, "tokenContractAddress": address,
+        "tokenContractAddresses": address,
         "binanceChainId": BSC_CHAIN_ID, "symbol": symbol,
     })
 
