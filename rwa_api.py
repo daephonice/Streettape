@@ -216,7 +216,10 @@ async def devcheck(underlying: str = "NVDA", address: str = "0x02fca66c1d1afb4e2
         for name, fn in calls.items():
             try:
                 data = await fn(client)
-                out[name] = {"ok": True, "items": len(data) if isinstance(data, (list, dict)) else None}
+                entry = {"ok": True, "items": len(data) if isinstance(data, (list, dict)) else None}
+                if name in ("underlying_profile", "underlying_market"):
+                    entry["data"] = data
+                out[name] = entry
             except Exception as e:
                 out[name] = {"ok": False, "error": str(e)[:200]}
     return {"ok": all(v["ok"] for v in out.values()), "results": out}
