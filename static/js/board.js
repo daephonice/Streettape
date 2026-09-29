@@ -1,5 +1,5 @@
 /* Gap desk (/). Three wrapper columns per underlying: Tape / Official / Fair,
- * plus a dominant session state. Data: /api/board (groups + session), /api/session.
+ * plus a dominant session state. Data: /api/board (groups + session), /api/session, /api/agent/scan (desk line + rotate).
  * Fair only shows while cash is shut, mirroring agent.official_vs_fair_line(). */
 (function () {
   const REFRESH_MS = 45000;
@@ -14,6 +14,7 @@
   const searchEl = $('bd-search');
   let lastSnap = null;
   let session = null;
+  let arbMap = {};   // underlying -> viable net arb (from /api/agent/scan)
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -70,8 +71,11 @@
     }
     w.appendChild(badges);
     if (t.hasTape) {
-      const a = el('a', 'bd-trade', 'Trade');
-      a.href = '/t/' + encodeURIComponent(t.symbol) + '#swap';
+      const rot = arbMap[g.underlying];
+      const a = el('a', 'bd-trade', rot ? 'Rotate' : 'Trade');
+      a.href = rot
+        ? '/t/' + encodeURIComponent(g.underlying) + '#rotate'
+        : '/t/' + encodeURIComponent(t.symbol) + '#swap';
       w.appendChild(a);
     } else {
       const s = el('span', 'bd-trade bd-trade-off', 'no tape');
@@ -133,6 +137,46 @@
     }
   }
 
+  // ---- Desk line (same payload as GET /api/agent/scan) ---------------------
+  const bps = (v) => Math.round(v) + ' bps';
+  function renderDesk(scan) {
+    const line = $('bd-desk-line'), btn = $('bd-desk-btn');
+    if (!line || !btn) return;
+    const arbs = scan.arbs || [];
+    arbMap = {};
+    arbs.forEach((a) => { if (a.viable) arbMap[a.underlying] = a; });
+    const best = scan.best;
+    line.textContent = '';
+    if (best) {
+      line.className = 'bd-desk-line';
+      line.appendChild(el('b', 'pos', best.underlying + ' +' + bps(best.netBps) + ' net'));
+      line.appendChild(document.createTextNode(
+        ' · sell ' + best.richSymbol + ' → buy ' + best.cheapSymbol +
+        ' · gross ' + bps(best.grossBps) + ' − cost ' + bps(best.costBps)));
+      btn.hidden = false;
+      btn.href = '/t/' + encodeURIComponent(best.underlying) + '#rotate';
+      btn.textContent = 'Rotate $' + Math.round(best.sizeUsd || 50);
+    } else {
+      line.className = 'bd-desk-line dim';
+      const top = arbs[0];
+      line.textContent = top
+        ? 'No viable rotation. Best gap ' + top.underlying + ' gross ' + bps(top.grossBps) + ' does not clear ~' + bps(top.costBps) + ' cost.'
+        : 'No viable rotation. No cross-wrapper gap above 1% right now.';
+      btn.hidden = true;
+    }
+    renderBoard();
+  }
+  async function refreshDesk() {
+    if (document.hidden) return;
+    try {
+      const resp = await fetch('/api/agent/scan', { cache: 'no-store' });
+      if (!resp.ok) return;
+      renderDesk(await resp.json());
+    } catch (err) {
+      console.warn('desk refresh failed', err);
+    }
+  }
+
   // ---- Search --------------------------------------------------------------
   function applySearch(raw) {
     const q = (raw || '').trim().toLowerCase();
@@ -159,12 +203,12 @@
     const s = session;
     if (!sub || !s) return;
     if (s.cashOpen && typeof s.nyCloseInSec === 'number') {
-      sub.textContent = 'Close in ' + fmtCountdown(s.nyCloseInSec) + ' · ' + s.wat + ' WAT';
+      sub.textContent = 'Close in ' + fmtCountdown(s.nyCloseInSec) + ' · Lagos ' + s.wat + ' · New York ' + s.et;
       s.nyCloseInSec = Math.max(0, s.nyCloseInSec - 60);
     } else if (s.nyCloseAtWat) {
-      sub.textContent = 'NY close ' + s.nyCloseAtWat + ' WAT';
+      sub.textContent = 'Lagos ' + s.wat + ' · New York ' + s.et + ' · NY close ' + s.nyCloseAtWat + ' WAT';
     } else {
-      sub.textContent = s.wat ? s.wat + ' WAT' : '';
+      sub.textContent = s.wat ? 'Lagos ' + s.wat + ' · New York ' + s.et : '';
     }
   }
   function applySession(s, rerender) {
@@ -195,7 +239,9 @@
   if (hero0) session = { cashOpen: hero0.dataset.cashOpen === '1', label: ($('sess-label') || {}).textContent || '' };
   refreshSession();
   refreshBoard();
+  refreshDesk();
   setInterval(refreshBoard, REFRESH_MS);
+  setInterval(refreshDesk, REFRESH_MS);
   setInterval(refreshSession, SESS_MS);
   setInterval(tickSub, 60000);
 })();

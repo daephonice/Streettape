@@ -8,8 +8,8 @@
  *
  * Group pages (data-kind="group", e.g. /t/NVDA or the legacy /t/NVDAx): the traded
  * SYMBOL is the cheapest rail (auto-picked, or the wrapper the URL/legacy link named
- * if you want a specific one focused) and Lend only shows when that rail is a Venus
- * bStock wrapper.
+ * if you want a specific one focused). #rotate scrolls to the cross-wrapper card;
+ * #swap opens Buy on the focused wrapper once a wallet is connected.
  */
 (function () {
   'use strict';
@@ -34,7 +34,7 @@
     fairRow: $('tk-fair-row'), fair: $('tk-fair'), premFairRow: $('tk-prem-fair-row'), premFair: $('tk-prem-fair'),
     plot: $('tk-plot'), axis: $('tk-axis'), noHist: $('tk-nohist'), ranges: $('tk-ranges'),
     pos: $('tk-pos'), posVal: $('tk-pos-val'), posAmt: $('tk-pos-amt'), posDelta: $('tk-pos-delta'), posPct: $('tk-pos-pct'), posPnl: $('tk-pos-pnl'),
-    bar: $('tk-bar'), send: $('tk-send'), sell: $('tk-sell'), buy: $('tk-buy'), lend: $('tk-lend'),
+    bar: $('tk-bar'), send: $('tk-send'), sell: $('tk-sell'), buy: $('tk-buy'),
     back: $('tk-back'), share: $('tk-share'), mint: $('tk-mint'), mintText: $('tk-mint-text'),
     about: $('tk-about'), aboutText: $('tk-about-text'), more: $('tk-readmore'),
     logo: $('tk-logo'), symText: $('tk-sym-text'), aboutName: $('tk-about-name'), urlLink: $('tk-url-link'), urlText: $('tk-url-text'),
@@ -440,7 +440,7 @@
     setTimeout(tickBalances, 2500); // pick up the settled balance
   };
 
-  // ---- Group (RWA name page: mark + three tapes + cheapest/Lend rail) -----
+  // ---- Group (RWA name page: mark + three tapes + cheapest rail) -----
   function fmtPrem(p) {
     if (p === null || p === undefined || !isFinite(p)) return '—';
     const r = Number((p * 100).toFixed(1));
@@ -515,31 +515,6 @@
       if (els.urlText) els.urlText.textContent = tradeW.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
     }
 
-    // Lend: Venus Core Pool (collateral only, chainId 56) for the three
-    // listed bStocks. Nothing else is listed as Venus collateral — no mock
-    // vault stands in for it.
-    const VENUS_BSTOCKS = new Set(['NVDAB', 'TSLAB', 'SPCXB']);
-    const VENUS_URL = 'https://app.venus.io/core-pool/markets?chainId=56';
-    if (els.lend) {
-      const label = $('tk-lend-label');
-      els.lend.hidden = false;
-      if (VENUS_BSTOCKS.has(tradeW.symbol)) {
-        els.lend.classList.remove('not-collateral');
-        els.lend.href = VENUS_URL;
-        els.lend.target = '_blank';
-        els.lend.rel = 'noopener noreferrer';
-        if (label) label.textContent = 'Lend on Venus';
-        els.bar.classList.add('can-lend');
-      } else {
-        els.lend.classList.add('not-collateral');
-        els.lend.href = '#';
-        els.lend.removeAttribute('target');
-        els.lend.removeAttribute('rel');
-        if (label) label.textContent = 'Not listed as Venus collateral';
-        els.bar.classList.remove('can-lend');
-      }
-    }
-
     renderTapeRow(g);
     render();
     loadChart();
@@ -551,6 +526,10 @@
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
       if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); }
+      if (location.hash === '#swap' && !loadGroup.opened && state.address) {
+        loadGroup.opened = true;
+        openSwap('buy', FOCUS || undefined);
+      }
     } catch (err) {
       setTimeout(loadGroup, 3000);
     }
@@ -562,6 +541,7 @@
     rotateBtn: $('tk-rotate-btn'), flattenBtn: $('tk-flatten-btn'),
   };
   const QUICK_SIZE_USD = 10;
+  const ROTATE_USD = 50;
 
   async function loadArb() {
     if (!arbEls.card) return;
@@ -570,6 +550,10 @@
       const hit = data.hit;
       if (!hit) { arbEls.card.hidden = true; return; }
       arbEls.card.hidden = false;
+      if (location.hash === '#rotate' && !loadArb.scrolled) {
+        loadArb.scrolled = true;
+        arbEls.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
       arbEls.net.textContent = (hit.viable ? '+' : '') + Math.round(hit.netBps) + ' bps';
       arbEls.net.className = 'tk-arb-net ' + (hit.viable ? 'pos' : 'neg');
       arbEls.line.textContent = `Sell ${hit.richSymbol} \u2192 Buy ${hit.cheapSymbol} \u00b7 $${hit.sizeUsd.toFixed(0)} each leg`;
@@ -594,10 +578,10 @@
     if (!arbEls.rotateBtn) return;
     arbEls.rotateBtn.disabled = true;
     try {
-      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${QUICK_SIZE_USD}`);
+      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${ROTATE_USD}`);
       const hit = data.hit;
       if (!hit) { arbEls.rotateBtn.textContent = 'No rotate available'; return; }
-      if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${QUICK_SIZE_USD} · not viable`; return; }
+      if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${ROTATE_USD} · not viable`; return; }
       openSwap('sell', hit.richSymbol);
       openSwap('buy', hit.cheapSymbol);
     } catch (err) {
