@@ -110,12 +110,17 @@ async def search(client: httpx.AsyncClient, query: str):
     return await _get(client, "/api/v1/dex/market/rwa/search", {"keyword": query})
 
 
-async def underlying_profile(client: httpx.AsyncClient, underlying: str):
-    return await _get(client, "/api/v1/dex/market/rwa/underlying-profile", {"underlying": underlying})
+BSC_CHAIN_ID = "56"
 
 
-async def underlying_market(client: httpx.AsyncClient, underlying: str):
-    return await _get(client, "/api/v1/dex/market/rwa/underlying-market", {"underlying": underlying})
+async def underlying_profile(client: httpx.AsyncClient, address: str, chain_id: str = BSC_CHAIN_ID):
+    return await _get(client, "/api/v1/dex/market/rwa/underlying-profile",
+                      {"tokenContractAddress": address, "binanceChainId": chain_id})
+
+
+async def underlying_market(client: httpx.AsyncClient, address: str, chain_id: str = BSC_CHAIN_ID):
+    return await _get(client, "/api/v1/dex/market/rwa/underlying-market",
+                      {"tokenContractAddress": address, "binanceChainId": chain_id})
 
 
 async def get_official_snapshot(addresses: list[str]) -> dict | None:
@@ -187,7 +192,7 @@ _devcheck_last = 0.0
 DEVCHECK_MIN_INTERVAL = 60.0
 
 
-async def devcheck(underlying: str = "NVDA") -> dict:
+async def devcheck(underlying: str = "NVDA", address: str = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436") -> dict:
     """Fire the RWA Data endpoints not used by the board (platforms, search,
     underlying_profile, underlying_market) once so devlog records them.
     Rate-limited; returns per-endpoint ok/error summary."""
@@ -203,8 +208,8 @@ async def devcheck(underlying: str = "NVDA") -> dict:
     calls = {
         "platforms": lambda c: platforms(c),
         "search": lambda c: search(c, underlying),
-        "underlying_profile": lambda c: underlying_profile(c, underlying),
-        "underlying_market": lambda c: underlying_market(c, underlying),
+        "underlying_profile": lambda c: underlying_profile(c, address),
+        "underlying_market": lambda c: underlying_market(c, address),
     }
     out = {}
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:

@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 import rwa
@@ -27,6 +28,15 @@ async def health():
 @router.get("/_devcheck")
 async def api_devcheck():
     return await rwa_api.devcheck()
+
+
+@router.get("/_devex")
+async def api_devex():
+    import os
+    import devlog
+    if not os.path.exists(devlog.PATH):
+        raise HTTPException(status_code=404, detail="No DEVEX log yet")
+    return FileResponse(devlog.PATH, media_type="text/markdown", filename="DEVEX.md")
 
 
 @router.get("/board")
