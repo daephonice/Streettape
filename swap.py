@@ -193,7 +193,11 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 "slippagePercent": SLIPPAGE_PCT,
             }
             swap_data = await _request(client, "GET", "/api/v1/dex/aggregator/swap", params=swap_params)
-            router_result = swap_data["routerResult"]
+            if not isinstance(swap_data, dict):
+                raise RuntimeError(f"swap endpoint returned empty/invalid data: {str(swap_data)[:150]}")
+            router_result = swap_data.get("routerResult")
+            if not isinstance(router_result, dict):
+                raise RuntimeError(f"swap response missing routerResult: {str(swap_data)[:300]}")
             out_ui = _from_units(router_result["toTokenAmount"], to_dec)
             exec_mode = swap_data.get("executionMode", "SWAP")
 
@@ -227,7 +231,9 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 result["uiMinReceived"] = out_ui  # RFQ is a firm quote, no slippage
                 result["sim"] = {"ok": None, "gas": None, "error": None, "note": "N/A for RFQ — poll /order/{id} after submit"}
             else:
-                tx = swap_data["tx"]
+                tx = swap_data.get("tx")
+                if not isinstance(tx, dict):
+                    raise RuntimeError(f"swap response missing tx: {str(swap_data)[:300]}")
                 built_tx = {
                     "from": tx["from"],
                     "to": tx["to"],
@@ -274,6 +280,13 @@ async def simulate_transaction(built_tx: dict, taker: str) -> dict:
                     error=str(e),
                 )
                 return {"ok": None, "gas": None, "error": str(e)}
+    if not isinstance(data, dict):
+        devlog.log_call(
+            what="tx sim", url=f"{BASE_URL}/api/v1/dex/aggregator/tx/simulate", status="n/a", ms=t.ms,
+            expected="200 with { success, gasUsed } or similar",
+            actual="code 0 but empty data payload", body=str(data),
+        )
+        return {"ok": None, "gas": None, "error": "simulate returned empty data"}
     ok = bool(data.get("success", data.get("ok", True)))
     gas = data.get("gasUsed") or data.get("gas")
     err = None if ok else (data.get("error") or data.get("message") or "simulation failed")
