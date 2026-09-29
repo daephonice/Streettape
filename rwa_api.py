@@ -170,7 +170,12 @@ async def get_official_snapshot(addresses: list[str]) -> dict | None:
                     _price_parked_until = time.time() + PRICE_PARK_SECONDS
                     log.warning("rwa_api: price endpoint failing, parked %ss", PRICE_PARK_SECONDS)
                     break
-                if not row:
+                if isinstance(row, list):
+                    # rwa/price now answers with a list (tokenContractAddresses is plural)
+                    row = next((r for r in row if isinstance(r, dict) and
+                                str(r.get("tokenContractAddress") or r.get("tokenAddress") or "").lower() == addr.lower()),
+                               next((r for r in row if isinstance(r, dict)), None))
+                if not isinstance(row, dict) or not row:
                     continue
                 out[addr.lower()] = {
                     "price": float(row["tokenPrice"]) if row.get("tokenPrice") else None,
