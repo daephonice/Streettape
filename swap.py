@@ -46,7 +46,9 @@ def _price_of_mint(mint: str):
     return None
 
 
-def _fallback_quote(input_mint: str, output_mint: str, ui_amount: float) -> dict:
+def _fallback_quote(input_mint: str, output_mint: str, ui_amount: float, reason: str = "unspecified") -> dict:
+    devlog.log_call(what="quote fallback -> pancake", url=f"{BASE_URL}/api/v1/dex/aggregator/quote", status="n/a", ms=0,
+                    expected="Binance quote route", actual=f"fell back: {reason}")
     in_px = _price_of_mint(input_mint)
     out_px = _price_of_mint(output_mint)
     out_ui = (ui_amount * in_px / out_px) if in_px and out_px and ui_amount > 0 else None
@@ -63,6 +65,7 @@ def _fallback_quote(input_mint: str, output_mint: str, ui_amount: float) -> dict
         "provider": "pancake",
         "executionMode": "SWAP",
         "sim": None,
+        "fallbackReason": reason,
     }
 
 
@@ -93,7 +96,12 @@ async def _request(client: httpx.AsyncClient, method: str, path: str, params: di
     full_url = str(req.url)
     with devlog.timed() as t:
         resp = await client.send(req)
-    data = resp.json()
+    try:
+        data = resp.json()
+    except Exception:
+        devlog.log_call(what=f"Binance Web3 {method.upper()} {path}", url=full_url, status=resp.status_code, ms=t.ms,
+                        expected="JSON body", actual="non-JSON response", body=resp.text)
+        raise RuntimeError(f"non-JSON response ({resp.status_code}) at {path}: {resp.text[:150]}")
     ok = data.get("code") in (0, None) and data.get("success", True)
     devlog.log_call(
         what=f"Binance Web3 {method.upper()} {path}", url=full_url, status=resp.status_code, ms=t.ms,
@@ -118,7 +126,7 @@ def _from_units(raw: str, decimals: int) -> float:
 
 async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None = None) -> dict:
     if not API_KEY or not SECRET_KEY or ui_amount <= 0:
-        return _fallback_quote(input_mint, output_mint, ui_amount)
+        return _fallback_quote(input_mint, output_mint, ui_amount, "keys unset or amount<=0")
 
     # Aggregator wants native BNB as the placeholder 0xEeee... address (already rwa.NATIVE).
     from_addr = input_mint
@@ -141,7 +149,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
             }
             routes = await _request(client, "GET", "/api/v1/dex/aggregator/quote", params=quote_params)
             if not routes:
-                return _fallback_quote(input_mint, output_mint, ui_amount)
+                return _fallback_quote(input_mint, output_mint, ui_amount, "quote returned no routes")
             best = next((r for r in routes if r.get("isBest")), routes[0])
             from_dec = int(best["fromToken"]["decimal"])
             if from_dec != 18:
@@ -149,7 +157,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 quote_params["amount"] = probe_amount
                 routes = await _request(client, "GET", "/api/v1/dex/aggregator/quote", params=quote_params)
                 if not routes:
-                    return _fallback_quote(input_mint, output_mint, ui_amount)
+                    return _fallback_quote(input_mint, output_mint, ui_amount, "re-quote returned no routes")
                 best = next((r for r in routes if r.get("isBest")), routes[0])
 
             to_dec = int(best["toToken"]["decimal"])
@@ -235,9 +243,9 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 result["sim"] = await simulate_transaction(built_tx, taker)
 
             return result
-    except Exception:
+    except Exception as e:
         log.warning("binance web3 quote failed, falling back to pancake", exc_info=True)
-        return _fallback_quote(input_mint, output_mint, ui_amount)
+        return _fallback_quote(input_mint, output_mint, ui_amount, f"{type(e).__name__}: {str(e)[:300]}")
 
 
 async def simulate_transaction(built_tx: dict, taker: str) -> dict:
