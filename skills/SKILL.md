@@ -2,7 +2,7 @@
 name: streettape-desk
 description: Use in an agentic wallet for tokenized-stock questions on BNB Chain — "what's rich vs Friday", "quote $50 flatten", "rotate into cheapest NVDA", "alert only cash-shut". Calls the StreetTape APIs; never computes prices itself.
 dependencies:
-  - binance-agentic-wallet
+  - binance/binance-skills-hub/skills/binance-web3/binance-agentic-wallet
 ---
 
 # streettape-desk
@@ -11,7 +11,7 @@ Base URL: `https://streettape.up.railway.app` (override with `STREETTAPE_URL`).
 All prices, premiums, gaps, costs and quotes come from the API. Never estimate them. Quote, don't sign: trades are confirmed and signed in the user's own wallet.
 
 Tool: `python skills/streettape.py <command>` (stdlib only, prints JSON).
-Build/sign goes through the official `binance-agentic-wallet` skill when `BINANCE_AW_CMD` is set; otherwise StreetTape's `/api/swap/order` builds the quote. Signing only with `quote ... --sign` after the user says yes.
+Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market-order quote|swap`) when `baw` is installed and signed in; otherwise StreetTape's `/api/swap/order` builds the quote. Signing only with `quote ... --sign` after the user says yes; it then polls the order to FINISHED/FAILED.
 
 | User says | Command | Endpoint |
 |---|---|---|

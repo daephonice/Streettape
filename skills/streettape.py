@@ -3,9 +3,10 @@
 import argparse
 import json
 import os
-import shlex
+import shutil
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -13,10 +14,11 @@ import urllib.request
 BASE = os.getenv("STREETTAPE_URL", "https://streettape.up.railway.app").rstrip("/")
 USDT = "0x55d398326f99059fF775485246999027B3197955"
 FLATTEN_MIN = 0.02
-# Official `binance-agentic-wallet` skill entrypoint (installed via
-# `npx skills add binance-agentic-wallet`). Contract: JSON request on stdin,
-# JSON result on stdout. Set to the skill's CLI, e.g. "npx skills run binance-agentic-wallet swap".
-AW_CMD = os.getenv("BINANCE_AW_CMD", "").strip()
+# Official `binance-agentic-wallet` skill drives the `baw` CLI
+# (npx skills add https://github.com/binance/binance-skills-hub/tree/main/skills/binance-web3/binance-agentic-wallet).
+# If `baw` is on PATH it does quote/build/sign; otherwise we fall back to StreetTape /api/swap/order.
+BAW = shutil.which("baw")
+CHAIN = "56"
 
 
 def call(path, params=None, body=None):
@@ -35,21 +37,36 @@ def call(path, params=None, body=None):
         sys.exit(json.dumps({"error": str(e)}))
 
 
+def _baw(*args):
+    r = subprocess.run([BAW, *args, "--json"], capture_output=True, text=True, timeout=60)
+    d = json.loads(r.stdout)
+    if not d.get("success"):
+        raise RuntimeError(str(d)[:300])
+    return d.get("data")
+
+
 def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
-    """Build (and, only if sign=True, sign) via the official Agentic Wallet skill.
-    Falls back to StreetTape /api/swap/order when BINANCE_AW_CMD is unset or fails."""
-    if not AW_CMD:
+    """Quote (default) or sign+submit (sign=True, only after user confirmed) via official `baw`.
+    Returns None when baw is missing or fails, so callers fall back to the StreetTape API."""
+    if not BAW:
         return None
-    req = {"chain": "bsc", "chainId": 56, "fromToken": input_mint, "toToken": output_mint,
-           "amount": amount, "wallet": taker, "sign": bool(sign), "dryRun": not sign}
+    base = ["market-order", "quote" if not sign else "swap", "--fromTokenQty", repr(float(amount)),
+            "--fromToken", input_mint, "--toToken", output_mint, "--binanceChainId", CHAIN]
     try:
-        r = subprocess.run(shlex.split(AW_CMD), input=json.dumps(req), capture_output=True, text=True, timeout=60)
-        if r.returncode != 0:
-            return None
-        res = json.loads(r.stdout)
+        d = _baw(*base)
+        if not sign:
+            return {"provider": "binance_agentic_wallet", "signed": False, "uiOutAmount": float(d["toCoinAmount"]),
+                    "priceImpactPct": None, "slippage": d.get("slippage"), "needsWallet": False}
+        oid = d["orderId"]
+        for _ in range(15):  # orderId is only "submitted"; poll to a terminal state
+            time.sleep(2)
+            o = _baw("market-order", "list", "--orderId", str(oid))["list"][0]
+            if o["status"] in ("FINISHED", "FAILED"):
+                return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid,
+                        "status": o["status"], "txHash": o.get("txHash")}
+        return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid, "status": "PENDING"}
     except Exception:
         return None
-    return {"provider": "binance_agentic_wallet", "signed": bool(sign), **(res if isinstance(res, dict) else {"result": res})}
 
 
 def order(input_mint, output_mint, amount, taker=None, sign=False):
