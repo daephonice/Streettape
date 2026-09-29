@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 import prices
+import rwa
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -18,6 +19,8 @@ def _static_v(rel_path: str) -> str:
 
 
 templates.env.globals["static_v"] = _static_v
+templates.env.globals["format_premium"] = rwa.format_premium
+templates.env.globals["premium_status"] = rwa.premium_status
 
 TELEGRAM_BOT_URL = (
     os.getenv("TELEGRAM_PUBLIC_URL", "").strip()
@@ -26,8 +29,32 @@ TELEGRAM_BOT_URL = (
 templates.env.globals["telegram_bot_url"] = TELEGRAM_BOT_URL
 
 
+PLATFORM_ORDER = ("xstocks", "ondo", "bstocks")
+
+
+def _board_context() -> dict:
+    snap = rwa.get_cached_snapshot()
+    session = snap.get("session") or rwa.session_now()
+    return {
+        "groups": snap.get("groups") or [],
+        "session": session,
+        "tape_stale": bool(snap.get("tapeStale")),
+        "platform_order": PLATFORM_ORDER,
+    }
+
+
 @router.get("/", response_class=HTMLResponse)
-async def home_page(request: Request):
+async def board_page(request: Request):
+    return templates.TemplateResponse(request, "board.html", _board_context())
+
+
+@router.get("/board")
+async def board_redirect():
+    return RedirectResponse(url="/", status_code=302)
+
+
+@router.get("/wallet", response_class=HTMLResponse)
+async def wallet_page(request: Request):
     return templates.TemplateResponse(request, "home.html", {})
 
 
@@ -56,7 +83,6 @@ async def lend_vault_page(request: Request, symbol: str):
 
 @router.get("/t/{symbol}", response_class=HTMLResponse)
 async def token_page(request: Request, symbol: str):
-    import rwa
     sym = (symbol or "").upper()
     underlying = next((u for u in rwa.UNIVERSE if u["underlying"] == sym), None)
     focus_symbol = None
@@ -77,17 +103,4 @@ async def token_page(request: Request, symbol: str):
         "underlying": underlying["underlying"],
         "underlying_name": underlying["name"],
         "focus_symbol": focus_symbol,
-    })
-
-
-@router.get("/board", response_class=HTMLResponse)
-async def board_page(request: Request):
-    import rwa
-    import market_stats
-    snap = rwa.get_cached_snapshot()
-    return templates.TemplateResponse(request, "board.html", {
-        "tokens": snap.get("tokens") or [],
-        "stats": market_stats.get_stats(),
-        "fmt_compact": market_stats.fmt_compact,
-        "session": snap.get("session") or rwa.session_now(),
     })

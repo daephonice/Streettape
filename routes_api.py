@@ -130,6 +130,31 @@ async def api_agent_arb(underlying: str, size_usd: float = 50.0):
     return {"underlying": underlying.upper(), "hit": priced}
 
 
+@router.get("/agent/flatten/{underlying}")
+async def api_agent_flatten(underlying: str, size_usd: float = 10.0):
+    """Richest-wrapper sell quote for the token page's 'Flatten $N' button.
+    Reuses agent.flatten_candidates' >2% threshold; None if nothing qualifies."""
+    import swap as swap_mod
+    hits = agent.flatten_candidates(underlying)
+    if not hits:
+        return {"underlying": underlying.upper(), "hit": None}
+    t = max(hits, key=lambda h: h["premium"])
+    px = t.get("tokenPrice") or 0
+    if px <= 0:
+        return {"underlying": underlying.upper(), "hit": None}
+    leg = await swap_mod.quote(t["mint"], rwa.USDT, size_usd / px)
+    return {
+        "underlying": underlying.upper(),
+        "hit": {
+            "symbol": t["symbol"],
+            "premium": t["premium"],
+            "tokenPrice": t["tokenPrice"],
+            "sizeUsd": size_usd,
+            "sellLeg": leg,
+        },
+    }
+
+
 class SwapOrderRequest(BaseModel):
     inputMint: str
     outputMint: str
