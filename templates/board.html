@@ -32,9 +32,13 @@
   <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
     <span class="sess-wrap">
       <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
-      <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · {{ session.wat }} WAT{% else %}NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
+      <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
     </span>
     <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open. Official mark is live, so tape and official should agree.{% else %}Cash is shut. Official is the last print; Fair is where the underlying should trade now. The gap is the trade.{% endif %}</p>
+    <div class="bd-desk" id="bd-desk">
+      <p class="bd-desk-line dim" id="bd-desk-line">Scanning wrappers for a gap that clears cost…</p>
+      <a class="bd-desk-btn" id="bd-desk-btn" href="/" hidden>Rotate $50</a>
+    </div>
     <p class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited). Showing last good read.</p>
   </section>
 
