@@ -230,8 +230,12 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         token_price = off.get("price") if off.get("price") is not None else tape.get("price")
         mark = off.get("markPrice") if off.get("markPrice") is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
         multiplier = off.get("multiplier") if off.get("multiplier") is not None else w.get("multiplier")
-        prem = rwa.premium(token_price, mark) if token_price and mark else None
         fm = fair_marks.get(w["underlying"]) or {}
+        last_print_used = False
+        if mark is None and w.get("yahoo") and fm.get("lastPrint"):
+            mark = fm["lastPrint"]  # last stored cash print; live fetch missed
+            last_print_used = True
+        prem = rwa.premium(token_price, mark) if token_price and mark else None
         fair_price = fm.get("fairPrice")
         prem_fair = rwa.premium(token_price, fair_price) if token_price and fair_price else None
         # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
@@ -256,7 +260,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             ),
             "url": f"https://pancakeswap.finance/swap?chain=bsc&outputCurrency={w['address']}" if has_addr else None,
             "multiplier": multiplier,
-            "markSource": "rwa" if off.get("markPrice") is not None else ("yahoo" if mark else None),
+            "markSource": "rwa" if off.get("markPrice") is not None else (("last-print" if last_print_used else "yahoo") if mark else None),
             "fairPrice": fair_price,
             "fairBeta": fm.get("beta") if fair_price else None,
             "fairIndexMove": fm.get("indexMove") if fair_price else None,

@@ -182,12 +182,12 @@ def synthetic_marks(underlyings: list[str], cash_open: bool) -> dict[str, dict]:
             if not last_print:
                 continue
             if cash_open:
-                out[und] = {"fairPrice": last_print, "beta": 0.0, "indexMove": 0.0, "newsShock": 0.0}
+                out[und] = {"fairPrice": last_print, "lastPrint": last_print, "beta": 0.0, "indexMove": 0.0, "newsShock": 0.0}
                 continue
             beta = _beta(db, und, qqq_symbol, now) if qqq_symbol else 0.0
             shock = _news_shock(und)
             fair = last_print * (1 + beta * index_move) * (1 + shock)
-            out[und] = {"fairPrice": fair, "beta": beta, "indexMove": index_move, "newsShock": shock}
+            out[und] = {"fairPrice": fair, "lastPrint": last_print, "beta": beta, "indexMove": index_move, "newsShock": shock}
     except Exception:
         log.warning("fair: synthetic_marks failed", exc_info=True)
     finally:
