@@ -17,7 +17,7 @@ uvicorn main:app --reload
 Install: `npx skills add <owner>/Streettape --skill streettape-desk` (or copy the folder into your agent's skills dir).
 Set `STREETTAPE_URL` to point at another deployment.
 
-Official skill: `npx skills add binance-agentic-wallet`, then set `BINANCE_AW_CMD` to its CLI so quotes/signing route through it.
+Official skill: `npx skills add https://github.com/binance/binance-skills-hub/tree/main/skills/binance-web3/binance-agentic-wallet` (installs the `baw` CLI; sign in via the Binance app). When `baw` is on PATH, `skills/streettape.py` quotes/signs through it; otherwise it uses `/api/swap/order`.
 
 ## BNB Agent Studio / ERC-8004
 
