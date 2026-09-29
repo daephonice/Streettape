@@ -7,7 +7,7 @@
   const ORDER = ['xstocks', 'ondo', 'bstocks'];
   const SESS_CLASS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
   const COPY_OPEN = 'Cash is open. Official mark is live, so tape and official should agree.';
-  const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is where the underlying should trade now. The gap is the trade.';
+  const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
 
   const $ = (id) => document.getElementById(id);
   const groupsEl = $('bd-groups');
@@ -106,6 +106,13 @@
     cols.style.setProperty('--n', String(ws.length || 1));
     ws.forEach((t) => cols.appendChild(buildWrapper(g, t, cashOpen)));
     art.appendChild(cols);
+    const fw = ws.find((t) => !cashOpen && !g.noYahoo && g.markPrice && t.fairPrice);
+    if (fw) {
+      const pc = (v) => ((v || 0) * 100 >= 0 ? '+' : '') + ((v || 0) * 100).toFixed(2) + '%';
+      art.appendChild(el('p', 'bd-fair-in',
+        'Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β ' + (g.beta || 0).toFixed(2) +
+        ' · QQQ ' + pc(g.indexMove) + ' since Fri close · news ' + (((g.newsShock || 0) * 100) >= 0 ? '+' : '') + Math.round((g.newsShock || 0) * 100) + '%'));
+    }
     return art;
   }
 
@@ -153,6 +160,11 @@
       line.appendChild(document.createTextNode(
         ' · sell ' + best.richSymbol + ' → buy ' + best.cheapSymbol +
         ' · gross ' + bps(best.grossBps) + ' − cost ' + bps(best.costBps)));
+      if (!(session && session.cashOpen) && best.gapVsFair !== null && best.gapVsFair !== undefined) {
+        const pc = (v) => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
+        line.appendChild(document.createTextNode(
+          ' · ' + best.richSymbol + ' vs official ' + pc(best.gapVsOfficial) + ' · vs fair ' + pc(best.gapVsFair)));
+      }
       btn.hidden = false;
       btn.href = '/t/' + encodeURIComponent(best.underlying) + '#rotate';
       btn.textContent = 'Rotate $' + Math.round(best.sizeUsd || 50);
