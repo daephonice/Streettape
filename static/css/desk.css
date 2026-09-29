@@ -178,7 +178,7 @@ body.hm main {
 .hm-change-range { color: var(--hm-muted); }
 .hm-icon { color: var(--hm-muted); flex-shrink: 0; }
 
-/* Send / Swap / Lend */
+/* Send / Swap */
 .hm-actions { display: flex; justify-content: center; gap: 28px; margin-top: 26px; }
 .hm-action { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 64px; }
 .hm-action-btn {
@@ -553,86 +553,6 @@ body.swap-page #trd-slot {
   flex-direction: column;
 }
 
-.lend-col { padding-top: 16px; padding-bottom: 32px; }
-.lend-pitch { margin: 4px 0 10px; font-size: 15px; line-height: 1.4; color: var(--hm-muted); }
-.lend-pill {
-  display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
-  color: #eaaa08; background: rgba(234, 170, 8, 0.12); border-radius: 999px; padding: 4px 10px;
-}
-.lend-stats {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin: 16px 0 14px;
-}
-.lend-stats > div {
-  background: var(--hm-card); border-radius: 14px; padding: 10px 12px;
-}
-.lend-stats small { display: block; color: var(--hm-muted); font-size: 11px; }
-.lend-stats b { display: block; margin-top: 4px; font-size: 14px; font-variant-numeric: tabular-nums; }
-.lend-tabs, .lend-actions, .lend-filters, .lend-debt-toggle {
-  display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 12px;
-}
-.lend-tab, .lend-chip {
-  border: 0; background: var(--hm-ctrl); color: var(--hm-muted); font-family: inherit;
-  font-size: 13px; font-weight: 600; border-radius: 999px; padding: 7px 12px; cursor: pointer;
-}
-.lend-tab.on, .lend-chip.on { background: var(--accent); color: #fff; }
-.lend-list { display: flex; flex-direction: column; gap: 8px; }
-.lend-row {
-  display: flex; align-items: center; gap: 12px; background: var(--hm-card);
-  border-radius: 16px; padding: 12px; color: inherit;
-}
-.lend-row-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.lend-row-mid b, .lend-row-side b { font-size: 15px; font-weight: 600; }
-.lend-row-mid small, .lend-row-side small { font-size: 12px; color: var(--hm-muted); }
-.lend-row-side { text-align: right; display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; }
-.lend-row-side b.ok { color: var(--hm-pos); }
-.lend-row-side b.risk { color: #eaaa08; }
-.lend-row-side b.bad { color: var(--hm-neg); }
-.lend-port { margin-top: 4px; }
-.lend-empty { text-align: center; color: var(--hm-muted); padding: 28px 0; }
-.lend-empty p { margin: 8px 0 0; }
-.lend-foot { margin: 24px 0 8px; font-size: 12px; line-height: 1.45; color: var(--hm-dim); }
-.lend-vault-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.lend-vault-id { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.lend-vault-id b { display: block; font-size: 18px; }
-.lend-vault-id small { color: var(--hm-muted); font-size: 13px; }
-.lend-card { background: var(--hm-card); border-radius: 18px; padding: 14px 16px; margin-bottom: 12px; }
-.lend-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; margin: 6px 0; }
-.lend-kv span { color: var(--hm-muted); }
-.lend-kv.dim span, .lend-kv.dim b { color: var(--hm-dim); font-weight: 500; }
-.lend-kv b.ok { color: var(--hm-pos); }
-.lend-kv b.risk { color: #eaaa08; }
-.lend-kv b.bad { color: var(--hm-neg); }
-.lend-bar { height: 6px; border-radius: 99px; background: var(--hm-ctrl); overflow: hidden; margin: 10px 0 4px; }
-.lend-bar i { display: block; height: 100%; background: var(--hm-pos); border-radius: 99px; }
-.lend-bar i.risk { background: #eaaa08; }
-.lend-bar i.bad { background: var(--hm-neg); }
-.lend-bar-lab { display: flex; justify-content: space-between; font-size: 12px; color: var(--hm-muted); margin-bottom: 8px; }
-.lend-field { margin-bottom: 12px; }
-.lend-field label { display: block; font-size: 12px; color: var(--hm-muted); margin-bottom: 6px; }
-.lend-input-row {
-  display: flex; align-items: center; gap: 8px; background: var(--hm-ctrl);
-  border-radius: 14px; padding: 10px 12px;
-}
-.lend-input-row input {
-  flex: 1; min-width: 0; border: 0; background: none; color: inherit;
-  font-family: inherit; font-size: 22px; font-weight: 600; outline: none;
-}
-.lend-tok { font-size: 14px; font-weight: 600; color: var(--hm-muted); }
-.lend-max {
-  margin-top: 8px; border: 0; background: none; color: var(--accent);
-  font-family: inherit; font-size: 12px; font-weight: 600; cursor: pointer; padding: 0;
-}
-.lend-preview { margin: 4px 0 12px; font-size: 13px; color: var(--hm-muted); min-height: 18px; }
-.lend-cta {
-  width: 100%; height: 48px; border: 0; border-radius: 14px; background: var(--accent);
-  color: #fff; font-family: inherit; font-size: 16px; font-weight: 600; cursor: pointer;
-}
-.lend-cta:disabled { background: rgba(20, 117, 225, 0.32); color: rgba(255,255,255,0.5); cursor: not-allowed; }
-.lend-liq {
-  width: 100%; margin-top: 8px; height: 40px; border: 0; border-radius: 12px;
-  background: rgba(239, 68, 68, 0.16); color: var(--hm-neg);
-  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-}
 
 /* ==========================================================================
    Holdings modal (View All -> Portfolio). Bottom sheet, like the Send menu.
@@ -769,11 +689,8 @@ html.hld-lock, html.hld-lock body { overflow: hidden; }
 .tk-act:active { background: var(--hm-ctrl-on); }
 .tk-act-buy { flex: 1.3; background: var(--accent); color: #fff; }
 .tk-act-buy:active { background: var(--accent-2); }
-.tk-act-lend { text-decoration: none; }
-.tk-act-lend.not-collateral { pointer-events: none; opacity: 0.55; background: transparent; border: 1px solid var(--hm-line); font-size: 13px; }
 .tk-bar.only-buy .tk-bar-inner { justify-content: center; }
 .tk-bar.only-buy .tk-act-buy { flex: 0 1 234px; }
-.tk-bar.only-buy.can-lend .tk-act-buy { flex: 1.3; }
 .tk-tape-sec { padding: 14px 14px 0; }
 
 /* ==========================================================================
@@ -987,3 +904,10 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 
 /* Dead rail: no contract for this wrapper — never looks like a live Buy */
 .mkt-trade-btn-disabled { opacity: 0.45; pointer-events: none; cursor: default; text-align: center; }
+
+.bd-desk { margin: 14px auto 0; max-width: 560px; padding: 12px 14px; border-radius: 16px; background: var(--hm-card); display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.bd-desk-line { margin: 0; font-size: 14px; line-height: 1.4; color: var(--hm-text); font-variant-numeric: tabular-nums; }
+.bd-desk-line.dim { color: var(--hm-muted); }
+.bd-desk-line b.pos { color: var(--hm-pos); }
+.bd-desk-btn { display: inline-flex; align-items: center; height: 38px; padding: 0 18px; border-radius: 19px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; }
+.bd-desk-btn[hidden] { display: none; }
