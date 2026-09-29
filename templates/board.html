@@ -1,143 +1,92 @@
 {% extends "base.html" %}
-{% block body_class %}mkt-home{% endblock %}
+{% block title %}StreetTape — tape vs official vs fair for BNB tokenized stocks{% endblock %}
+{% block body_class %}hm bd{% endblock %}
+
+{% macro prem(p) -%}
+<span class="bd-badge {{ 'pos' if p and p > 0 else ('neg' if p and p < 0 else 'flat') }}">{{ format_premium(p) }}</span>
+{%- endmacro %}
 
 {% block header %}
-<header class="mkt-header">
-  <div class="mkt-frame mkt-header-inner">
+<header class="hm-header">
+  <div class="hm-col hm-header-inner">
     <a href="/" class="mkt-brand">
       <span class="mkt-brand-mark" aria-hidden="true">
-        <svg viewBox="0 0 32 32" width="28" height="28" fill="none">
+        <svg viewBox="0 0 32 32" width="30" height="30" fill="none">
           <rect x="1" y="1" width="30" height="30" rx="8" stroke="#1475E1" stroke-width="1.4"/>
           <path d="M8 21L13 12L17 18L24 9" stroke="#1475E1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </span>
       <span class="mkt-wordmark">StreetTape</span>
     </a>
-    <div class="mkt-header-right">
-      <span class="sess-wrap">
-        <span class="sess-chip" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">—</span></span>
-        <span class="sess-sub" id="sess-sub"></span>
-      </span>
-      <button class="mkt-connect-btn" id="mkt-connect-btn">Connect</button>
+    <div class="hm-header-right">
+      <a class="bd-nav-link" href="/wallet">Wallet</a>
+      <button class="mkt-connect-btn" id="mkt-connect-btn" type="button">Connect wallet</button>
     </div>
   </div>
 </header>
 {% endblock %}
 
 {% block content %}
-<div class="mkt-frame">
-  <section class="mkt-balance" id="mkt-balance">
-    <span class="mkt-balance-label">Total balance</span>
-    <div class="mkt-balance-value" id="mkt-balance-value" hidden>$0.00</div>
-    <button class="mkt-balance-connect" id="mkt-balance-connect" type="button">Connect wallet</button>
+{% set cash_open = session.cashOpen %}
+<div class="bd-col" id="bd-root">
+  <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
+    <span class="sess-wrap">
+      <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
+      <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · {{ session.wat }} WAT{% else %}NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
+    </span>
+    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open. Official mark is live, so tape and official should agree.{% else %}Cash is shut. Official is the last print; Fair is where the underlying should trade now. The gap is the trade.{% endif %}</p>
+    <p class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited). Showing last good read.</p>
   </section>
 
-  <p class="mkt-thesis">Onchain tape versus the issuer mark.</p>
+  <p class="bd-legend"><b>Tape</b> onchain price · <b>Official</b> issuer mark · <b>Fair</b> synthetic mark (cash shut)</p>
 
-  <div class="mkt-stats" id="mkt-stats">
-    <div class="mkt-stat-card" data-stat="aum">
-      <span class="mkt-stat-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-      </span>
-      <div class="mkt-stat-text">
-        <span class="mkt-stat-label">AUM</span>
-        <span class="mkt-stat-value">{{ fmt_compact(stats.aum, "$") }}</span>
-      </div>
-    </div>
-    <div class="mkt-stat-card" data-stat="volume">
-      <span class="mkt-stat-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-      </span>
-      <div class="mkt-stat-text">
-        <span class="mkt-stat-label">Volume</span>
-        <span class="mkt-stat-value">{{ fmt_compact(stats.volume, "$") }}</span>
-      </div>
-    </div>
-    <div class="mkt-stat-card" data-stat="holders">
-      <span class="mkt-stat-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      </span>
-      <div class="mkt-stat-text">
-        <span class="mkt-stat-label">Holders</span>
-        <span class="mkt-stat-value">{{ fmt_compact(stats.holders) }}</span>
-      </div>
-    </div>
-    <div class="mkt-stat-card" data-stat="txns">
-      <span class="mkt-stat-icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-      </span>
-      <div class="mkt-stat-text">
-        <span class="mkt-stat-label">Txns</span>
-        <span class="mkt-stat-value">{{ fmt_compact(stats.txns) }}</span>
-      </div>
-    </div>
+  <div class="bd-search-wrap">
+    <input type="text" id="bd-search" class="bd-search" placeholder="Search NVDA, SpaceX…" autocomplete="off" aria-label="Search">
   </div>
 
-  <div class="mkt-search-wrap">
-    <svg class="mkt-search-icon" viewBox="0 0 20 20" width="16" height="16" fill="none">
-      <circle cx="8.5" cy="8.5" r="6" stroke="#6B7A89" stroke-width="1.4"/>
-      <path d="M17 17L13.5 13.5" stroke="#6B7A89" stroke-width="1.4" stroke-linecap="round"/>
-    </svg>
-    <input type="text" id="mkt-search" class="mkt-search-input" placeholder="Search OPENAI, SPACEX…" autocomplete="off">
-  </div>
-
-  {% if not snapshot.tokens %}
-  <p class="mkt-empty">Tape is warming up. First print any moment.</p>
-  {% else %}
-  <div class="mkt-cards" id="mkt-cards">
-    {% for t in snapshot.tokens %}
-    <div class="mkt-card" data-symbol="{{ t.symbol }}" data-name="{{ t.name|lower }}">
-      <div class="mkt-card-top">
-        {% if t.image %}<img class="mkt-card-logo" src="{{ t.image }}" alt="" loading="lazy">{% else %}<span class="mkt-card-logo mkt-logo-empty"></span>{% endif %}
-        <span class="mkt-card-ticker">{{ t.symbol }}</span>
-        <span class="mkt-card-premium status-pill-{{ premium_status(t.premium) }}">{{ format_premium(t.premium) }}</span>
+  <div class="bd-groups" id="bd-groups">
+    {% if not groups %}
+    <p class="bd-empty" id="bd-warmup">Tape is warming up. First print any moment.</p>
+    {% endif %}
+    {% for g in groups %}
+    {% set ordered = [] %}
+    {% for plat in platform_order %}{% for w in g.wrappers if w.platform == plat %}{% set _ = ordered.append(w) %}{% endfor %}{% endfor %}
+    {% for w in g.wrappers if w.platform not in platform_order %}{% set _ = ordered.append(w) %}{% endfor %}
+    <article class="hm-card bd-group" data-underlying="{{ g.underlying }}" data-name="{{ g.name|lower }}">
+      <header class="bd-g-head">
+        <a class="bd-g-title" href="/t/{{ g.underlying }}"><b>{{ g.underlying }}</b><span>{{ g.name }}</span></a>
+        {% if g.crossSpread is not none %}<span class="bd-g-spread" title="Richest wrapper vs cheapest">x-wrapper {{ format_premium(g.crossSpread) }}</span>{% endif %}
+      </header>
+      <div class="bd-cols" style="--n: {{ ordered|length }}">
+        {% for t in ordered %}
+        {% set show_fair = (not cash_open) and (not g.noYahoo) and g.markPrice and t.fairPrice %}
+        <div class="bd-w{% if t.symbol == g.cheapest and g.cheapest != g.richest %} is-cheap{% elif t.symbol == g.richest and g.cheapest != g.richest %} is-rich{% endif %}" data-symbol="{{ t.symbol }}">
+          <div class="bd-w-top"><span class="bd-w-sym">{{ t.symbol }}</span></div>
+          <div class="bd-r"><span>Tape</span><b>{{ '$%.2f'|format(t.tokenPrice) if t.tokenPrice is not none else '—' }}</b></div>
+          <div class="bd-r"><span>Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b></div>
+          {% if show_fair %}<div class="bd-r bd-r-fair"><span>Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
+          <div class="bd-badges">
+            {% if t.hasTape %}<span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% endif %}
+          </div>
+          {% if t.hasTape %}
+          <a href="/t/{{ t.symbol }}#swap" class="bd-trade">Trade</a>
+          {% else %}
+          <span class="bd-trade bd-trade-off" aria-disabled="true">no tape</span>
+          {% endif %}
+        </div>
+        {% endfor %}
       </div>
-
-      <div class="mkt-card-tape">${{ "%.2f"|format(t.tokenPrice) if t.tokenPrice is not none else "—" }}</div>
-      <div class="mkt-card-mark">mark ${{ "%.2f"|format(t.markPrice) if t.markPrice is not none else "—" }}</div>
-
-      <div class="mkt-card-chart">
-        <svg class="mkt-sparkline" data-symbol="{{ t.symbol }}" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
-      </div>
-
-      {% if t.hasTape %}
-      <a href="/t/{{ t.symbol }}#swap" class="mkt-trade-btn">Trade</a>
-      {% else %}
-      <span class="mkt-trade-btn mkt-trade-btn-disabled" aria-disabled="true">— no tape</span>
-      {% endif %}
-    </div>
+    </article>
     {% endfor %}
   </div>
-  <p class="mkt-empty mkt-no-results" id="mkt-no-results" hidden>No name matches your search.</p>
-  {% endif %}
+  <p class="bd-empty" id="bd-no-results" hidden>No name matches your search.</p>
+
+  <footer class="hm-footer">
+    <p>Economic exposure only. Not shares, not for US persons, not advice. Swaps sign in your wallet. StreetTape does not custody funds.</p>
+  </footer>
 </div>
 {% endblock %}
 
-{% block footer %}
-<footer class="mkt-footer">
-  <div class="mkt-frame mkt-footer-inner">
-    <div class="mkt-footer-icons">
-      {% if telegram_public_url %}
-      <a href="{{ telegram_public_url }}" target="_blank" rel="noopener" aria-label="Telegram" title="Telegram" class="mkt-icon-link">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M21.5 3.5L2.5 11l6 2.2m13-9.7L16 20.5l-7.5-7.3m13-9.7L8.5 13.2m0 0v6.3l3-3.3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </a>
-      {% endif %}
-      <a href="https://github.com" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub" class="mkt-icon-link">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M12 2C6.48 2 2 6.58 2 12.2c0 4.5 2.87 8.31 6.84 9.66.5.1.68-.22.68-.49v-1.9c-2.78.62-3.37-1.37-3.37-1.37-.46-1.2-1.11-1.52-1.11-1.52-.9-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.9 1.55 2.34 1.1 2.91.84.09-.66.35-1.1.63-1.36-2.22-.26-4.56-1.13-4.56-5.02 0-1.11.39-2.02 1.03-2.73-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.04A9.3 9.3 0 0112 6.85c.85 0 1.71.12 2.51.34 1.9-1.32 2.75-1.04 2.75-1.04.55 1.4.2 2.44.1 2.7.64.71 1.03 1.62 1.03 2.73 0 3.9-2.34 4.76-4.57 5.01.36.32.68.94.68 1.9v2.82c0 .27.18.6.69.49A10.02 10.02 0 0022 12.2C22 6.58 17.52 2 12 2z" fill="currentColor"/></svg>
-      </a>
-      <a href="https://www.bnbchain.org" target="_blank" rel="noopener" aria-label="tokenized stocks" title="tokenized stocks" class="mkt-icon-link">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.4"/><path d="M8 15V9l4 3 4-3v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </a>
-    </div>
-    <p class="mkt-legal">
-      Economic exposure only. Not shares, not for US persons, not advice.<br>
-      Swaps sign in your wallet. StreetTape does not custody funds.
-    </p>
-  </div>
-</footer>
-{% endblock %}
-
 {% block scripts %}
-<script src="/static/js/balance.js?v={{ static_v('js/balance.js') }}"></script>
 <script src="/static/js/board.js?v={{ static_v('js/board.js') }}"></script>
 {% endblock %}
