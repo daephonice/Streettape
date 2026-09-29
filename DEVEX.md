@@ -165,3 +165,10 @@ Template:
 ### 2026-09-29 — first live stack pass
 
 Already written up in Findings. Not pasted again. Counts from that container, for the record only: 420 `rwa/price` with no mark, 19 portfolio 202s, 2 simulate 404s, 13 good aggregator quotes, 18 RFQ-without-wallet errors, 2 swap builds, 1 settled TSLAB buy.
+
+### 2026-09-29 — desk front door (`/`, hero rotate line, Lend removed)
+
+- Session: <fill: WEEKEND | AFTER-HOURS | PRE-MARKET | CASH OPEN>
+- What we hit: <fill: first `GET /api/agent/scan` (quotes both legs per hit), first `GET /api/agent/arb/{underlying}?size_usd=50`, first swap quote after Rotate>
+- What came back: <fill: from /api/_devex — first occurrence of each outcome: good quote, RFQ-needs-wallet 40001, 429, 404>
+- What we changed because of it: <fill>

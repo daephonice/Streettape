@@ -170,7 +170,7 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
             "underlying": g["underlying"],
             "rich": rich, "cheap": cheap,
             "gap": gap,
-            "normalized": bool(rich.get("multiplier")) or bool(cheap.get("multiplier")),
+            "normalized": bool(rich.get("multiplier")) and bool(cheap.get("multiplier")),
             "sizeUsd": size_usd,
         })
     hits.sort(key=lambda h: h["gap"], reverse=True)
@@ -226,6 +226,29 @@ async def net_arb_quote(hit: dict, size_usd: float | None = None) -> dict:
         "netBps": net_bps,
         "viable": net_bps > 0,
     }
+
+
+_desk_cache: dict = {}
+DESK_TTL = 30.0
+
+
+async def desk_arbs(underlying: str | None = None, limit: int = 5) -> list[dict]:
+    """Net-of-cost arb quotes for the desk, cached DESK_TTL seconds (quotes are a
+    network round-trip per leg). Shared by /api/agent/scan and the board hero."""
+    import time
+    key = (underlying or "").upper()
+    hit = _desk_cache.get(key)
+    if hit and time.monotonic() - hit[0] < DESK_TTL:
+        return hit[1]
+    arbs = [await net_arb_quote(h) for h in check_cross_arb(underlying)[:limit]]
+    _desk_cache[key] = (time.monotonic(), arbs)
+    return arbs
+
+
+def best_arb(arbs: list[dict]) -> dict | None:
+    """Biggest gross share-normalized gap that is still positive after cost."""
+    viable = [a for a in arbs if a.get("viable")]
+    return max(viable, key=lambda a: a["gap"]) if viable else None
 
 
 def _arb_line(label: str, symbol: str, leg: dict, size_usd: float) -> str:

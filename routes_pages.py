@@ -68,19 +68,6 @@ async def swap_page(request: Request):
     return templates.TemplateResponse(request, "swap.html", {})
 
 
-VENUS_URL = "https://app.venus.io/core-pool/markets?chainId=56"
-
-
-@router.get("/lend", response_class=HTMLResponse)
-async def lend_page(request: Request):
-    return RedirectResponse(url=VENUS_URL, status_code=302)
-
-
-@router.get("/lend/{symbol}", response_class=HTMLResponse)
-async def lend_vault_page(request: Request, symbol: str):
-    return RedirectResponse(url=VENUS_URL, status_code=302)
-
-
 @router.get("/t/{symbol}", response_class=HTMLResponse)
 async def token_page(request: Request, symbol: str):
     sym = (symbol or "").upper()

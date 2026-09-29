@@ -148,8 +148,9 @@ async def get_token(symbol: str):
 @router.get("/agent/scan")
 async def api_agent_scan(threshold: float | None = None, underlying: str | None = None):
     report = agent.scan_gaps(threshold)
-    hits = agent.check_cross_arb(underlying)[:5]  # quoting is a network round-trip per hit
-    report["arbs"] = [await agent.net_arb_quote(h) for h in hits]
+    arbs = await agent.desk_arbs(underlying)
+    report["arbs"] = arbs
+    report["best"] = agent.best_arb(arbs)
     return report
 
 
