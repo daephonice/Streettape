@@ -221,6 +221,8 @@ async def net_arb_quote(hit: dict, size_usd: float | None = None) -> dict:
         "sellLeg": sell_leg,
         "buyLeg": buy_leg,
         "gap": hit["gap"],
+        "gapVsOfficial": hit["rich"].get("premiumToOfficial"),
+        "gapVsFair": hit["rich"].get("premiumToFair"),
         "grossBps": gap_bps,
         "costBps": cost_bps,
         "netBps": net_bps,
@@ -266,7 +268,23 @@ def official_vs_fair_line(underlying: str) -> str:
     session = snap.get("session") or rwa.session_now()
     out = f"Official ${g['markPrice']:.2f}"
     if g.get("fairPrice") and not session.get("cashOpen"):
-        out += f" · Fair ${g['fairPrice']:.2f} ({session.get('label')})"
+        out += f" · Fair ${g['fairPrice']:.2f} synthetic ({session.get('label')})"
+        out += (f"\nFair inputs: β {g.get('beta') or 0:.2f} · QQQ {(g.get('indexMove') or 0) * 100:+.2f}% since Fri close"
+                f" · news {(g.get('newsShock') or 0) * 100:+.0f}%")
+    return out + "\n"
+
+
+def gap_vs_line(priced: dict) -> str:
+    """Rich wrapper's gap vs official, and vs fair while cash is shut. Display only:
+    the arb threshold and net math stay wrapper vs wrapper."""
+    off = priced.get("gapVsOfficial")
+    if off is None:
+        return ""
+    out = f"gap vs official {rwa.format_premium(off)}"
+    session = rwa.get_cached_snapshot().get("session") or rwa.session_now()
+    fair = priced.get("gapVsFair")
+    if fair is not None and not session.get("cashOpen"):
+        out += f" · gap vs fair {rwa.format_premium(fair)}"
     return out + "\n"
 
 
@@ -288,6 +306,7 @@ async def arb_text(underlying: str | None = None) -> str | None:
     return (
         f"{priced['underlying']} cross-wrapper arb · {rwa.format_premium(priced['gap'])} rich · {viability}\n"
         f"{official_vs_fair_line(priced['underlying'])}"
+        f"{gap_vs_line(priced)}"
         f"{_arb_line('SELL', priced['richSymbol'], priced['sellLeg'], priced['sizeUsd'])}\n"
         f"{_arb_line('BUY', priced['cheapSymbol'], priced['buyLeg'], priced['sizeUsd'])}\n"
         f"{telegram_bot.WEB_PUBLIC_URL}/t/{priced['underlying']}"

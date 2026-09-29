@@ -201,6 +201,9 @@ def _group(tokens):
             ),
             "absPremium": max((abs(r["premium"] or 0) for r in rows), default=0),
             "fairPrice": rows[0].get("fairPrice"),
+            "beta": rows[0].get("fairBeta"),
+            "indexMove": rows[0].get("fairIndexMove"),
+            "newsShock": rows[0].get("fairNewsShock"),
             "premiumToOfficial": (
                 rwa.premium(cheapest["tokenPrice"], rows[0].get("markPrice"))
                 if cheapest and rows[0].get("markPrice") else None
@@ -255,6 +258,9 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "multiplier": multiplier,
             "markSource": "rwa" if off.get("markPrice") is not None else ("yahoo" if mark else None),
             "fairPrice": fair_price,
+            "fairBeta": fm.get("beta") if fair_price else None,
+            "fairIndexMove": fm.get("indexMove") if fair_price else None,
+            "fairNewsShock": fm.get("newsShock") if fair_price else None,
             "premiumToOfficial": prem if has_addr else None,
             "premiumToFair": prem_fair if has_addr else None,
         })
