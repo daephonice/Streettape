@@ -172,7 +172,9 @@
   }
 
   // ---- State helpers ----------------------------------------------------------
-  const payOptions = () => PAY.filter((s) => s !== S.symbol);
+  // Ondo assets on BSC only pair with stablecoins (live: code=40368), so no BNB leg for them.
+  const isOndo = (c, sym) => (((c.assets[sym] || {}).platform) || '').toLowerCase() === 'ondo';
+  const payOptions = () => PAY.filter((s) => s !== S.symbol && !(s === 'BNB' && isOndo(S.host.getCtx(), S.symbol)));
   const price = (c, sym) => (c.prices[sym] ? c.prices[sym].price : 0);
 
   function setNote(msg) { R.note.textContent = msg || ''; }
@@ -497,7 +499,7 @@
   function open(host) {
     const c = host.getCtx();
     if (S || !c.address || !c.prices[host.symbol]) return false;
-    const cur = PAY.find((s) => s !== host.symbol);
+    const cur = PAY.find((s) => s !== host.symbol && !(s === 'BNB' && isOndo(c, host.symbol)));
     if (!c.prices[cur]) return false;
     build();
     S = {
