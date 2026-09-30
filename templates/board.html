@@ -64,13 +64,13 @@
       <div class="bd-cols" style="--n: {{ ordered|length }}">
         {% for t in ordered %}
         {% set show_fair = (not cash_open) and (not g.noYahoo) and g.markPrice and t.fairPrice %}
-        <div class="bd-w{% if t.symbol == g.cheapest and g.cheapest != g.richest %} is-cheap{% elif t.symbol == g.richest and g.cheapest != g.richest %} is-rich{% endif %}" data-symbol="{{ t.symbol }}">
+        <div class="bd-w{% if t.symbol == g.cheapest and g.cheapest != g.richest %} is-cheap{% elif t.symbol == g.richest and g.cheapest != g.richest %} is-rich{% endif %}{% if t.thin %} is-thin{% endif %}" data-symbol="{{ t.symbol }}">
           <div class="bd-w-top"><span class="bd-w-sym">{{ t.symbol }}</span></div>
           <div class="bd-r"><span>Tape</span><b>{{ '$%.2f'|format(t.tokenPrice) if t.tokenPrice is not none else '—' }}</b></div>
           <div class="bd-r"><span>Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b></div>
           {% if show_fair %}<div class="bd-r bd-r-fair"><span>Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
           <div class="bd-badges">
-            {% if t.hasTape %}<span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% endif %}
+            {% if t.thin %}<span class="bd-thin" title="Pool liquidity {{ '$%.0f'|format(t.liquidityUsd) if t.liquidityUsd is not none else 'very low' }}; stale price, not a real gap.">thin pool</span>{% elif t.hasTape %}<span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% endif %}
           </div>
           {% if t.hasTape %}
           <a href="/t/{{ t.symbol }}#swap" class="bd-trade">Trade</a>
