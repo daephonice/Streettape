@@ -148,7 +148,7 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
 
     hits = []
     for g in groups:
-        priced = [w for w in g["wrappers"] if w.get("tokenPrice") and w.get("hasTape")]
+        priced = [w for w in g["wrappers"] if w.get("tokenPrice") and w.get("hasTape") and not w.get("thin")]
         if len(priced) < 2:
             continue
         normed = []

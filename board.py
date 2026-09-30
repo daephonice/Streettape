@@ -101,6 +101,24 @@ async def _yahoo_marks(client: httpx.AsyncClient, skip_tickers: set | None = Non
     return out
 
 
+THIN_LIQUIDITY_USD = 5000.0  # a Gecko tape from a pool below this is not a tradable price
+
+
+def _gecko_row(attr: dict) -> dict:
+    def _f(v):
+        try:
+            return float(v) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+    px = attr.get("price_usd")
+    return {
+        "price": float(px) if px else None,
+        "image": attr.get("image_url"),
+        "liquidity": _f(attr.get("total_reserve_in_usd")),
+        "vol24": _f((attr.get("volume_usd") or {}).get("h24")),
+    }
+
+
 _last_tape: dict = {}   # addr(lower) -> {"price": float, "image": str|None} — last good Gecko read
 _tape_stale = False     # true when this refresh cycle hit a 429 and fell back to _last_tape
 
@@ -125,7 +143,7 @@ async def _one_gecko(client, addr: str):
     px = attr.get("price_usd")
     devlog.log_call(what=f"rwa/price tape {addr}", url=url, status=resp.status_code, ms=t.ms,
                      expected="data.attributes.price_usd", actual=f"price_usd={px}")
-    return {"price": float(px) if px else None, "image": attr.get("image_url")}
+    return _gecko_row(attr)
 
 
 async def _gecko_prices(client, addrs: list | None = None) -> dict:
@@ -146,8 +164,7 @@ async def _gecko_prices(client, addrs: list | None = None) -> dict:
                 for item in data:
                     attr = item.get("attributes") or {}
                     addr = (attr.get("address") or "").lower()
-                    px = attr.get("price_usd")
-                    out[addr] = {"price": float(px) if px else None, "image": attr.get("image_url")}
+                    out[addr] = _gecko_row(attr)
                 await asyncio.sleep(0.2)
                 continue
         except Exception:
@@ -185,7 +202,7 @@ def _group(tokens):
         by.setdefault(t["underlying"], []).append(t)
     groups = []
     for und, rows in by.items():
-        priced = [r for r in rows if r.get("tokenPrice")]
+        priced = [r for r in rows if r.get("tokenPrice") and not r.get("thin")]
         cheapest = min(priced, key=lambda r: r["tokenPrice"]) if priced else None
         richest = max(priced, key=lambda r: r["tokenPrice"]) if priced else None
         groups.append({
@@ -238,6 +255,10 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         prem = rwa.premium(token_price, mark) if token_price and mark else None
         fair_price = fm.get("fairPrice")
         prem_fair = rwa.premium(token_price, fair_price) if token_price and fair_price else None
+        liq = tape.get("liquidity")
+        thin = bool(has_addr and off.get("price") is None and liq is not None and liq < THIN_LIQUIDITY_USD)
+        if thin:
+            prem = prem_fair = None  # a stale thin-pool price is not a real gap
         # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
         # never a Trade link. hasTape is the single flag templates/JS gate on.
         tokens.append({
@@ -253,7 +274,9 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "markPrice": mark,
             "noYahoo": not w.get("yahoo"),
             "premium": prem if has_addr else None,
-            "status": rwa.premium_status(prem) if has_addr else "flat",
+            "status": "thin" if thin else (rwa.premium_status(prem) if has_addr else "flat"),
+            "thin": thin,
+            "liquidityUsd": liq if has_addr else None,
             "description": (
                 f"{w['name']} tokenized equity on BNB Chain via {w['platform']}. Economic exposure only."
                 if has_addr else f"{w['name']} has no confirmed {w['platform']} wrapper yet."
