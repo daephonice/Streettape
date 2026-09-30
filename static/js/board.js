@@ -51,7 +51,7 @@
 
   function buildWrapper(g, t, cashOpen) {
     const showFair = !cashOpen && !g.noYahoo && !!g.markPrice && !!t.fairPrice;
-    const split = g.cheapest && g.richest && g.cheapest !== g.richest;
+    const split = g.cheapest && g.richest && g.cheapest !== g.richest && !t.thin;
     const w = el('div', 'bd-w' + (split && t.symbol === g.cheapest ? ' is-cheap' : split && t.symbol === g.richest ? ' is-rich' : ''));
     w.dataset.symbol = t.symbol;
     const top = el('div', 'bd-w-top');
@@ -61,7 +61,11 @@
     w.appendChild(row('Official', money(t.markPrice)));
     if (showFair) w.appendChild(row('Fair', money(t.fairPrice), 'bd-r-fair'));
     const badges = el('div', 'bd-badges');
-    if (t.hasTape) {
+    if (t.thin) {
+      const tb = el('span', 'bd-thin', 'thin pool');
+      tb.title = 'Onchain pool liquidity is ' + (t.liquidityUsd != null ? '$' + Math.round(t.liquidityUsd).toLocaleString() : 'very low') + '; this price is stale and not a real gap.';
+      badges.appendChild(tb);
+    } else if (t.hasTape) {
       badges.appendChild(el('span', 'bd-bl', 'vs off'));
       badges.appendChild(badge(t.premiumToOfficial));
       if (showFair) {
