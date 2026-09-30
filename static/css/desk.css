@@ -369,6 +369,8 @@ a.hm-action-btn { cursor: pointer; }
 .bd-r b { font-size: 13px; font-weight: 600; color: var(--hm-text); font-variant-numeric: tabular-nums; }
 .bd-fair-in { margin: 8px 0 0; font-size: 11px; color: var(--hm-muted); font-variant-numeric: tabular-nums; }
 .bd-thin { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 999px; color: var(--hm-muted); background: rgba(255,255,255,.06); }
+.bd-src { font-size: 10px; text-align: right; color: var(--hm-muted); margin-top: -2px; }
+.bd-src-binance { color: var(--hm-star, #eaaa08); }
 .bd-r-fair b { color: var(--hm-star, #eaaa08); }
 .bd-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
 .bd-bl { font-size: 10px; color: var(--hm-dim); }
