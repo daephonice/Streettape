@@ -16,15 +16,16 @@ Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market
 | User says | Command | Endpoint |
 |---|---|---|
 | "what's rich vs Friday" | `board [--min 0.01]` | `GET /api/board` |
-| "quote $50 flatten" | `flatten [--usd 50] [--taker 0x..]` | `GET /api/board` + `POST /api/swap/order` |
+| "quote $50 flatten" | `flatten [--usd 50] [--pct 0.02] [--taker 0x..]` | `GET /api/board` + `POST /api/swap/order` |
 | "rotate into cheapest NVDA" | `rotate NVDA` | `GET /api/agent/scan?underlying=NVDA` |
 | "alert only cash-shut" | `alerts [--threshold 0.015]` | `GET /api/agent/scan` |
+| any of the four sentences, verbatim | `say "<sentence>"` | dispatches to the rows above |
 | raw quote | `quote <inputMint> <outputMint> <uiAmount> [--taker 0x..] [--sign]` | `POST /api/swap/order` |
 
 ## Rules
-- **rich vs Friday**: report `premium` per token (tape vs last cash-print mark; Friday close is the mark while cash is shut). Positive = rich, negative = cheap. Show `session.label`.
+- **rich vs Friday**: report `symbol`, `tape`, `official`, `fair`, `premium` per token (tape vs last cash-print mark; Friday close is the mark while cash is shut). Positive = rich, negative = cheap. Show `session.label`.
 - **flatten**: sells every wrapper with `premium > 2%` into USDT, $50 each by default. Show `uiOutAmount`, `provider`, `priceImpactPct`. If `provider` is `pancake`, present `deepLink` instead of a number.
-- **rotate**: sell the rich wrapper, buy the cheap one. Use `viable` and `netBps` from the API. If `viable` is false, say costs eat the gap and do not push the trade. If there is no arb, say so.
+- **rotate**: sell the rich wrapper, buy the cheap one. Print `viable`, `netBps`, both legs and both ratios. If `viable` is false, say costs eat the gap and do not push the trade. If there is no arb, say so.
 - **alerts**: only alert when `session.cashOpen` is false. When cash is open, output nothing.
 - Cooldown: don't repeat an alert for the same symbol within 60 minutes.
-- Never auto-execute. Always end with: confirm and sign in your own wallet.
+- Every command ends with: not auto-executed, confirm and sign in your own wallet. (`alerts` prints nothing while cash is open.)

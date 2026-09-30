@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -14,6 +15,7 @@ import urllib.request
 BASE = os.getenv("STREETTAPE_URL", "https://streettape.up.railway.app").rstrip("/")
 USDT = "0x55d398326f99059fF775485246999027B3197955"
 FLATTEN_MIN = 0.02
+NOTE = "not auto-executed, confirm and sign in your own wallet."
 # Official `binance-agentic-wallet` skill drives the `baw` CLI
 # (npx skills add https://github.com/binance/binance-skills-hub/tree/main/skills/binance-web3/binance-agentic-wallet).
 # If `baw` is on PATH it does quote/build/sign; otherwise we fall back to StreetTape /api/swap/order.
@@ -74,8 +76,10 @@ def order(input_mint, output_mint, amount, taker=None, sign=False):
         "inputMint": input_mint, "outputMint": output_mint, "uiAmount": amount, "taker": taker})
 
 
-def out(obj):
+def out(obj, note=True):
     print(json.dumps(obj, indent=2))
+    if note:
+        print(NOTE)
 
 
 def cmd_board(a):
@@ -85,8 +89,9 @@ def cmd_board(a):
     out({
         "session": snap.get("session"),
         "fetchedAt": snap.get("fetchedAt"),
-        "rich": [{k: t.get(k) for k in ("symbol", "underlying", "platform", "tokenPrice", "markPrice", "premium", "status")}
-                 for t in toks],
+        "rich": [{"symbol": t.get("symbol"), "tape": t.get("tokenPrice"), "official": t.get("markPrice"),
+                  "fair": t.get("fairPrice"), "premium": t.get("premium"),
+                  "premiumToFair": t.get("premiumToFair"), "status": t.get("status")} for t in toks],
     })
 
 
@@ -97,34 +102,65 @@ def cmd_quote(a):
 def cmd_flatten(a):
     snap = call("/api/board")
     rich = [t for t in snap.get("tokens") or []
-            if t.get("premium") is not None and t["premium"] > FLATTEN_MIN and t.get("mint") and t.get("tokenPrice")]
+            if t.get("premium") is not None and t["premium"] > (a.pct if a.pct is not None else FLATTEN_MIN) and t.get("mint") and t.get("tokenPrice")]
     rich.sort(key=lambda t: t["premium"], reverse=True)
     legs = []
     for t in rich:
         q = order(t["mint"], USDT, a.usd / t["tokenPrice"], a.taker)
         legs.append({"symbol": t["symbol"], "premium": t["premium"], "sizeUsd": a.usd, "quote": q})
-    out({"session": snap.get("session"), "flatten": legs,
-         "note": "Not auto-executed — confirm and sign in your own wallet."})
+    out({"session": snap.get("session"), "flatten": legs})
 
 
 def cmd_rotate(a):
-    report = call("/api/agent/scan", {"underlying": a.underlying.upper()})
-    arbs = [x for x in report.get("arbs") or [] if x.get("underlying", "").upper() == a.underlying.upper()]
+    u = a.underlying.upper()
+    report = call("/api/agent/scan", {"underlying": u})
+    arbs = [x for x in report.get("arbs") or [] if x.get("underlying", "").upper() == u]
     if not arbs:
-        out({"underlying": a.underlying.upper(), "arb": None, "session": report.get("session")})
+        out({"underlying": u, "arb": None, "session": report.get("session")})
         return
-    out({"session": report.get("session"), "arb": arbs[0],
-         "note": "Not auto-executed — confirm and sign in your own wallet."})
+    x = arbs[0]
+    res = {"session": report.get("session"), "underlying": u, "viable": x.get("viable"), "netBps": x.get("netBps"),
+           "sell": {"symbol": x.get("richSymbol"), "ratio": x.get("richRatio"), "leg": x.get("sellLeg")},
+           "buy": {"symbol": x.get("cheapSymbol"), "ratio": x.get("cheapRatio"), "leg": x.get("buyLeg")}}
+    if not x.get("viable"):
+        res["message"] = "costs eat the gap, not pushing this trade"
+    out(res)
 
 
 def cmd_alerts(a):
     report = call("/api/agent/scan", {"threshold": a.threshold})
     session = report.get("session") or {}
     if session.get("cashOpen"):
-        out({"alert": False, "reason": "cash open", "session": session})
         return
     out({"alert": bool(report.get("hits")), "session": session,
          "threshold": report.get("threshold"), "hits": report.get("hits")})
+
+
+def say(sentence):
+    """Phrase entry: four sentences, four commands. No model call; the parser is the feature."""
+    t = re.sub(r"\s+", " ", sentence.lower()).strip()
+    if "rotate" in t:
+        m = re.search(r"(?:cheapest|into|rotate)\s+\$?([a-z][a-z0-9.]{0,9})\b", t)
+        skip = {"into", "cheapest", "rotate", "the", "a"}
+        words = [w.strip("$.,!?") for w in t.split()]
+        tick = next((w for w in reversed(words) if w and w not in skip and w != "rotate"), None)
+        tick = m.group(1) if m and m.group(1) not in skip else tick
+        if not tick:
+            sys.exit(json.dumps({"error": "rotate into which ticker?"}))
+        return cmd_rotate(argparse.Namespace(underlying=tick))
+    if "flatten" in t:
+        m = re.search(r"(\d+(?:\.\d+)?)\s*%", t)
+        return cmd_flatten(argparse.Namespace(usd=50.0, taker=None, pct=float(m.group(1)) / 100 if m else None))
+    if "alert" in t and re.search(r"cash.*(shut|closed)|(shut|closed).*cash", t):
+        return cmd_alerts(argparse.Namespace(threshold=None))
+    if "rich" in t or "friday" in t:
+        return cmd_board(argparse.Namespace(min=0.0))
+    sys.exit(json.dumps({"error": "unrecognized", "try": [
+        "what's rich vs Friday", "rotate into cheapest NVDA", "flatten anything 2% rich", "alert only when cash is shut"]}))
+
+
+def cmd_say(a):
+    say(" ".join(a.sentence))
 
 
 def main():
@@ -137,9 +173,10 @@ def main():
     q.add_argument("--sign", action="store_true", help="sign via official skill; only after the user confirmed")
     q.set_defaults(f=cmd_quote)
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
-    f.add_argument("--taker"); f.set_defaults(f=cmd_flatten)
+    f.add_argument("--taker"); f.add_argument("--pct", type=float, help="min premium as fraction, default 0.02"); f.set_defaults(f=cmd_flatten)
     r = s.add_parser("rotate"); r.add_argument("underlying"); r.set_defaults(f=cmd_rotate)
     al = s.add_parser("alerts"); al.add_argument("--threshold", type=float); al.set_defaults(f=cmd_alerts)
+    sy = s.add_parser("say"); sy.add_argument("sentence", nargs="+"); sy.set_defaults(f=cmd_say)
     a = p.parse_args()
     a.f(a)
 
