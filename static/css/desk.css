@@ -915,3 +915,16 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 .bd-desk-line b.pos { color: var(--hm-pos); }
 .bd-desk-btn { display: inline-flex; align-items: center; height: 38px; padding: 0 18px; border-radius: 19px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; }
 .bd-desk-btn[hidden] { display: none; }
+
+.bd-basket-link { display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.bk-leg { display: flex; flex-direction: column; gap: 6px; }
+.bk-head { display: flex; justify-content: space-between; align-items: baseline; }
+.bk-head b { font-size: 16px; }
+.bk-w { color: var(--hm-muted); font-size: 12px; }
+.bk-r { display: flex; justify-content: space-between; font-size: 13px; color: var(--hm-muted); font-variant-numeric: tabular-nums; gap: 12px; }
+.bk-r b { color: var(--hm-text); font-weight: 500; text-align: right; word-break: break-all; }
+.bk-off { color: var(--hm-star, #eaaa08); font-size: 14px; margin: 0; }
+.bk-act { display: flex; gap: 8px; margin-top: 6px; }
+.bk-act a { display: inline-flex; align-items: center; height: 36px; padding: 0 16px; border-radius: 18px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; text-decoration: none; }
+.bk-act a.alt { background: var(--hm-ctrl); color: var(--hm-text); }
+.bk-tot { font-size: 14px; color: var(--hm-text); margin: 14px 0 0; text-align: center; }
