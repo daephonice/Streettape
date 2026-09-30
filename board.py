@@ -101,6 +101,7 @@ async def _yahoo_marks(client: httpx.AsyncClient, skip_tickers: set | None = Non
     return out
 
 
+STALE_DEVIATION = 0.15  # Gecko tape >15% off the official mark is a dead pool, not a gap
 THIN_LIQUIDITY_USD = 5000.0  # a Gecko tape from a pool below this is not a tradable price
 
 
@@ -259,6 +260,8 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         prem_fair = rwa.premium(token_price, fair_price) if token_price and fair_price else None
         liq = tape.get("liquidity")
         thin = bool(has_addr and off.get("price") is None and liq is not None and liq < THIN_LIQUIDITY_USD)
+        if has_addr and off.get("price") is None and prem is not None and abs(prem) > STALE_DEVIATION:
+            thin = True  # Gecko multi returns no liquidity, so guard on deviation from the mark
         if thin:
             prem = prem_fair = None  # a stale thin-pool price is not a real gap
         # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
