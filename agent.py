@@ -131,6 +131,9 @@ async def fire_due_alerts():
 ARB_THRESHOLD = 0.01
 ARB_USD_SIZE = 50.0
 ARB_COST_FLOOR_BPS = 5.0  # spread/gas noise floor when impact data is missing
+# Unit of the aggregator's priceImpactPct. Set from /api/_impactprobe verdict.
+# "percent": 0.004 = 0.004% = 0.4 bps (x100). "fraction": 0.004 = 0.4% = 40 bps (x10000).
+PRICE_IMPACT_UNIT = os.getenv("PRICE_IMPACT_UNIT", "percent").strip().lower()
 
 
 def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZE) -> list[dict]:
@@ -200,8 +203,50 @@ def _leg_cost_bps(leg: dict) -> float:
     fallback quote."""
     impact = leg.get("priceImpactPct")
     if impact is not None:
-        return abs(impact) * 100  # priceImpactPct is a fraction (0.004 = 0.4%)
+        return abs(impact) * (10000 if PRICE_IMPACT_UNIT == "fraction" else 100)
     return ARB_COST_FLOOR_BPS
+
+
+async def impact_probe(taker: str, pair: str = "TSLAB", small_usd: float = 50.0, big_usd: float = 5000.0) -> dict:
+    """Settles the priceImpactPct unit: quote BNB -> wrapper at two sizes with a
+    taker (real SWAP route), compare the raw field at the big size with the
+    economic impact implied by the rate drop. Writes the raw values to DEVEX log."""
+    import swap
+    import devlog
+    tok = rwa.by_symbol(pair)
+    mint = (tok or {}).get("address")
+    if not mint:
+        return {"error": f"no mint for {pair} in snapshot"}
+    bnb_px = swap._price_of_mint(rwa.NATIVE)
+    if not bnb_px:
+        return {"error": "no BNB price"}
+    runs = []
+    for usd in (small_usd, big_usd):
+        amt = usd / bnb_px
+        q = await swap.quote(rwa.NATIVE, mint, amt, taker)
+        runs.append({"usd": usd, "bnbIn": amt, "mode": q.get("executionMode"), "provider": q.get("provider"),
+                     "rawPriceImpactPct": q.get("priceImpactPct"), "uiOutAmount": q.get("uiOutAmount"),
+                     "rate": q.get("rate"), "routes": q.get("routes")})
+    a, b = runs
+    out = {"pair": f"BNB->{pair}", "runs": runs, "verdict": "inconclusive"}
+    if not all(r["provider"] == "binance_web3" and r["mode"] == "SWAP" and r["rate"] and r["rawPriceImpactPct"] is not None for r in runs):
+        out["note"] = "need provider=binance_web3, mode=SWAP and a raw impact at both sizes (pass a valid taker; RFQ/fallback does not count)"
+    else:
+        econ = 1 - b["rate"] / a["rate"]  # fraction of value lost going from $50 to $5000
+        raw = abs(b["rawPriceImpactPct"])
+        out["economicImpactFraction"] = econ
+        if econ > 0.0001 and raw > 0:
+            ratio = raw / econ
+            out["rawOverEconomic"] = ratio
+            out["verdict"] = "percent" if ratio > 10 else "fraction"
+            out["action"] = ("keep x100 (PRICE_IMPACT_UNIT=percent), delete 'provisional'" if out["verdict"] == "percent"
+                             else "set PRICE_IMPACT_UNIT=fraction (x10000), delete 'provisional'")
+        else:
+            out["note"] = "rate drop between sizes too small/noisy to compare; try a larger big_usd"
+    devlog.log_call(what=f"impact probe BNB->{pair}", url="/api/v1/dex/aggregator/swap", status="n/a", ms=0,
+                    actual=f"raw50={a['rawPriceImpactPct']} out50={a['uiOutAmount']} raw5000={b['rawPriceImpactPct']} "
+                           f"out5000={b['uiOutAmount']} verdict={out['verdict']}")
+    return out
 
 
 async def net_arb_quote(hit: dict, size_usd: float | None = None) -> dict:

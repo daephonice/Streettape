@@ -77,7 +77,7 @@ After-hours `/api/agent/studio/tick` at $50 notionals: cross-wrapper gaps SPCX 3
 
 ### `priceImpactPct` unit is unverified
 
-Values at a few dollars: `0.00023` to `0.00301`, sign flips. Code comments treat it as a fraction, then does `abs(x) * 100`. If the API returns a fraction, cost is understated 100x. If it returns percent, the conversion is correct for bps. Not confirmed from docs or a large-size quote. Net-bps in the agent is provisional. The 5 bps floor on unknown-impact legs is what keeps the numbers from looking insane.
+Values at a few dollars: `0.00023` to `0.00301`, sign flips. `_leg_cost_bps` does `abs(x) * 100`, which is correct if the field is a percent (0.004 = 0.004% = 0.4 bps) and understates cost 100x if it is a fraction (needs x10000). Not confirmed from docs or a large-size quote. Net-bps in the agent is provisional until `GET /api/_impactprobe?taker=<wallet>` is run; set `PRICE_IMPACT_UNIT` to its verdict. The 5 bps floor on unknown-impact legs is what keeps the numbers from looking insane.
 
 ### Transaction simulate path does not exist on this key
 
@@ -558,3 +558,10 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   3. Not yet verified live: a sibling-median guard (3+ priced wrappers, more than 15% off the median is thin), and Gecko is now read for every wrapper so `liquidityUsd` is filled and a pool under $5,000 is thin even when RWA Data supplied the price. Both are aimed at AMDx, which the 15% mark guard does not catch (+5.9%). Check `/api/board` after deploy: AMDx `liquidityUsd` should be about 438 and `thin` true. If `liquidityUsd` is still `null`, Gecko's multi-token response does not carry it.
   4. Ondo wrappers only pair with stablecoins, so the swap sheet no longer offers BNB for them (USDC only). Not yet verified live.
 - Open: `priceImpactPct` unit still unconfirmed (no non-fallback quote at size).
+
+### YYYY-MM-DD — Cost that matches the quote (`priceImpactPct` unit)
+
+- Session: <CASH OPEN | AFTER-HOURS | WEEKEND>
+- What we hit: `GET /api/_impactprobe?taker=<wallet>` (BNB to TSLAB, $50 then $5,000, taker set so the route is SWAP).
+- What came back: <paste raw50 / out50 / raw5000 / out5000 / verdict from the probe's `_devex` entry>
+- What we changed because of it: <`PRICE_IMPACT_UNIT` set to percent|fraction; "provisional" note removed. RFQ legs keep the 5 bps floor.>

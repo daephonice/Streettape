@@ -193,6 +193,12 @@ async def api_agent_arb(underlying: str, size_usd: float = 50.0):
     return {"underlying": underlying.upper(), "hit": priced}
 
 
+@router.get("/_impactprobe")
+async def api_impact_probe(taker: str, pair: str = "TSLAB", big_usd: float = 5000.0):
+    """One-off: settles the priceImpactPct unit. taker = your wallet address."""
+    return await agent.impact_probe(taker, pair, 50.0, big_usd)
+
+
 @router.get("/agent/flatten/{underlying}")
 async def api_agent_flatten(underlying: str, size_usd: float = 10.0):
     """Richest-wrapper sell quote for the token page's 'Flatten $N' button.
