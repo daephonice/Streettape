@@ -95,6 +95,18 @@ def cmd_board(a):
     })
 
 
+def cmd_basket(a):
+    b = call("/api/basket/ai", {"usd": a.usd})
+    out({"session": b.get("session"), "sizeUsd": b.get("sizeUsd"), "from": b.get("from"),
+         "filledUsd": b.get("filledUsd"), "unfilledUsd": b.get("unfilledUsd"),
+         "legs": [({"underlying": l["underlying"], "symbol": l["symbol"], "platform": l["platform"],
+                    "contract": l["contract"], "ratio": l["ratio"], "tape": l["tape"], "official": l["official"],
+                    "fair": l["fair"], "amountUsd": l["amountUsd"], "outAmount": l["outAmount"],
+                    "provider": l["provider"], "deepLink": l["deepLink"]} if l.get("filled") else
+                   {"underlying": l["underlying"], "unfilled": True, "weight": l["weight"], "reason": l.get("reason")})
+                  for l in b.get("legs") or []]})
+
+
 def cmd_quote(a):
     out(order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign))
 
@@ -148,6 +160,8 @@ def say(sentence):
         if not tick:
             sys.exit(json.dumps({"error": "rotate into which ticker?"}))
         return cmd_rotate(argparse.Namespace(underlying=tick))
+    if "basket" in t:
+        return cmd_basket(argparse.Namespace(usd=50.0))
     if "flatten" in t:
         m = re.search(r"(\d+(?:\.\d+)?)\s*%", t)
         return cmd_flatten(argparse.Namespace(usd=50.0, taker=None, pct=float(m.group(1)) / 100 if m else None))
@@ -156,7 +170,7 @@ def say(sentence):
     if "rich" in t or "friday" in t:
         return cmd_board(argparse.Namespace(min=0.0))
     sys.exit(json.dumps({"error": "unrecognized", "try": [
-        "what's rich vs Friday", "rotate into cheapest NVDA", "flatten anything 2% rich", "alert only when cash is shut"]}))
+        "what's rich vs Friday", "rotate into cheapest NVDA", "flatten anything 2% rich", "alert only when cash is shut", "AI basket"]}))
 
 
 def cmd_say(a):
@@ -174,6 +188,7 @@ def main():
     q.set_defaults(f=cmd_quote)
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
     f.add_argument("--taker"); f.add_argument("--pct", type=float, help="min premium as fraction, default 0.02"); f.set_defaults(f=cmd_flatten)
+    bk = s.add_parser("basket"); bk.add_argument("--usd", type=float, default=50.0); bk.set_defaults(f=cmd_basket)
     r = s.add_parser("rotate"); r.add_argument("underlying"); r.set_defaults(f=cmd_rotate)
     al = s.add_parser("alerts"); al.add_argument("--threshold", type=float); al.set_defaults(f=cmd_alerts)
     sy = s.add_parser("say"); sy.add_argument("sentence", nargs="+"); sy.set_defaults(f=cmd_say)

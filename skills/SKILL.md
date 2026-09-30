@@ -19,6 +19,7 @@ Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market
 | "quote $50 flatten" | `flatten [--usd 50] [--pct 0.02] [--taker 0x..]` | `GET /api/board` + `POST /api/swap/order` |
 | "rotate into cheapest NVDA" | `rotate NVDA` | `GET /api/agent/scan?underlying=NVDA` |
 | "alert only cash-shut" | `alerts [--threshold 0.015]` | `GET /api/agent/scan` |
+| "AI basket" | `basket [--usd 50]` | `GET /api/basket/ai` |
 | any of the four sentences, verbatim | `say "<sentence>"` | dispatches to the rows above |
 | raw quote | `quote <inputMint> <outputMint> <uiAmount> [--taker 0x..] [--sign]` | `POST /api/swap/order` |
 
@@ -27,5 +28,6 @@ Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market
 - **flatten**: sells every wrapper with `premium > 2%` into USDT, $50 each by default. Show `uiOutAmount`, `provider`, `priceImpactPct`. If `provider` is `pancake`, present `deepLink` instead of a number.
 - **rotate**: sell the rich wrapper, buy the cheap one. Print `viable`, `netBps`, both legs and both ratios. If `viable` is false, say costs eat the gap and do not push the trade. If there is no arb, say so.
 - **alerts**: only alert when `session.cashOpen` is false. When cash is open, output nothing.
+- **basket**: equal-weight NVDA/AMD/META, USD split three ways, one USDT buy quote per name into the cheapest wrapper with a tape and a share ratio. Show `symbol`, `platform`, `contract`, `ratio`, `amountUsd`, `outAmount` per leg. A name with no tape is `unfilled`: say so and show its weight as unfilled, never reassign it to the other two. Only this one theme exists.
 - Cooldown: don't repeat an alert for the same symbol within 60 minutes.
 - Every command ends with: not auto-executed, confirm and sign in your own wallet. (`alerts` prints nothing while cash is open.)
