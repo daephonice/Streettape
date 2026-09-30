@@ -311,7 +311,7 @@ async def build_snapshot():
     # needs Yahoo for its uncovered wrappers' premium math.
     covered_und = {
         u["underlying"] for u in rwa.UNIVERSE
-        if all((w["address"].lower() in official) for w in u["wrappers"] if w.get("address"))
+        if all(((official.get(w["address"].lower()) or {}).get("markPrice") is not None) for w in u["wrappers"] if w.get("address"))
         and any(w.get("address") for w in u["wrappers"])
     }
     skip_tickers = {u["yahoo"] for u in rwa.UNIVERSE if u["underlying"] in covered_und and u.get("yahoo")}
