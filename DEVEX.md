@@ -51,7 +51,7 @@ A validation miss is HTTP 200 + `code=40001`. A rate limit is HTTP 429 + `code=4
 
 ### `rwa/price` produced no mark in the logged window
 
-420 calls. 213 missing `binanceChainId`. 207 rate-limited. Official tape and official mark did not come from RWA Data. Gecko (tape) and Yahoo (last cash print) carried the board. After we started sending `binanceChainId=56`, this still needs a clean confirmation pass. Until that pass is green, the UI must not label a Yahoo print as an official Binance mark.
+420 calls. 213 missing `binanceChainId`. 207 rate-limited. Official tape and official mark did not come from RWA Data. Gecko (tape) and Yahoo (last cash print) carried the board. After we sent `binanceChainId=56` and `tokenContractAddresses` the call returns 200 ok, but with `tokenPrice` and `referencePrice` only and no `underlyingPrice` (PRE-MARKET pass, 0/20; see Runtime log 2026-09-30). The UI labels every Yahoo print as Yahoo fallback, never as a Binance mark.
 
 ### Rate limits recover in under a second and are unpublished
 
@@ -182,10 +182,10 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 
 ### 2026-09-30 — Official mark (Binance first, Yahoo fallback)
 
-- Session: <CASH OPEN | AFTER-HOURS | WEEKEND>
-- What we hit: `GET /api/_pricepass` (one pass, 0.3 s apart, no retries) over the seeded addresses; `GET /api/board`.
-- What came back: first success: `<paste firstSuccess>`. First failure: `<paste firstFailure>`. Marks: `<marks>/<total>`.
-- What we changed because of it: `markSource` is `binance` only for a positive `underlyingPrice`, else `yahoo` (or `last-print`); the row prints the source under Official. If the pass is empty: "endpoint returned no mark", Yahoo stays, no retry loop.
+- Session: PRE-MARKET (03:33 ET / 08:33 WAT, 2026-09-30). Cash shut.
+- What we hit: `GET /api/_pricepass` (one paced pass, 0.3 s apart, no retries, 20 addresses); `GET /api/board`; the `/` board page on a phone browser.
+- What came back (log, first of each): `rwa/price` with `tokenAddress`, `tokenContractAddress`, `tokenContractAddresses` and `binanceChainId=56`: HTTP 200, `ok` (07:17:28 UTC, NVDAx, 100 ms). First 429 `code=42900 Rate limit exceeded` at 07:17:29 UTC on the Ondo NVDA address in the startup burst; the retry returned 200 the next second. The paced pass: 0 marks of 20. First failure, NVDAx `0xc845b2894dBddd03858fd2D643B4eF725fE0849d`: 200 with no `underlyingPrice`. The row held only `binanceChainId`, `tokenContractAddress`, `platformId: null`, `tokenPrice` 229.4663, `referencePrice` 229.4663 and `tokenPriceUpdatedAt`. `referencePrice` equals `tokenPrice` to every digit, so it is the onchain tape, not an issuer mark, and it was not used. No first success exists. `/api/board`: `markSource` is `yahoo` on all 20 tokens (0 `binance`); Official showed `$738.79` on META, `$227.21` on NVDA and `$149.24` on SPCX, all Yahoo prints. The page printed "Yahoo fallback" under Official on every wrapper.
+- What we changed because of it: `markSource` is `binance` only for a positive `underlyingPrice`, otherwise `yahoo` (or `last-print`), and the source prints under Official on the row and in `/api/board`. The endpoint returned no mark for this address set in PRE-MARKET, so Yahoo stays and no Yahoo number is labeled official. The park after three hard failures is unchanged; nothing retries in a loop. Not tested: CASH OPEN. An issuer mark may only appear during the cash session, so that pass is still open.
 
 ## 2026-09-29T13:18:04+00:00 — rwa official /api/v1/dex/market/rwa/platforms
 - URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/platforms`
