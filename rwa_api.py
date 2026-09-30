@@ -130,6 +130,14 @@ async def underlying_market(client: httpx.AsyncClient, address: str, chain_id: s
                       {"tokenContractAddress": address, "binanceChainId": chain_id})
 
 
+def _pos(v) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
 PRICE_GAP = 0.3          # s between price calls; bursts get 429 (code 42900)
 PRICE_PARK_SECONDS = 600.0
 _price_parked_until = 0.0
@@ -179,7 +187,7 @@ async def get_official_snapshot(addresses: list[str]) -> dict | None:
                     continue
                 out[addr.lower()] = {
                     "price": float(row["tokenPrice"]) if row.get("tokenPrice") else None,
-                    "markPrice": float(row["underlyingPrice"]) if row.get("underlyingPrice") else None,
+                    "markPrice": _pos(row.get("underlyingPrice")),
                     "multiplier": float(row["multiplier"]) if row.get("multiplier") else None,
                 }
     except Exception:
@@ -326,3 +334,41 @@ async def mcap_report(pairs: list[tuple[str, str]]) -> dict:
             except Exception as e:
                 out[und] = {"error": str(e)[:200]}
     return out
+
+
+_pass_last = 0.0
+
+
+async def official_pass(addresses: list[str]) -> dict:
+    """One paced pass (PRICE_GAP apart), no retries. Returns first success,
+    first failure and per-address result for DEVEX.md Runtime log."""
+    global _pass_last
+    if not available():
+        return {"ok": False, "error": "unset or parked"}
+    if time.time() - _pass_last < DEVCHECK_MIN_INTERVAL:
+        return {"ok": False, "error": "rate-limited (1 pass / 60s)"}
+    _pass_last = time.time()
+    first_ok = first_fail = None
+    rows = {}
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+        for i, addr in enumerate(addresses):
+            if i:
+                await asyncio.sleep(PRICE_GAP)
+            try:
+                row = await price(client, address=addr)
+                if isinstance(row, list):
+                    row = next((r for r in row if isinstance(r, dict)), None)
+                mark = _pos((row or {}).get("underlyingPrice"))
+                rows[addr] = {"markPrice": mark, "row": row}
+                if mark is not None and first_ok is None:
+                    first_ok = {"address": addr, "row": row}
+                if mark is None and first_fail is None:
+                    first_fail = {"address": addr, "error": "200 but no underlyingPrice", "row": row}
+            except Exception as e:
+                rows[addr] = {"markPrice": None, "error": str(e)[:200]}
+                if first_fail is None:
+                    first_fail = {"address": addr, "error": str(e)[:200]}
+    n_ok = sum(1 for v in rows.values() if v["markPrice"] is not None)
+    return {"ok": n_ok > 0, "marks": n_ok, "total": len(rows),
+            "firstSuccess": first_ok, "firstFailure": first_fail,
+            "verdict": "binance" if n_ok else "endpoint returned no mark; board stays on Yahoo"}

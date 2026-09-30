@@ -245,7 +245,9 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         off = official.get(addr_l) or {} if has_addr else {}
         tape = (tapes.get(addr_l) if has_addr else None) or {}
         token_price = off.get("price") if off.get("price") is not None else tape.get("price")
-        mark = off.get("markPrice") if off.get("markPrice") is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
+        off_mark = off.get("markPrice")
+        off_mark = off_mark if isinstance(off_mark, (int, float)) and off_mark > 0 else None
+        mark = off_mark if off_mark is not None else (marks.get(w["yahoo"]) if w.get("yahoo") else None)
         multiplier = off.get("multiplier") if off.get("multiplier") is not None else w.get("multiplier")
         fm = fair_marks.get(w["underlying"]) or {}
         last_print_used = False
@@ -283,7 +285,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             ),
             "url": f"https://pancakeswap.finance/swap?chain=bsc&outputCurrency={w['address']}" if has_addr else None,
             "multiplier": multiplier,
-            "markSource": "rwa" if off.get("markPrice") is not None else (("last-print" if last_print_used else "yahoo") if mark else None),
+            "markSource": "binance" if off_mark is not None else (("last-print" if last_print_used else "yahoo") if mark else None),
             "fairPrice": fair_price,
             "fairBeta": fm.get("beta") if fair_price else None,
             "fairIndexMove": fm.get("indexMove") if fair_price else None,
@@ -334,7 +336,7 @@ async def build_snapshot():
     # needs Yahoo for its uncovered wrappers' premium math.
     covered_und = {
         u["underlying"] for u in rwa.UNIVERSE
-        if all(((official.get(w["address"].lower()) or {}).get("markPrice") is not None) for w in u["wrappers"] if w.get("address"))
+        if all((((official.get(w["address"].lower()) or {}).get("markPrice") or 0) > 0) for w in u["wrappers"] if w.get("address"))
         and any(w.get("address") for w in u["wrappers"])
     }
     skip_tickers = {u["yahoo"] for u in rwa.UNIVERSE if u["underlying"] in covered_und and u.get("yahoo")}

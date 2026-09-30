@@ -36,6 +36,12 @@ async def api_swapcheck(input: str = rwa.NATIVE, output: str = "0x02fca66c1d1afb
     return await swap_mod.quote(input, output, amount, taker)
 
 
+@router.get("/_pricepass")
+async def api_pricepass():
+    addrs = list(dict.fromkeys(w["address"] for w in rwa.wrappers() if w.get("address")))
+    return await rwa_api.official_pass(addrs)
+
+
 @router.get("/_mcapcheck")
 async def api_mcapcheck():
     pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
