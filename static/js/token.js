@@ -536,7 +536,7 @@
   }
 
   const arbEls = {
-    card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note'),
+    card: $('tk-arb'), net: $('tk-arb-net'), line: $('tk-arb-line'), note: $('tk-arb-note'), ratios: $('tk-arb-ratios'),
     legs: $('tk-arb-legs'), sellBtn: $('tk-arb-sell'), buyBtn: $('tk-arb-buy'),
     rotateBtn: $('tk-rotate-btn'), flattenBtn: $('tk-flatten-btn'),
   };
@@ -560,6 +560,10 @@
       arbEls.note.textContent = hit.viable
         ? `Gross ${Math.round(hit.grossBps)} bps, ~${Math.round(hit.costBps)} bps costs.`
         : `Gross ${Math.round(hit.grossBps)} bps doesn't clear ~${Math.round(hit.costBps)} bps in costs — not viable at $${hit.sizeUsd.toFixed(0)}.`;
+      if (arbEls.ratios) {
+        arbEls.ratios.hidden = false;
+        arbEls.ratios.textContent = `Shares per token: ${hit.richSymbol} ${hit.richRatio} (${hit.richPrice} \u2192 ${hit.richSharePrice.toFixed(4)}/sh) \u00b7 ${hit.cheapSymbol} ${hit.cheapRatio} (${hit.cheapPrice} \u2192 ${hit.cheapSharePrice.toFixed(4)}/sh)`;
+      }
       if (arbEls.legs) {
         arbEls.legs.hidden = false;
         arbEls.sellBtn.textContent = `Sell ${hit.richSymbol}`;
