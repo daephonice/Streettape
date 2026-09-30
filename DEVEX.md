@@ -75,9 +75,11 @@ Queried NVDAB (`0x02fca66c1d1afb4e2a7884261eb00f63598a7436`):
 
 After-hours `/api/agent/studio/tick` at $50 notionals: cross-wrapper gaps SPCX 3.5%, TSLA 3.1%, META 1.8%, NVDA 1.1%. Wrappers of the same name stop tracking each other off hours. That is the desk.
 
-### `priceImpactPct` unit is unverified
+### `priceImpactPct` is a fraction, and it does not scale with size
 
-Values at a few dollars: `0.00023` to `0.00301`, sign flips. `_leg_cost_bps` does `abs(x) * 100`, which is correct if the field is a percent (0.004 = 0.004% = 0.4 bps) and understates cost 100x if it is a fraction (needs x10000). Not confirmed from docs or a large-size quote. Net-bps in the agent is provisional until `GET /api/_impactprobe?taker=<wallet>` is run; set `PRICE_IMPACT_UNIT` to its verdict. The 5 bps floor on unknown-impact legs is what keeps the numbers from looking insane.
+Probed BNB to TSLAB (LiquidMesh, taker set, `executionMode=SWAP`) at $50, $5,000 and $20,000. Raw field: `0.00389`, `0.00273`, `0.00185`. Rate drop against the $50 quote: 15 bps at $5,000, 21 bps at $20,000. Read as a fraction the raw value is 19 to 39 bps, the same order as the observed drop. Read as a percent it is 0.2 to 0.4 bps, roughly 50x to 100x too small. Unit settled as a fraction: `_leg_cost_bps` multiplies by 10,000 (`PRICE_IMPACT_UNIT=fraction`). The old x100 understated cost 100x.
+
+Still open: the raw value fell as size grew, while the rate drop grew. On this pair the field behaves like a per-quote figure, not incremental slippage. Its meaning is not in the docs we used. Cost stays at the 5 bps floor for RFQ legs and legs with no impact value.
 
 ### Transaction simulate path does not exist on this key
 
@@ -136,7 +138,7 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 ## Open on our side
 
 - Confirm `rwa/price` with `binanceChainId=56` (and `tokenContractAddress` if needed).
-- Confirm `priceImpactPct` unit with a large-size quote.
+- Ask what `priceImpactPct` measures (it falls as size grows on TSLAB). Unit is settled as a fraction.
 - Do not retry simulate or Address Portfolio until a documented path exists.
 - One live `baw market-order quote` against a signed-in session.
 
@@ -557,11 +559,20 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   2. Any wrapper more than 15% off the official mark is marked `thin`, whatever the price source. Verified live: METAx shows the thin pool chip and the META group spread fell from +28.6% to +0.3%. (One earlier screenshot still showed the old card; a hard reload fixed it, so that was probably a stale page. Not proven.)
   3. Not yet verified live: a sibling-median guard (3+ priced wrappers, more than 15% off the median is thin), and Gecko is now read for every wrapper so `liquidityUsd` is filled and a pool under $5,000 is thin even when RWA Data supplied the price. Both are aimed at AMDx, which the 15% mark guard does not catch (+5.9%). Check `/api/board` after deploy: AMDx `liquidityUsd` should be about 438 and `thin` true. If `liquidityUsd` is still `null`, Gecko's multi-token response does not carry it.
   4. Ondo wrappers only pair with stablecoins, so the swap sheet no longer offers BNB for them (USDC only). Not yet verified live.
-- Open: `priceImpactPct` unit still unconfirmed (no non-fallback quote at size).
+- Closed 2026-09-30: `priceImpactPct` unit is a fraction (see Runtime log, cost that matches the quote).
 
-### YYYY-MM-DD — Cost that matches the quote (`priceImpactPct` unit)
+### 2026-09-30 — Cost that matches the quote (`priceImpactPct` unit)
 
-- Session: <CASH OPEN | AFTER-HOURS | WEEKEND>
-- What we hit: `GET /api/_impactprobe?taker=<wallet>` (BNB to TSLAB, $50 then $5,000, taker set so the route is SWAP).
-- What came back: <paste raw50 / out50 / raw5000 / out5000 / verdict from the probe's `_devex` entry>
-- What we changed because of it: <`PRICE_IMPACT_UNIT` set to percent|fraction; "provisional" note removed. RFQ legs keep the 5 bps floor.>
+- Session: CASH OPEN (15:25 Lagos / 10:25 New York).
+- What we hit: `GET /api/_impactprobe?taker=<wallet>` for BNB to TSLAB at $50 and $5,000, then again at $50 and $20,000. Taker set, so both legs were a real SWAP, not an RFQ rejection. Follow-up `GET /api/agent/arb/{NVDA,TSLA,SPCX,META}?size_usd=50`.
+- What came back: all six quotes were `provider=binance_web3`, `mode=SWAP`, route LiquidMesh. The raw values below are from the probe's JSON response; the `/api/_devex` entries were wiped by the redeploy that followed, so they are not pasted here.
+
+  | Size | BNB in | Raw `priceImpactPct` | Out (TSLAB) | Rate (TSLAB per BNB) |
+  |---|---|---|---|---|
+  | $50 | 0.06538 | 0.0037888 | 0.142574 | 2.18079 |
+  | $5,000 | 6.53774 | 0.0027332 | 14.235711 | 2.17747 |
+  | $50 (2nd run) | 0.06537 | 0.0038926 | 0.142553 | 2.18077 |
+  | $20,000 | 26.14721 | 0.0018531 | 56.902550 | 2.17624 |
+
+  Rate drop against the $50 quote: 0.152% (15 bps) at $5,000, 0.208% (21 bps) at $20,000. Probe verdict both runs: `fraction` (raw over economic 1.8 and 0.9; a percent would give about 100). The four arb calls returned `hit: null`: no cross-wrapper gap above 1% at CASH OPEN, so the corrected cost was not exercised end to end on a live rotate.
+- What we changed because of it: `PRICE_IMPACT_UNIT` is now `fraction` and is the code default, so `_leg_cost_bps` is `abs(x) * 10000`. The "provisional" note on the unit is gone. Net bps from SWAP legs is now about 40 to 80 bps for a two-leg rotate at $50, so a rotate needs a gap above about 0.8%. RFQ legs and legs with no impact value keep the 5 bps floor. Raw impact fell as size grew while the rate drop grew, so the field is not slippage on this pair; unresolved.

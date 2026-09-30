@@ -133,7 +133,7 @@ ARB_USD_SIZE = 50.0
 ARB_COST_FLOOR_BPS = 5.0  # spread/gas noise floor when impact data is missing
 # Unit of the aggregator's priceImpactPct. Set from /api/_impactprobe verdict.
 # "percent": 0.004 = 0.004% = 0.4 bps (x100). "fraction": 0.004 = 0.4% = 40 bps (x10000).
-PRICE_IMPACT_UNIT = os.getenv("PRICE_IMPACT_UNIT", "percent").strip().lower()
+PRICE_IMPACT_UNIT = os.getenv("PRICE_IMPACT_UNIT", "fraction").strip().lower()
 
 
 def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZE) -> list[dict]:
