@@ -259,7 +259,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         fair_price = fm.get("fairPrice")
         prem_fair = rwa.premium(token_price, fair_price) if token_price and fair_price else None
         liq = tape.get("liquidity")
-        thin = bool(has_addr and off.get("price") is None and liq is not None and liq < THIN_LIQUIDITY_USD)
+        thin = bool(has_addr and liq is not None and liq < THIN_LIQUIDITY_USD)  # RWA Data tokenPrice inherits dead-pool prices too
         if has_addr and prem is not None and abs(prem) > STALE_DEVIATION:
             thin = True  # stale pool price, whether it came from RWA Data or Gecko (METAx: RWA Data tokenPrice was the dead pool)
         if thin:
@@ -297,6 +297,22 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "premiumToOfficial": prem if has_addr else None,
             "premiumToFair": prem_fair if has_addr else None,
         })
+    # Sibling guard (needs no mark, so it also holds during the first publish before
+    # Yahoo lands): with 3+ priced wrappers of one underlying, a tape >15% off the
+    # median is a dead pool.
+    import statistics
+    by_und: dict[str, list[dict]] = {}
+    for t in tokens:
+        if t["tokenPrice"] and not t["thin"]:
+            by_und.setdefault(t["underlying"], []).append(t)
+    for rows in by_und.values():
+        if len(rows) < 3:
+            continue
+        med = statistics.median(r["tokenPrice"] for r in rows)
+        for r in rows:
+            if abs(r["tokenPrice"] / med - 1) > STALE_DEVIATION:
+                r.update({"thin": True, "status": "thin", "premium": None,
+                          "premiumToOfficial": None, "premiumToFair": None})
     tokens.sort(key=lambda t: abs(t["premium"] or 0), reverse=True)
     return tokens
 
@@ -335,7 +351,6 @@ async def build_snapshot():
 
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     official = await rwa_api.get_official_snapshot(addrs) or {}
-    remaining_addrs = [a for a in addrs if a.lower() not in official]
 
     # Only skip a ticker's Yahoo fetch if every wrapper under that underlying
     # already got an official mark — a partially-covered underlying still
@@ -352,7 +367,7 @@ async def build_snapshot():
     fair_marks = await asyncio.to_thread(fair.synthetic_marks, underlyings, cash_open)
 
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
-        tapes = await _gecko_prices(client, remaining_addrs)
+        tapes = await _gecko_prices(client, addrs)  # all wrappers: liquidity is needed even when RWA Data supplied the price
         tokens = _build_tokens(tapes, {}, official, fair_marks)
         snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
 
