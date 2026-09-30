@@ -59,6 +59,10 @@
     w.appendChild(top);
     w.appendChild(row('Tape', t.hasTape ? money(t.tokenPrice) : '—'));
     w.appendChild(row('Official', money(t.markPrice)));
+    if (t.markSource) {
+      const SRC = { binance: 'Binance', yahoo: 'Yahoo fallback', 'last-print': 'Last print (Yahoo)' };
+      w.appendChild(el('div', 'bd-src bd-src-' + t.markSource, SRC[t.markSource] || t.markSource));
+    }
     if (showFair) w.appendChild(row('Fair', money(t.fairPrice), 'bd-r-fair'));
     const badges = el('div', 'bd-badges');
     if (t.thin) {
