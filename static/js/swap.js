@@ -20,10 +20,10 @@
 
   const ANIM_MS = 260;
   const DEBOUNCE_MS = 450;
-  const PAY = ['BNB', 'USDC'];
-  const LOGO = { BNB: '/static/img/bnb.svg', USDC: '/static/img/usdc.svg' };
-  const DEC = { BNB: 18, USDC: 18 };
-  const QUICK = { BNB: [0.01, 0.05, 0.1], USDC: [10, 50, 100] };
+  const PAY = ['BNB', 'USDC', 'USDT'];
+  const LOGO = { BNB: '/static/img/bnb.svg', USDC: '/static/img/usdc.svg', USDT: '/static/img/usdt.svg' };
+  const DEC = { BNB: 18, USDC: 18, USDT: 18 };
+  const QUICK = { BNB: [0.01, 0.05, 0.1], USDC: [10, 50, 100], USDT: [10, 50, 100] };
   const BNB_RESERVE = 0.0002;      // kept back for network fees / new token account
   const STEP = 5;                 // - / + step for the sell percentage
   const TOKEN_DEC = 9;
@@ -174,7 +174,9 @@
   // ---- State helpers ----------------------------------------------------------
   // Ondo assets on BSC only pair with stablecoins (live: code=40368), so no BNB leg for them.
   const isOndo = (c, sym) => (((c.assets[sym] || {}).platform) || '').toLowerCase() === 'ondo';
-  const payOptions = () => PAY.filter((s) => s !== S.symbol && !(s === 'BNB' && isOndo(S.host.getCtx(), S.symbol)));
+  // Live 2026-09-30: Ondo rejects USDC too (40368 "allowed stablecoin(s)"), so Ondo pays in USDT only.
+  const allowedPay = (c, sym) => PAY.filter((s) => s !== sym && !(isOndo(c, sym) && s !== 'USDT'));
+  const payOptions = () => allowedPay(S.host.getCtx(), S.symbol);
   const price = (c, sym) => (c.prices[sym] ? c.prices[sym].price : 0);
 
   function setNote(msg) { R.note.textContent = msg || ''; }
@@ -499,8 +501,9 @@
   function open(host) {
     const c = host.getCtx();
     if (S || !c.address || !c.prices[host.symbol]) return false;
-    const cur = PAY.find((s) => s !== host.symbol && !(s === 'BNB' && isOndo(c, host.symbol)));
-    if (!c.prices[cur]) return false;
+    const opts = allowedPay(c, host.symbol);
+    const cur = opts.includes(host.pay) ? host.pay : opts[0];
+    if (!cur || !c.prices[cur]) return false;
     build();
     S = {
       host, address: c.address, side: host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
@@ -520,7 +523,13 @@
       R.backdrop.classList.add('open');
       R.sheet.classList.add('open');
     }));
-    if (S.side === 'buy') {
+    const pre = S.side === 'buy' ? sanitize(String(host.amount || ''), DEC[cur]) : '';
+    if (pre && parseFloat(pre) > 0) {
+      S.raw = pre;
+      R.input.value = pre;
+      render();
+      scheduleQuote();
+    } else if (S.side === 'buy') {
       setTimeout(() => { if (S && S.side === 'buy') R.input.focus({ preventScroll: true }); }, ANIM_MS + 40);
     } else {
       scheduleQuote();

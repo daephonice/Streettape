@@ -526,9 +526,10 @@
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
       if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); }
-      if (location.hash === '#swap' && !loadGroup.opened && state.address) {
+      if (/^#swap/.test(location.hash) && !loadGroup.opened && state.address) {
         loadGroup.opened = true;
-        openSwap('buy', FOCUS || undefined);
+        const q = new URLSearchParams(location.hash.split('?')[1] || '');  // basket: #swap?pay=USDT&amt=16.67
+        openSwap('buy', FOCUS || undefined, undefined, { pay: (q.get('pay') || '').toUpperCase(), amount: q.get('amt') });
       }
     } catch (err) {
       setTimeout(loadGroup, 3000);
@@ -713,11 +714,11 @@
   }
 
   // Returns true if the in-app sheet opened; else falls back to a Pancake link.
-  function openSwap(side, sym, onClose) {
+  function openSwap(side, sym, onClose, pre) {
     if (!state.address) { connect(); return false; }
     const label = sym || SYMBOL;
     const key = keyFor(label);
-    const ok = window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose });
+    const ok = window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose, pay: pre && pre.pay, amount: pre && pre.amount });
     if (ok) return true;
     const link = pancakeLink(side, key);
     if (link) window.open(link, '_blank', 'noopener');
