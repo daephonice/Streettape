@@ -51,7 +51,7 @@ UNIVERSE = [
         {"symbol":"QQQon","platform":"ondo","address":"0x0cdE6936d305d5B34667fC46425E852efd73559a","multiplier":None},
         {"symbol":"QQQB","platform":"bstocks","address":"0x205812cdbed920aff76c6580abd681a46d11efc7","multiplier":1.0},
     ]},
-    {"underlying":"SPCX","yahoo":None,"name":"SpaceX","wrappers":[
+    {"underlying":"SPCX","yahoo":"SPCX","name":"SpaceX","wrappers":[
         {"symbol":"SPCXx","platform":"xstocks","address":"0x68fa48b1c2fe52b3d776e1953e0e782b5044ce28","multiplier":None},
         {"symbol":"SPCXon","platform":"ondo","address":"0xd0a58BC9D88D3FF48C0294Cb7e45937d0E41A928","multiplier":None},
         {"symbol":"SPCXB","platform":"bstocks","address":"0xbe9d156892e55e7154bcd3cb0fea677f9d3103e1","multiplier":1.0},
