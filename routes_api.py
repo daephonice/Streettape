@@ -14,6 +14,7 @@ import swap as swap_mod
 import agent
 import market_stats
 import rwa_api
+import basket
 
 log = logging.getLogger("routes_api")
 router = APIRouter(prefix="/api")
@@ -74,6 +75,13 @@ async def api_devex():
 @router.get("/board")
 async def get_board():
     return rwa.get_cached_snapshot()
+
+
+@router.get("/basket/ai")
+async def api_basket_ai(usd: float = basket.DEFAULT_USD):
+    if not 1 <= usd <= 10000:
+        raise HTTPException(status_code=400, detail="usd must be between 1 and 10000")
+    return await basket.build(usd)
 
 
 @router.get("/session")

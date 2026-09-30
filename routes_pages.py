@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 
 import prices
 import rwa
+import basket
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -46,6 +47,11 @@ def _board_context() -> dict:
 @router.get("/", response_class=HTMLResponse)
 async def board_page(request: Request):
     return templates.TemplateResponse(request, "board.html", _board_context())
+
+
+@router.get("/basket/ai", response_class=HTMLResponse)
+async def basket_ai_page(request: Request):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build()})
 
 
 @router.get("/board")
