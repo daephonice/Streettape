@@ -317,6 +317,54 @@ async def refresh_mcaps(pairs: list[tuple[str, str]]) -> None:
         _mcap_last = time.time() - MCAP_REFRESH_SECONDS + MCAP_RETRY_SECONDS
 
 
+RATIO_REFRESH_SECONDS = 3600.0
+RATIO_RETRY_SECONDS = 300.0
+_ratios: dict[str, float] = {}
+_ratio_last = 0.0
+
+
+def get_ratio(address: str | None) -> float | None:
+    """tokenToShareRatio (shares per token) for a wrapper address, from underlying-profile."""
+    return _ratios.get((address or "").lower())
+
+
+async def _underlying_profile_retry(client, addr):
+    for attempt in range(4):
+        try:
+            return await underlying_profile(client, addr)
+        except Exception as e:
+            if "rate limit" in str(e).lower() and attempt < 3:
+                await asyncio.sleep(3.0 * (attempt + 1))
+                continue
+            raise
+
+
+async def refresh_ratios(addresses: list[str]) -> None:
+    """Hourly. One underlying-profile call per wrapper address (ratio is per wrapper,
+    not per underlying). Keeps old values on failure."""
+    global _ratio_last
+    if not available() or time.time() - _ratio_last < RATIO_REFRESH_SECONDS:
+        return
+    _ratio_last = time.time()
+    failed = False
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
+        for i, addr in enumerate(addresses):
+            if i:
+                await asyncio.sleep(MCAP_GAP)
+            try:
+                data = await _underlying_profile_retry(client, addr)
+                r = _pos((data or {}).get("tokenToShareRatio"))
+                if r:
+                    _ratios[addr.lower()] = r
+                else:
+                    failed = True
+            except Exception:
+                failed = True
+                log.warning("ratio refresh failed for %s", addr, exc_info=True)
+    if failed:
+        _ratio_last = time.time() - RATIO_REFRESH_SECONDS + RATIO_RETRY_SECONDS
+
+
 async def mcap_report(pairs: list[tuple[str, str]]) -> dict:
     """Per-underlying marketCap (or error) straight from underlying-market. Debug/DevEx aid."""
     if not available():

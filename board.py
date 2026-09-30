@@ -285,6 +285,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             ),
             "url": f"https://pancakeswap.finance/swap?chain=bsc&outputCurrency={w['address']}" if has_addr else None,
             "multiplier": multiplier,
+            "tokenToShareRatio": rwa_api.get_ratio(w["address"]) if has_addr else None,
             "markSource": "binance" if off_mark is not None else (("last-print" if last_print_used else "yahoo") if mark else None),
             "fairPrice": fair_price,
             "fairBeta": fm.get("beta") if fair_price else None,
@@ -326,6 +327,8 @@ async def build_snapshot():
     pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
              for u in rwa.UNIVERSE if any(w.get("address") for w in u["wrappers"])]
     asyncio.create_task(rwa_api.refresh_mcaps(pairs))
+    asyncio.create_task(rwa_api.refresh_ratios(
+        [w["address"] for w in rwa.wrappers() if w.get("address")]))
 
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     official = await rwa_api.get_official_snapshot(addrs) or {}

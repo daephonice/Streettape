@@ -49,6 +49,15 @@ async def api_mcapcheck():
     return {"mcaps": await rwa_api.mcap_report(pairs), "cached": rwa_api._mcaps}
 
 
+@router.get("/_ratiocheck")
+async def api_ratiocheck():
+    """Force one underlying-profile pass over every wrapper address; returns cached ratios."""
+    addrs = list(dict.fromkeys(w["address"] for w in rwa.wrappers() if w.get("address")))
+    rwa_api._ratio_last = 0.0
+    await rwa_api.refresh_ratios(addrs)
+    return {"ratios": rwa_api._ratios, "missing": [a for a in addrs if a.lower() not in rwa_api._ratios]}
+
+
 @router.get("/_devex")
 async def api_devex():
     import os

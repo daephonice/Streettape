@@ -61,7 +61,7 @@ Five RWA calls passed. The next eight, ~80 ms apart, all 429. The ninth, 84 ms l
 
 Queried NVDAB (`0x02fca66c1d1afb4e2a7884261eb00f63598a7436`):
 
-- `tokenToShareRatio` = `1.000778223752807865`, not `1.0`. Seed catalog stores `multiplier: 1.0` for bStocks. About 0.08% off in share-normalized arb. Not yet wired into the math.
+- `tokenToShareRatio` = `1.000778223752807865`, not `1.0`. Seed catalog stores `multiplier: 1.0` for bStocks. About 0.08% off in share-normalized arb. Now wired into the arb math (see Runtime log, share-normalized rotate).
 - `marketData.marketCap` is NVIDIA the company (~$5.5T), not the wrapper. Shown in the app as "Underlying mcap."
 - `totalShares` is `null` on the bStocks address and `24147000000` on the xStocks address for the same underlying. One wrapper is not a source of truth for a field.
 - `statusInfo.reasonCode=TRADING` exists; `nextOpenTime` / `nextCloseTime` were null in the call we have, so session math stays in `rwa.session_now()`.
@@ -137,7 +137,6 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 
 - Confirm `rwa/price` with `binanceChainId=56` (and `tokenContractAddress` if needed).
 - Confirm `priceImpactPct` unit with a large-size quote.
-- Wire live `tokenToShareRatio` into arb math. Fix `normalized` so both legs must have a ratio.
 - Do not retry simulate or Address Portfolio until a documented path exists.
 - One live `baw market-order quote` against a signed-in session.
 
@@ -539,3 +538,10 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 | 1 | rwa official /api/v1/dex/market/rwa/underlying-profile | 429 | code=# msg=Rate limit exceeded |
 | 1 | rwa official /api/v1/dex/market/rwa/underlying-market | 429 | code=# msg=Rate limit exceeded |
 | 1 | rwa official /api/v1/dex/market/rwa/price | 429 | code=# msg=Rate limit exceeded |
+
+### 2026-09-30 — share-normalized rotate
+
+- Session: <CASH OPEN | AFTER-HOURS | WEEKEND | PRE-MARKET — fill from the chip at run time>
+- What we hit: `GET /api/_ratiocheck`; `GET /api/agent/arb/NVDA?size_usd=50`; `/t/NVDA#rotate` (ratio line under the Rotate card); Telegram `/agent`.
+- What came back: <paste first `underlying-profile` 200 from /api/_devex; first 429 if any; ratios returned, e.g. NVDAB 1.000778223752807865; any wrapper with no ratio and so dropped; arb hit with richRatio/cheapRatio, grossBps, costBps, netBps>
+- What we changed because of it: Arb now divides token price by the live `tokenToShareRatio` from `underlying-profile` (one call per wrapper address, hourly, 2 s apart) and ignores the seed `multiplier`. Legs without a ratio are dropped; fewer than two ratio-backed legs returns no arb. `normalized` is true only when both legs have one. Ratios are shown on `/t/{underlying}` and in the Telegram text.

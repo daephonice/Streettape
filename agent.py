@@ -136,7 +136,8 @@ ARB_COST_FLOOR_BPS = 5.0  # spread/gas noise floor when impact data is missing
 def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZE) -> list[dict]:
     """Share-normalized cross-wrapper gap for every underlying with 2+ tapes
     (or just `underlying` if given). Sell the richest wrapper, buy the
-    cheapest, both normalized by `multiplier`. Proposal only — no auto-trade,
+    cheapest, share price = tokenPrice / tokenToShareRatio. Legs without a
+    ratio are dropped; <2 ratio-backed legs -> no arb. Proposal only — no auto-trade,
     no sizing beyond the flat USD notional passed in.
     Returns one dict per underlying whose raw gap clears ARB_THRESHOLD,
     sorted richest-gap first. Net-of-cost refusal happens later in
@@ -153,10 +154,11 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
             continue
         normed = []
         for w in priced:
-            mult = w.get("multiplier")
-            px = w["tokenPrice"] / mult if mult else w["tokenPrice"]
-            if px:
-                normed.append((px, w))
+            ratio = w.get("tokenToShareRatio")  # live underlying-profile only; seed multiplier ignored
+            if not ratio or ratio <= 0:
+                continue
+            px = w["tokenPrice"] / ratio
+            normed.append((px, w))
         if len(normed) < 2:
             continue
         cheap_px, cheap = min(normed, key=lambda x: x[0])
@@ -170,7 +172,9 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
             "underlying": g["underlying"],
             "rich": rich, "cheap": cheap,
             "gap": gap,
-            "normalized": bool(rich.get("multiplier")) and bool(cheap.get("multiplier")),
+            "normalized": True,  # both legs are ratio-backed by construction
+            "richRatio": rich["tokenToShareRatio"], "cheapRatio": cheap["tokenToShareRatio"],
+            "richSharePrice": rich_px, "cheapSharePrice": cheap_px,
             "sizeUsd": size_usd,
         })
     hits.sort(key=lambda h: h["gap"], reverse=True)
@@ -217,6 +221,10 @@ async def net_arb_quote(hit: dict, size_usd: float | None = None) -> dict:
         "richPrice": hit["rich"]["tokenPrice"],
         "cheapPrice": hit["cheap"]["tokenPrice"],
         "normalized": hit["normalized"],
+        "richRatio": hit["richRatio"],
+        "cheapRatio": hit["cheapRatio"],
+        "richSharePrice": hit["richSharePrice"],
+        "cheapSharePrice": hit["cheapSharePrice"],
         "sizeUsd": size_usd,
         "sellLeg": sell_leg,
         "buyLeg": buy_leg,
@@ -297,7 +305,7 @@ async def arb_text(underlying: str | None = None) -> str | None:
     if not hits:
         return None
     priced = await net_arb_quote(hits[0])
-    note = "" if priced["normalized"] else "\n(no share multiplier on file — raw tape price used)"
+    note = f"\nShare ratios: {priced['richSymbol']} {priced['richRatio']:.6f} · {priced['cheapSymbol']} {priced['cheapRatio']:.6f}"
     viability = (
         f"net +{priced['netBps']:.0f} bps after costs"
         if priced["viable"] else
