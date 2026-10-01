@@ -136,7 +136,8 @@ ARB_COST_FLOOR_BPS = 5.0  # spread/gas noise floor when impact data is missing
 PRICE_IMPACT_UNIT = os.getenv("PRICE_IMPACT_UNIT", "fraction").strip().lower()
 
 
-def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZE) -> list[dict]:
+def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZE,
+                    threshold: float | None = None) -> list[dict]:
     """Share-normalized cross-wrapper gap for every underlying with 2+ tapes
     (or just `underlying` if given). Sell the richest wrapper, buy the
     cheapest, share price = tokenPrice / tokenToShareRatio. Legs without a
@@ -149,6 +150,7 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
     groups = snap.get("groups") or []
     if underlying:
         groups = [g for g in groups if g["underlying"].upper() == underlying.upper()]
+    min_gap = ARB_THRESHOLD if threshold is None else max(0.0, threshold)
 
     hits = []
     for g in groups:
@@ -169,7 +171,7 @@ def check_cross_arb(underlying: str | None = None, size_usd: float = ARB_USD_SIZ
         if cheap["symbol"] == rich["symbol"]:
             continue
         gap = rich_px / cheap_px - 1
-        if gap <= ARB_THRESHOLD:
+        if gap <= min_gap:
             continue
         hits.append({
             "underlying": g["underlying"],
@@ -504,7 +506,8 @@ def identity_card() -> dict:
     return card
 
 
-async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = None) -> dict:
+async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = None,
+                      arb_threshold: float | None = None) -> dict:
     """One scheduled scan: cross-wrapper arbs (net of cost), >2% flatten
     candidates, and cash-shut premium alerts. `new` marks symbols not proposed
     in the last COOLDOWN, so the scheduler can notify only on fresh ones."""
@@ -512,7 +515,7 @@ async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = 
     gaps = scan_gaps(threshold)
     session = gaps["session"]
     arbs = []
-    for h in check_cross_arb(size_usd=size_usd)[:5]:
+    for h in check_cross_arb(size_usd=size_usd, threshold=arb_threshold)[:5]:
         q = await net_arb_quote(h, size_usd)
         key = f"arb:{q['underlying']}"
         seen = _studio_seen.get(key)
@@ -537,6 +540,7 @@ async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = 
     return {
         "agent": "streettape-desk",
         "mode": "proposal-only",
+        "arbThreshold": ARB_THRESHOLD if arb_threshold is None else arb_threshold,
         "at": now.isoformat(),
         "session": session,
         "arbs": arbs,
