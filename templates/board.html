@@ -19,7 +19,7 @@
       <span class="mkt-wordmark">StreetTape</span>
     </a>
     <div class="hm-header-right">
-      <a class="bd-nav-link" href="/wallet">Wallet</a>
+      <a class="bd-wallet-btn" href="/wallet">Wallet</a>
       <button class="mkt-connect-btn" id="mkt-connect-btn" type="button">Connect wallet</button>
     </div>
   </div>
@@ -39,7 +39,7 @@
       <p class="bd-desk-line dim" id="bd-desk-line">Scanning wrappers for a gap that clears cost…</p>
       <a class="bd-desk-btn" id="bd-desk-btn" href="/" hidden>Rotate $50</a>
     </div>
-    <a class="bd-basket-link" href="/basket/ai">AI basket · NVDA AMD META, $50 equal weight</a>
+    <div class="bd-basket"><div class="bd-basket-row"><span class="bd-basket-pill">AI BASKET</span><a class="bd-basket-link" href="/basket/ai">Click to view</a></div><p class="bd-basket-sub">NVDA AMD META, $50 equal weight</p></div>
     <p class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited). Showing last good read.</p>
   </section>
 
@@ -67,13 +67,15 @@
         {% set show_fair = (not cash_open) and (not g.noYahoo) and g.markPrice and t.fairPrice %}
         <div class="bd-w{% if t.symbol == g.cheapest and g.cheapest != g.richest %} is-cheap{% elif t.symbol == g.richest and g.cheapest != g.richest %} is-rich{% endif %}{% if t.thin %} is-thin{% endif %}" data-symbol="{{ t.symbol }}">
           <div class="bd-w-top"><span class="bd-w-sym">{{ t.symbol }}</span></div>
-          <div class="bd-r"><span>Tape</span><b>{{ '$%.2f'|format(t.tokenPrice) if t.tokenPrice is not none else '—' }}</b></div>
-          <div class="bd-r"><span>Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b></div>
-          {% if t.markSource %}<div class="bd-src bd-src-{{ t.markSource }}">{{ {'binance': 'Binance', 'yahoo': 'Yahoo fallback', 'last-print': 'Last print (Yahoo)'}.get(t.markSource, t.markSource) }}</div>{% endif %}
-          {% if show_fair %}<div class="bd-r bd-r-fair"><span>Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
-          <div class="bd-badges">
-            {% if t.thin %}<span class="bd-thin" title="Pool liquidity {{ '$%.0f'|format(t.liquidityUsd) if t.liquidityUsd is not none else 'very low' }}; stale price, not a real gap.">thin pool</span>{% elif t.hasTape %}<span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% endif %}
+          {% set src = {'binance': 'From Binance', 'yahoo': 'From Yahoo', 'last-print': 'From Yahoo'}.get(t.markSource) %}
+          <div class="bd-pxs">
+            <div class="bd-px"><span class="bd-px-l">Tape</span><b>{{ '$%.2f'|format(t.tokenPrice) if t.tokenPrice is not none else '—' }}</b></div>
+            <div class="bd-px"><span class="bd-px-l">Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b>{% if src and t.markPrice is not none %}<small class="bd-px-src bd-src-{{ t.markSource }}">{{ src }}</small>{% endif %}</div>
+            {% if show_fair %}<div class="bd-px bd-px-fair"><span class="bd-px-l">Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
           </div>
+          {% if t.hasTape %}
+          <div class="bd-badges"><span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% if t.thin %}<span class="bd-thin" title="Stale price, not a real gap.">thin pool{% if t.liquidityUsd is not none %} · {{ '${:,.2f}'.format(t.liquidityUsd) }}{% endif %}</span>{% endif %}</div>
+          {% endif %}
           {% if t.hasTape %}
           <a href="/t/{{ t.symbol }}#swap" class="bd-trade">Trade</a>
           {% else %}
