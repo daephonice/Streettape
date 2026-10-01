@@ -36,12 +36,14 @@
     return el('span', 'bd-badge ' + tone(p), fmtPremium(p));
   }
 
-  function row(label, value, cls) {
-    const r = el('div', 'bd-r' + (cls ? ' ' + cls : ''));
-    r.appendChild(el('span', null, label));
+  function px(label, value, cls, src) {
+    const r = el('div', 'bd-px' + (cls ? ' ' + cls : ''));
+    r.appendChild(el('span', 'bd-px-l', label));
     r.appendChild(el('b', null, value));
+    if (src) r.appendChild(el('small', 'bd-px-src bd-src-' + src.key, src.text));
     return r;
   }
+  const usd2 = (v) => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // ---- Cards ---------------------------------------------------------------
   function orderWrappers(list) {
@@ -57,27 +59,28 @@
     const top = el('div', 'bd-w-top');
     top.appendChild(el('span', 'bd-w-sym', t.symbol));
     w.appendChild(top);
-    w.appendChild(row('Tape', t.hasTape ? money(t.tokenPrice) : '—'));
-    w.appendChild(row('Official', money(t.markPrice)));
-    if (t.markSource) {
-      const SRC = { binance: 'Binance', yahoo: 'Yahoo fallback', 'last-print': 'Last print (Yahoo)' };
-      w.appendChild(el('div', 'bd-src bd-src-' + t.markSource, SRC[t.markSource] || t.markSource));
-    }
-    if (showFair) w.appendChild(row('Fair', money(t.fairPrice), 'bd-r-fair'));
-    const badges = el('div', 'bd-badges');
-    if (t.thin) {
-      const tb = el('span', 'bd-thin', 'thin pool');
-      tb.title = 'Onchain pool liquidity is ' + (t.liquidityUsd != null ? '$' + Math.round(t.liquidityUsd).toLocaleString() : 'very low') + '; this price is stale and not a real gap.';
-      badges.appendChild(tb);
-    } else if (t.hasTape) {
+    const SRC = { binance: 'From Binance', yahoo: 'From Yahoo', 'last-print': 'From Yahoo' };
+    const src = t.markSource && SRC[t.markSource] && t.markPrice != null ? { key: t.markSource, text: SRC[t.markSource] } : null;
+    const pxs = el('div', 'bd-pxs');
+    pxs.appendChild(px('Tape', t.hasTape ? money(t.tokenPrice) : '—'));
+    pxs.appendChild(px('Official', money(t.markPrice), '', src));
+    if (showFair) pxs.appendChild(px('Fair', money(t.fairPrice), 'bd-px-fair'));
+    w.appendChild(pxs);
+    if (t.hasTape) {
+      const badges = el('div', 'bd-badges');
       badges.appendChild(el('span', 'bd-bl', 'vs off'));
       badges.appendChild(badge(t.premiumToOfficial));
       if (showFair) {
         badges.appendChild(el('span', 'bd-bl', 'vs fair'));
         badges.appendChild(badge(t.premiumToFair));
       }
+      if (t.thin) {
+        const tb = el('span', 'bd-thin', 'thin pool' + (t.liquidityUsd != null ? ' · ' + usd2(t.liquidityUsd) : ''));
+        tb.title = 'Stale price, not a real gap.';
+        badges.appendChild(tb);
+      }
+      w.appendChild(badges);
     }
-    w.appendChild(badges);
     if (t.hasTape) {
       const rot = arbMap[g.underlying];
       const a = el('a', 'bd-trade', rot ? 'Rotate' : 'Trade');
