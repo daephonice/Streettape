@@ -69,6 +69,11 @@ async def build(usd: float = DEFAULT_USD) -> dict:
             leg["reason"] = f"quote failed: {type(q).__name__}"
             legs.append(leg)
             continue
+        if q.get("noRoute") or q.get("uiOutAmount") is None:
+            leg["reason"] = "no route quoted (Ondo RFQ needs a connected wallet for a firm quote)" if pick.get("platform") == "ondo" else "no route quoted"
+            leg["fallbackReason"] = q.get("fallbackReason")
+            legs.append(leg)
+            continue
         leg.update({
             "filled": True,
             "symbol": pick["symbol"],
