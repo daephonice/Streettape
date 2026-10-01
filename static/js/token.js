@@ -508,7 +508,7 @@
     }
     if (els.mint) els.mint.dataset.mint = tradeW.mint || '';
     if (els.mintText && tradeW.mint) els.mintText.textContent = tradeW.mint.slice(0, 4) + '...' + tradeW.mint.slice(-4);
-    if (els.share && tradeW.mint) els.share.dataset.link = `https://pancakeswap.finance/swap?chain=bsc&outputCurrency=${tradeW.mint}`;
+    if (els.share) els.share.dataset.link = location.href;
     if (els.urlLink && tradeW.url) {
       els.urlLink.href = tradeW.url;
       els.urlLink.hidden = false;
@@ -704,25 +704,11 @@
     return state.prices[u] || (state.assets || {})[u] ? u : sym;
   }
 
-  function pancakeLink(side, key) {
-    const mint = ((state.assets || {})[key] || {}).mint;
-    if (!mint) return null;
-    const usdt = '0x55d398326f99059fF775485246999027B3197955';
-    return side === 'sell'
-      ? `https://pancakeswap.finance/swap?chain=bsc&inputCurrency=${mint}&outputCurrency=${usdt}`
-      : `https://pancakeswap.finance/swap?chain=bsc&inputCurrency=${usdt}&outputCurrency=${mint}`;
-  }
-
-  // Returns true if the in-app sheet opened; else falls back to a Pancake link.
   function openSwap(side, sym, onClose, pre) {
     if (!state.address) { connect(); return false; }
     const label = sym || SYMBOL;
     const key = keyFor(label);
-    const ok = window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose, pay: pre && pre.pay, amount: pre && pre.amount });
-    if (ok) return true;
-    const link = pancakeLink(side, key);
-    if (link) window.open(link, '_blank', 'noopener');
-    return false;
+    return !!(window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose, pay: pre && pre.pay, amount: pre && pre.amount }));
   }
   els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));

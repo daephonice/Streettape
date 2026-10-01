@@ -413,7 +413,9 @@
       sess.quoting = false;
       if (order.uiOutAmount) {
         sess.order = order;
-        if (order.sim && order.sim.ok === false) {
+        if (order.priceImpactTooHigh) {
+          sess.note = 'Price impact is high. You can still confirm or cancel in the wallet.';
+        } else if (order.sim && order.sim.ok === false) {
           sess.note = order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert';
         } else if (order.sim && order.sim.ok && order.sim.gas) {
           sess.note = `Simulated OK · ~${order.sim.gas} gas`;
@@ -665,7 +667,7 @@
         }
         if (S !== sess) return;
         const res = await postJSON('/api/swap/execute', {
-          provider: 'binance_web3',
+          provider: sess.order.provider || 'binance_web3',
           userSignature,
           requestId: sess.order.requestId,
           rfqVendor: sess.order.rfqVendor,
