@@ -417,10 +417,8 @@
           sess.note = 'Approve this token in the wallet, then confirm the swap.';
         } else if (order.priceImpactTooHigh) {
           sess.note = 'Price impact is high. You can still confirm or cancel in the wallet.';
-        } else if (order.sim && order.sim.ok === false) {
-          sess.note = order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert';
-        } else if (order.sim && order.sim.ok && order.sim.gas) {
-          sess.note = `Simulated OK · ~${order.sim.gas} gas`;
+        } else if (order.approval) {
+          sess.note = 'Wallet will ask to approve this token, then confirm the swap.';
         } else {
           sess.note = '';
         }
@@ -584,7 +582,6 @@
     if (amt > bal * (1 + 1e-9)) { b.textContent = 'Insufficient Balance'; b.disabled = true; return; }
     if (S.quoting) { b.textContent = 'Getting Price....'; b.disabled = true; return; }
     if (!S.order || !S.order.uiOutAmount) { b.textContent = 'Swap'; b.disabled = true; return; }
-    if (S.order.sim && S.order.sim.ok === false) { b.textContent = 'Simulation failed'; b.disabled = true; return; }
     b.textContent = 'Swap';
     b.disabled = false;
   }
@@ -680,8 +677,8 @@
           throw new Error('Swap failed, please try again');
         }
       } else {
-        if (sess.order.sim && sess.order.sim.ok === false) {
-          throw new Error(sess.order.sim.error || 'Simulation failed — swap would revert');
+        if (sess.order.approval) {
+          await window.MarktapeWallet.signTransactionForSend(sess.order.approval);
         }
         let signed;
         try {
