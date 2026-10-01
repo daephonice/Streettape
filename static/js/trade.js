@@ -397,6 +397,14 @@
     const outMint = (c.assets[sess.buy] || {}).mint;
     const amt = parseFloat(sess.sellRaw);
     if (!inMint || !outMint || !(amt > 0)) { sess.quoting = false; render(); return; }
+    const plat = (sym) => ((c.assets[sym] || {}).platform || '').toLowerCase();
+    if ((sess.sell === 'BNB' && plat(sess.buy) === 'ondo') || (sess.buy === 'BNB' && plat(sess.sell) === 'ondo')) {
+      sess.quoting = false;
+      sess.order = null;
+      sess.note = "Swaps between this token and real-world assets aren't supported yet. Try using a different token.";
+      render();
+      return;
+    }
     try {
       const body = { inputMint: inMint, outputMint: outMint, uiAmount: amt };
       if (sess.address) body.taker = sess.address;

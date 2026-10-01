@@ -239,6 +239,13 @@
     const outMint = (c.assets[outSym] || {}).mint;
     const amt = buying ? (parseFloat(sess.raw) || 0) : sellCalcAmount();
     if (!inMint || !outMint || !(amt > 0)) { sess.quoting = false; render(); return; }
+    if ((inSym === 'BNB' && isOndo(c, outSym)) || (outSym === 'BNB' && isOndo(c, inSym))) {
+      sess.quoting = false;
+      sess.order = null;
+      setNote("Swaps between this token and real-world assets aren't supported yet. Try using a different token.");
+      render();
+      return;
+    }
     try {
       const order = await postJSON('/api/swap/order', {
         inputMint: inMint, outputMint: outMint, uiAmount: amt, taker: sess.address,
