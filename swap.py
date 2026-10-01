@@ -72,21 +72,29 @@ def _price_of_mint(mint: str):
 
 
 
-async def _eth_ok(tx: dict, taker: str) -> bool:
-    """True if the built tx does not revert. An RPC outage does not drop the route."""
+def _allowance_revert(msg: str) -> bool:
+    m = msg.lower()
+    return any(s in m for s in ("allowance", "transfer amount", "exceeds balance", "insufficient", "stf", "erc20"))
+
+
+async def _eth_ok(tx: dict, taker: str) -> str:
+    """ok, allowance, or revert. A missing approval is not a dead route. An RPC outage is not either."""
     try:
         await rpc.call("eth_call", [{"from": taker, "to": tx["to"], "data": tx["data"], "value": tx.get("value") or "0x0"}, "latest"])
-        return True
+        return "ok"
     except RuntimeError as e:
-        msg = str(e).lower()
-        if "revert" in msg or "execution" in msg:
-            devlog.log_call(what="eth_call revert", url="bsc", status="revert", ms=0, error=str(e)[:200])
-            return False
-        devlog.log_call(what="eth_call skipped", url="bsc", status="rpc", ms=0, error=str(e)[:200])
-        return True
+        msg = str(e)
+        if _allowance_revert(msg):
+            devlog.log_call(what="eth_call allowance", url="bsc", status="allowance", ms=0, error=msg[:200])
+            return "allowance"
+        if "revert" in msg.lower() or "execution" in msg.lower():
+            devlog.log_call(what="eth_call revert", url="bsc", status="revert", ms=0, error=msg[:200])
+            return "revert"
+        devlog.log_call(what="eth_call skipped", url="bsc", status="rpc", ms=0, error=msg[:200])
+        return "ok"
     except Exception as e:
         devlog.log_call(what="eth_call skipped", url="bsc", status="exception", ms=0, error=str(e)[:200])
-        return True
+        return "ok"
 
 
 def _thin(input_mint: str, output_mint: str, ui_amount: float, out_ui) -> bool:
@@ -280,7 +288,10 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                     "data": tx["data"],
                     "value": hex(int(tx.get("value") or "0")),
                 }
-                if not await _eth_ok(built_tx, taker):
+                sim = await _eth_ok(built_tx, taker)
+                if sim == "allowance":
+                    result["needsApproval"] = True
+                elif sim == "revert":
                     rfq_route = next((r for r in routes if r.get("executionMode") == "RFQ" and r.get("quoteId")), None)
                     if not rfq_route:
                         raise RuntimeError("SWAP eth_call reverted and no RFQ sibling")
@@ -448,9 +459,13 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
             if not (cd.get("to") and cd.get("calldata")):
                 raise RuntimeError("pancake: calldata response missing to/calldata")
             tx = _tx(taker, cd["to"], cd["calldata"], cd.get("value"))
-            if not await _eth_ok(tx, taker):
+            sim = await _eth_ok(tx, taker)
+            if sim == "revert":
                 raise RuntimeError("pancake calldata eth_call reverted")
-        return _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
+        shaped = _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
+        if taker and sim == "allowance":
+            shaped["needsApproval"] = True
+        return shaped
 
 
 async def _openocean_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None) -> dict:
