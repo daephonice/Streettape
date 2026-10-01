@@ -113,7 +113,8 @@ async def _request(client: httpx.AsyncClient, method: str, path: str, params: di
 
 
 def _to_units(ui_amount: float, decimals: int) -> str:
-    return str(int(round(ui_amount * (10 ** decimals))))
+    from decimal import Decimal
+    return str(int(Decimal(repr(float(ui_amount))) * (Decimal(10) ** decimals)))
 
 
 def _from_units(raw: str, decimals: int) -> float:
@@ -342,7 +343,7 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
     async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
         q = await _get_json(client, "Pancake GET /v1/quote", "GET", f"{PANCAKE_API}/v1/quote", params={
             "chainId": CHAIN_ID, "tokenIn": pn(input_mint), "tokenOut": pn(output_mint),
-            "amount": _to_units(ui_amount, dec_in), "recipient": acct, "slippageTolerance": SLIPPAGE_PCT,
+            "amount": _to_units(ui_amount, dec_in), "recipient": acct, "slippageTolerance": str(float(SLIPPAGE_PCT) / 100),
         })
         best = q.get("best") if isinstance(q, dict) else None
         if not isinstance(best, dict) or not best.get("agg"):
@@ -364,7 +365,7 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
 
 async def _openocean_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None) -> dict:
     acct = taker or QUOTE_ONLY_ACCOUNT
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "Mozilla/5.0 (compatible; StreetTape/1.0)", "Accept": "application/json"}) as client:
         r = await _get_json(client, "OpenOcean GET /v3/bsc/swap", "GET", f"{OPENOCEAN_API}/swap", params={
             "inTokenAddress": input_mint, "outTokenAddress": output_mint, "amount": f"{ui_amount:.18f}".rstrip("0").rstrip("."),
             "gasPrice": OPENOCEAN_GAS_GWEI, "slippage": SLIPPAGE_PCT, "account": acct,
