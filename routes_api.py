@@ -262,6 +262,9 @@ class SwapOrderRequest(BaseModel):
 async def swap_order(body: SwapOrderRequest):
     if body.uiAmount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+    blocked = swap_mod.unsupported_pair(body.inputMint, body.outputMint)
+    if blocked:
+        raise HTTPException(status_code=400, detail=blocked)
     return await swap_mod.quote(body.inputMint, body.outputMint, body.uiAmount, body.taker)
 
 

@@ -28,6 +28,26 @@ SLIPPAGE_PCT = "1"  # 1%
 PANCAKE = "https://pancakeswap.finance/swap"
 
 
+UNSUPPORTED_MSG = "Swaps between this token and real-world assets aren't supported yet. Try using a different token."
+
+
+def _is_ondo(addr: str) -> bool:
+    a = (addr or "").lower()
+    if rwa.is_ondo(a):
+        return True
+    for meta in (prices.get_assets().get("assets") or {}).values():
+        if (meta.get("mint") or "").lower() == a and (meta.get("platform") or "").lower() == "ondo":
+            return True
+    return False
+
+
+def unsupported_pair(input_addr: str, output_addr: str) -> str | None:
+    """BNB <-> Ondo is not swappable (buy or sell). Returns the notice text, else None."""
+    if (rwa.is_bnb(input_addr) and _is_ondo(output_addr)) or (rwa.is_bnb(output_addr) and _is_ondo(input_addr)):
+        return UNSUPPORTED_MSG
+    return None
+
+
 def pancake_link(input_addr: str, output_addr: str) -> str:
     inn = "BNB" if (input_addr or "").lower() in (rwa.NATIVE.lower(), rwa.WBNB.lower()) else input_addr
     out = "BNB" if (output_addr or "").lower() in (rwa.NATIVE.lower(), rwa.WBNB.lower()) else output_addr
@@ -127,6 +147,11 @@ def _from_units(raw: str, decimals: int) -> float:
 
 
 async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None = None) -> dict:
+    blocked = unsupported_pair(input_mint, output_mint)
+    if blocked:
+        return {"unsupported": True, "error": blocked, "transaction": None, "deepLink": None,
+                "uiOutAmount": None, "uiMinReceived": None, "rate": None, "priceImpactPct": None,
+                "provider": None, "routes": [], "sim": None}
     if not API_KEY or not SECRET_KEY or ui_amount <= 0:
         return _fallback_quote(input_mint, output_mint, ui_amount, "keys unset or amount<=0")
 

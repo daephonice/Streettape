@@ -107,6 +107,15 @@ def merge_dynamic(discovered: list[dict]):
                 existing["multiplier"] = row.get("multiplier")
 
 
+def is_bnb(addr) -> bool:
+    return (addr or "").lower() in (NATIVE.lower(), WBNB.lower())
+
+
+def is_ondo(addr) -> bool:
+    a = (addr or "").lower()
+    return bool(a) and any((w.get("address") or "").lower() == a and w.get("platform") == "ondo" for w in wrappers())
+
+
 def by_symbol(symbol: str):
     s = (symbol or "").upper()
     return next((w for w in wrappers() if w["symbol"].upper() == s), None)
