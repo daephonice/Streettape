@@ -19,6 +19,8 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Verified live (2026-10-01): one `baw market-order quote` and `/api/swap/order` returned the same out-amount for USDT to TSLAB at 50 (see Runtime log).
 - Verified live (2026-10-01): `/api/agent/studio/tick` returned an SPCX arb at 35.9 bps net, proposal-only, and 401 without the token (see Runtime log).
 - Verified live (2026-10-01): Ondo and xStock RFQ errors `40368`, `40370`, `40374`, `40375`, all HTTP 200 (see Runtime log).
+- Verified live (2026-10-01): PancakeSwap `GET /v1/quote` + `POST /v1/calldata` returned a signable BNB to TSLAx transaction when Binance refused the pair with `40370` (see Runtime log).
+- Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
 
 ---
@@ -662,3 +664,52 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `GET /api/_swapcheck` USDT to TSLAon, 6 USDT, taker set.
 - What came back (log, first call): HTTP 200, 323 ms, `code=40374 msg=Insufficient liquidity for a quote. Please decrease the transaction amount or try again later.` at 04:52:53 UTC. Repeated on the next two calls. Above the $5 floor and with a wallet, the RFQ still returned no quote in PRE-MARKET.
 - What we changed because of it: nothing. Still no completed Ondo RFQ quote, so no Ondo fill. Not tested at CASH OPEN, when RFQ inventory may exist.
+
+### 2026-10-01 — PancakeSwap `slippageTolerance` is a fraction
+
+- Session: PRE-MARKET (02:33 ET / 06:33 UTC / 07:33 WAT). Cash shut.
+- What we hit: `GET https://swap.pancakeswap.com/v1/quote` as the fallback after Binance, `chainId=56`, USDT to a wrapper, `slippageTolerance=1` (we send 1 for 1%, the unit Binance uses).
+- What came back (log, first call): HTTP 400, 602 ms, `{'code': 'INVALID_REQUEST', 'message': 'slippageTolerance must be greater than 0 and less than 0.5, got 1'}` at 06:33:16 UTC. Same on every later call until fixed. Clear message, but the unit is a fraction, not a percent, and the two APIs disagree.
+- What we changed because of it: Pancake gets `0.01`. Binance still gets `1`.
+
+### 2026-10-01 — PancakeSwap `odd number of digits` (bad address)
+
+- Session: PRE-MARKET (02:37 ET / 06:37 UTC / 07:37 WAT).
+- What we hit: `GET /v1/quote` with a native-BNB input address that was 39 hex characters instead of 40 (our own typo in a test URL).
+- What came back (log, first call): HTTP 400, 134 ms, `{'code': 'INVALID_REQUEST', 'message': 'odd number of digits'}` at 06:37:39 UTC. It names a hex-decoding fault, not the token field. Binance rejected the same address in 94 ms with `code=40001 Parameter [fromTokenAddress] error: invalid token address, EVM chains require 0x + 40 hex characters`, with an example address. HTTP 200 on the Binance side.
+- What we changed because of it: nothing.
+
+### 2026-10-01 — PancakeSwap quote and calldata, BNB to TSLAx
+
+- Session: PRE-MARKET (03:07 ET / 07:07 UTC / 08:07 WAT). Cash shut.
+- What we hit: Binance `aggregator/quote` BNB to TSLAx (`0x8aD3...7Cf0`), 0.004 BNB, then the Pancake fallback. Native BNB is `0x0000...0000` on Pancake, not the `0xEeee...` address Binance uses. Quote only, nothing signed.
+- What came back (log, first call):
+  - Binance: HTTP 200, 94 ms, `code=40370 xStock token only supports trading with: USDT, USDC.` at 06:45:13 UTC.
+  - Pancake `GET /v1/quote`, no wallet (recipient was a dummy address): HTTP 200, 724 ms at 06:45:14 UTC; 407 ms on the next call. A quote with a dummy recipient was accepted.
+  - Pancake `GET /v1/quote` with the wallet as recipient (`0x4B95...4331`): HTTP 200, 474 ms at 07:07:38 UTC, then `POST /v1/calldata` with the `best` object: HTTP 200, 319 ms at 07:07:39 UTC. Later pairs of calls took 96 and 93 ms.
+  - `/api/swap/order` shape: `provider=pancake`, `uiOutAmount` 0.007860 TSLAx, `uiMinReceived` 0.007782, rate 1.965 TSLAx per BNB, `transaction.to` `0x2f68...cfF7`, `value` `0xe35fa931a0000` (0.004 BNB). `priceImpactPct` is `null`: the Pancake response carried no impact field we use. The calldata holds the WBNB, USDT and TSLAx addresses, so the route appears to go through USDT.
+  - Not verified: signing or sending this transaction.
+- What we changed because of it: the Pancake fallback now returns a signable transaction instead of a link. `deepLink` is gone from the order response.
+
+### 2026-10-01 — OpenOcean `/swap` NETWORK_ERROR, `/quote` and `/swap_quote` work
+
+- Session: PRE-MARKET, before the 07:07 UTC server checks. These were browser calls by hand, so they are not in `/api/_devex`.
+- What we hit: `GET open-api.openocean.finance/v3/bsc/swap`, then `/quote`, then `/swap_quote`, BNB to TSLAx, 0.004, `gasPrice=1`, `slippage=1`.
+- What came back (first call of each):
+  - `/swap` with a dummy `account`: HTTP body `{"reason":"could not detect network","code":"NETWORK_ERROR","event":"noNetwork"}`. Same twice, and again with the real wallet as `account`. It is an ethers.js error leaking from their backend. No `message` field and no `code` that matches the usual 200/400 shape.
+  - `/quote` (no account): `code 200`, `outAmount` 8626886320000001 (0.008627 TSLAx), `estimatedGas` `"174060"` (string), `price_impact` `"-0.17%"` (string, signed, with a percent sign), route BinarySwap (fee 0) plus a PancakeV2 slice.
+  - `/swap_quote` with the real wallet: `code 200`, `outAmount` 8630208319999999, `minOutAmount` 8500755195200000, `estimatedGas` `350396` (a number here, a string in `/quote`), `to` `0x6352...4e64`, `value` 4000000000000000, `data`, `gasPrice` `"1000000000"`, `price_impact` `"-0.17%"`.
+- What we changed because of it: the adapter calls `/swap_quote` when it has a wallet and `/quote` when it does not. `/swap` is not used. Price impact is parsed from the string and divided by 100 to match our fraction convention.
+
+### 2026-10-01 — OpenOcean 403 from the server only
+
+- Session: PRE-MARKET (03:07 ET / 07:07 UTC / 08:07 WAT).
+- What we hit: the same `swap_quote` URL that returned JSON in a phone browser, now from the Railway Southeast Asia (Singapore) container, as the Pancake fallback.
+- What came back (log, first call): `GET /v3/bsc/swap` at 06:37:39 UTC, HTTP 403, 105 ms, plain-text body `Forbidden; you don't have permission to access this resource.` That call also carried our 39-character address typo, and the 403 came back before any parameter check. Not JSON, so our parser also logged a non-JSON failure. After we added a browser-style `User-Agent` and `Accept: application/json`, moved to `swap_quote` and fixed the address: HTTP 403, 34 ms at 07:07:57 UTC. A 34 ms rejection looks like an edge rule, not the API.
+- What we changed because of it: the User-Agent header, which did not help. The OpenOcean fallback stays in the code but cannot fire from this host. Not tried: another OpenOcean host, an API key, or another region.
+
+### 2026-10-01 — TSLAx price by venue (BNB to TSLAx, 0.004 BNB)
+
+- Session: PRE-MARKET (03:07 ET / 07:07 UTC). Cash shut. One pair, one size, minutes apart.
+- What came back: Pancake calldata path returned 0.007860 TSLAx. OpenOcean `swap_quote` (browser) returned 0.008630 TSLAx, about 9.8% more for the same BNB. OpenOcean's own price for TSLAx was $356.70, near the Yahoo print of $354.81. Pancake's rate of 1.965 TSLAx per BNB at BNB near $771 implies about $392 per TSLAx, near the $390 seen on 2026-10-01 at 06:05 WAT.
+- What we changed because of it: nothing. The Pancake fallback is live and OpenOcean is not reachable from the server, so the cheaper route is not available to users yet. This agrees with the MetaMask eligibility list: BNB to TSLAx is tradable on Pancake and OpenOcean, just not through Binance's aggregator (`40370`).
