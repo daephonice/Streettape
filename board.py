@@ -102,7 +102,7 @@ async def _yahoo_marks(client: httpx.AsyncClient, skip_tickers: set | None = Non
 
 
 STALE_DEVIATION = 0.15  # Gecko tape >15% off the official mark is a dead pool, not a gap
-THIN_LIQUIDITY_USD = 5000.0  # a Gecko tape from a pool below this is not a tradable price
+THIN_LIQUIDITY_USD = 500.0  # a Gecko tape from a pool below this is not a tradable price
 
 
 def _gecko_row(attr: dict) -> dict:
