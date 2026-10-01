@@ -15,6 +15,7 @@ import httpx
 
 import prices
 import rwa
+import rpc
 import devlog
 
 log = logging.getLogger("swap")
@@ -53,6 +54,9 @@ def unsupported_pair(input_addr: str, output_addr: str) -> str | None:
     return None
 
 
+IMPACT_FLOOR = 0.95
+
+
 def _price_of_mint(mint: str):
     mint_l = (mint or "").lower()
     data = prices.get_prices() or {}
@@ -65,6 +69,42 @@ def _price_of_mint(mint: str):
         px = (data.get("prices") or {}).get("BNB")
         return px["price"] if px else None
     return None
+
+
+
+async def _eth_ok(tx: dict, taker: str) -> bool:
+    """True if the built tx does not revert. An RPC outage does not drop the route."""
+    try:
+        await rpc.call("eth_call", [{"from": taker, "to": tx["to"], "data": tx["data"], "value": tx.get("value") or "0x0"}, "latest"])
+        return True
+    except RuntimeError as e:
+        msg = str(e).lower()
+        if "revert" in msg or "execution" in msg:
+            devlog.log_call(what="eth_call revert", url="bsc", status="revert", ms=0, error=str(e)[:200])
+            return False
+        devlog.log_call(what="eth_call skipped", url="bsc", status="rpc", ms=0, error=str(e)[:200])
+        return True
+    except Exception as e:
+        devlog.log_call(what="eth_call skipped", url="bsc", status="exception", ms=0, error=str(e)[:200])
+        return True
+
+
+def _thin(input_mint: str, output_mint: str, ui_amount: float, out_ui) -> bool:
+    inn = _price_of_mint(input_mint)
+    out = _price_of_mint(output_mint)
+    if not inn or not out or not out_ui or not ui_amount:
+        return False
+    return (out * out_ui) < IMPACT_FLOOR * (inn * ui_amount)
+
+
+def _impact_block(input_mint, output_mint, ui_amount, out_ui) -> dict:
+    return {
+        "transaction": None, "typedDataToSign": None, "uiOutAmount": None, "uiMinReceived": None,
+        "rate": None, "priceImpactPct": None, "provider": None, "executionMode": None, "routes": [],
+        "priceImpactTooHigh": True, "error": "Price impact too high",
+        "fallbackReason": f"output worth under {int(IMPACT_FLOOR*100)}% of input",
+        "sim": None,
+    }
 
 
 def _timestamp() -> str:
@@ -240,6 +280,31 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                     "data": tx["data"],
                     "value": hex(int(tx.get("value") or "0")),
                 }
+                if not await _eth_ok(built_tx, taker):
+                    rfq_route = next((r for r in routes if r.get("executionMode") == "RFQ" and r.get("quoteId")), None)
+                    if not rfq_route:
+                        raise RuntimeError("SWAP eth_call reverted and no RFQ sibling")
+                    devlog.log_call(what="drop LiquidMesh", url=f"{BASE_URL}/api/v1/dex/aggregator/swap", status="revert", ms=0,
+                                    expected="signable SWAP", actual=f"eth_call reverted, using RFQ {rfq_route.get('quoteId')}")
+                    quote_id = rfq_route["quoteId"]
+                    swap_params["quoteId"] = quote_id
+                    swap_data = await _request(client, "GET", "/api/v1/dex/aggregator/swap", params=swap_params)
+                    router_result = (swap_data or {}).get("routerResult") or {}
+                    exec_mode = swap_data.get("executionMode", "RFQ")
+                    result["executionMode"] = exec_mode
+                    result["routes"] = [router_result.get("vendorName") or rfq_route.get("vendorName") or "PcsXRfq"]
+                    rfq = swap_data.get("rfq") or {}
+                    result["transaction"] = None
+                    result["typedDataToSign"] = rfq.get("typedDataToSign")
+                    result["rfqVendor"] = rfq.get("vendor")
+                    result["signingScheme"] = rfq.get("signingScheme", "EIP712")
+                    result["requestId"] = str(uuid.uuid4())
+                    result["quoteId"] = rfq.get("orderId") or quote_id
+                    result["uiMinReceived"] = out_ui
+                    result["sim"] = {"ok": None, "gas": None, "error": None, "note": "SWAP reverted; RFQ sibling"}
+                    if not result["typedDataToSign"]:
+                        raise RuntimeError("RFQ sibling had no typedDataToSign")
+                    return result
                 if tx.get("gas"):
                     built_tx["gas"] = hex(int(tx["gas"]))
                 if tx.get("gasPrice"):
@@ -335,8 +400,12 @@ async def _get_json(client: httpx.AsyncClient, what: str, method: str, url: str,
     return data
 
 
+def _pcsx_typed(pcsx: dict):
+    return pcsx.get("permitData") or pcsx.get("typedData") or pcsx.get("typedDataToSign")
+
+
 async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None, dec_in: int = 18) -> dict:
-    """PancakeSwap swap API. Only `best.agg` (pool route) is usable; `pcsx` is a permit order and is skipped."""
+    """PancakeSwap. A pcsx permit is preferred over a pool transaction."""
     pn = lambda a: PANCAKE_NATIVE if a.lower() == rwa.NATIVE.lower() else a
     acct = taker or QUOTE_ONLY_ACCOUNT
     headers = {"x-api-key": PANCAKE_API_KEY} if PANCAKE_API_KEY else {}
@@ -346,8 +415,27 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
             "amount": _to_units(ui_amount, dec_in), "recipient": acct, "slippageTolerance": str(float(SLIPPAGE_PCT) / 100),
         })
         best = q.get("best") if isinstance(q, dict) else None
-        if not isinstance(best, dict) or not best.get("agg"):
-            raise RuntimeError("pancake: no agg route (pcsx-only or empty)")
+        if not isinstance(best, dict):
+            raise RuntimeError("pancake: empty quote")
+        pcsx = best.get("pcsx") if isinstance(best.get("pcsx"), dict) else None
+        typed = _pcsx_typed(pcsx) if pcsx else None
+        if typed and taker:
+            out_raw = _find(best, ("amountOut", "outputAmount", "outAmount", "toAmount"))
+            out_ui = _from_units(str(_int(out_raw)), 18) if out_raw is not None else None
+            if not out_ui:
+                raise RuntimeError("pancake: pcsx quote had no out amount")
+            shaped = _shaped("pancake", "PcsXRfq", out_ui, ui_amount, out_ui, None, None, taker, None)
+            shaped["executionMode"] = "RFQ"
+            shaped["transaction"] = None
+            shaped["typedDataToSign"] = typed
+            shaped["rfqVendor"] = "PcsX"
+            shaped["signingScheme"] = "EIP712"
+            shaped["requestId"] = str(uuid.uuid4())
+            shaped["quoteId"] = best.get("quoteId")
+            shaped["sim"] = {"ok": None, "gas": None, "error": None, "note": "Pancake X permit"}
+            return shaped
+        if not best.get("agg"):
+            raise RuntimeError("pancake: no agg route and no pcsx permit")
         out_raw = _find(best, ("amountOut", "outputAmount", "outAmount", "toAmount", "amountOutRaw"))
         dec_out = int(_find(best, ("decimals",)) or 18)
         out_ui = _from_units(str(_int(out_raw)), dec_out) if out_raw is not None else None
@@ -360,6 +448,8 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
             if not (cd.get("to") and cd.get("calldata")):
                 raise RuntimeError("pancake: calldata response missing to/calldata")
             tx = _tx(taker, cd["to"], cd["calldata"], cd.get("value"))
+            if not await _eth_ok(tx, taker):
+                raise RuntimeError("pancake calldata eth_call reverted")
         return _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
 
 
@@ -414,7 +504,14 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
             res = await fn()
             if not res.get("uiOutAmount"):
                 raise RuntimeError("empty quote")
-            res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if name == "binance_web3" and res.get("routes") else "")
+            if _thin(input_mint, output_mint, ui_amount, res.get("uiOutAmount")):
+                inn = _price_of_mint(input_mint)
+                out = _price_of_mint(output_mint)
+                loss = 1 - ((out * res["uiOutAmount"]) / (inn * ui_amount))
+                res["priceImpactTooHigh"] = True
+                if res.get("priceImpactPct") in (None, ""):
+                    res["priceImpactPct"] = loss
+            res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if res.get("routes") else "")
             res["attempts"] = attempts
             if attempts:
                 res["fallbackReason"] = attempts[0]["error"]
@@ -423,7 +520,8 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
         except Exception as e:
             log.warning("%s quote failed", name, exc_info=True)
             attempts.append({"provider": name, "error": f"{type(e).__name__}: {str(e)[:200]}"})
-    return _no_route("; ".join(f"{a['provider']}: {a['error']}" for a in attempts), attempts)
+    reason = "; ".join(f"{a['provider']}: {a['error']}" for a in attempts)
+    return _no_route(reason, attempts)
 
 
 _sim_parked_until = 0.0
@@ -478,6 +576,13 @@ async def simulate_transaction(built_tx: dict, taker: str) -> dict:
         body=str(data),
     )
     return {"ok": ok, "gas": gas, "error": err}
+
+
+async def submit_pancake_rfq(quote_id: str, user_signature: str) -> dict:
+    headers = {"x-api-key": PANCAKE_API_KEY} if PANCAKE_API_KEY else {}
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        return await _get_json(client, "Pancake POST /v1/submit", "POST", f"{PANCAKE_API}/v1/submit",
+                               json={"quoteId": quote_id, "signature": user_signature, "chainId": int(CHAIN_ID)})
 
 
 async def submit_rfq_order(request_id: str, user_signature: str, vendor: str, quote_id: str, signing_scheme: str = "EIP712") -> dict:

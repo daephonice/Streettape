@@ -297,6 +297,12 @@ async def swap_execute(body: SwapExecuteRequest):
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
         return {"status": order.get("status", "PENDING_VENDOR"), "provider": "binance_web3", "orderId": order.get("orderId")}
+    if body.provider == "pancake" and body.userSignature:
+        try:
+            order = await swap_mod.submit_pancake_rfq(body.quoteId, body.userSignature)
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=str(e))
+        return {"status": order.get("status", "PENDING"), "provider": "pancake", "orderId": order.get("orderId") or body.quoteId}
     if body.provider == "binance_web3" and body.txHash:
         return {"status": "success", "provider": "binance_web3", "txHash": body.txHash}
     return {"status": "external", "provider": "pancake", "txHash": body.txHash}
