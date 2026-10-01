@@ -100,6 +100,9 @@
     return p.change24h === null || p.change24h === undefined ? p.price : p.price / (1 + p.change24h / 100);
   }
 
+  // Server keys /api/prices by UPPERCASE symbol (TSLAon -> TSLAON); SYMBOL keeps wrapper case.
+  const livePrice = (sym) => state.prices[String(sym || '').toUpperCase()] || state.prices[sym];
+
   const DASH = '\u2013';
   function setVal(el, text, cls) {
     el.textContent = text;
@@ -145,7 +148,7 @@
   }
 
   function render() {
-    const p = state.prices[SYMBOL];
+    const p = livePrice(SYMBOL);
 
     // Four stats, always rendered; dash when a value isn't available.
     if (!p || p.noYahoo) {
@@ -260,7 +263,7 @@
       if ((mc.mark || []).length >= 2) series.push({ label: 'Cash', color: SERIES_COLORS.mark, pts: mc.mark, w: 1.3, dash: '4 4', last: true });
     } else if (!IS_GROUP) {
       const pts = state.points.slice();
-      const live = state.prices[SYMBOL];
+      const live = livePrice(SYMBOL);
       if (live && pts.length) pts.push([Date.now(), live.price]);
       if (pts.length >= 2) {
         const color = pts[pts.length - 1][1] >= pts[0][1] ? UP : DOWN;
