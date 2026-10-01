@@ -106,7 +106,7 @@ After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to f
 
 Identity Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` (BSC, ERC1967 proxy). Three unlabeled `register` overloads on BscScan. Used the `agentURI`-only one. Token / agent id **360062**. Fee ~0.000009 BNB. Registration file is served at `/agent-registration.json`.
 
-Agent Studio full deploy was not built. The special is for a self-funding seller on their runtime (x402, ERC-8183). StreetTape has no paid endpoint and never signs.
+Agent Studio full deploy was not built. The special is for a self-funding seller on their runtime (x402, ERC-8183). StreetTape has no paid endpoint and never signs. The submission is a Studio job calling `GET /api/agent/studio/tick` every 60 s (proposal-only); `x402Support` stays false in the card.
 
 ### Multiplier and missing contracts
 
@@ -620,3 +620,11 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Termux failures before the pass: see Findings, Agentic Wallet skill (keytar/libsecret build, `DNS_RESOLVE_FAILED`). Two `auth verify` calls returned `AUTH_REJECTED` (`QR code does not exist or expired`, code 10002004) before the third succeeded, 1 min 48 s after `signin` (03:06:53 to 03:08:41).
   - `wallet balance` returned an empty list, so no signed fill was run.
 - What we changed because of it: added `streettape.py verify` (runs `baw` and the API on the same pair and size, prints both, `deltaBps` and a verdict, exit 1 unless `SAME ORDER`; quote only). `baw` failures now print to stderr instead of falling back silently. Amounts are sent to `baw` without scientific notation. `baw` has no route or impact fields, so those read `null` on its side. Not done: a signed `baw` swap.
+
+### YYYY-MM-DD — Agent Studio tick (proposal-only)
+
+- Session: <CASH OPEN | PRE-MARKET | AFTER-HOURS | WEEKEND, from `session.label` in the response>
+- What we hit: Studio job -> `GET /api/agent/studio/tick` every 60 s, header `X-Studio-Token`; `GET /agent-registration.json`.
+- What came back (first of each outcome from `/api/_devex`, label `studio tick`): <200, `mode=proposal-only`, arbs=N, new=N, top arb underlying + netBps + viable>; <401 on a call with no token>; <the card's `registrations` block with agentId 360062>.
+- What we changed because of it: <fill after the run>
+

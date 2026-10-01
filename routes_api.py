@@ -1,4 +1,6 @@
+import hmac
 import logging
+import time
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -15,6 +17,7 @@ import agent
 import market_stats
 import rwa_api
 import basket
+import devlog
 
 log = logging.getLogger("routes_api")
 router = APIRouter(prefix="/api")
@@ -178,12 +181,27 @@ async def api_agent_scan(threshold: float | None = None, underlying: str | None 
 
 
 @router.get("/agent/studio/tick")
-async def api_agent_studio_tick(size_usd: float = 50.0, threshold: float | None = None,
+async def api_agent_studio_tick(request: Request, size_usd: float = 50.0, threshold: float | None = None,
                                 x_studio_token: str | None = Header(default=None)):
-    """Scheduled-job entrypoint for BNB Agent Studio (call every 60s)."""
-    if agent.STUDIO_TOKEN and x_studio_token != agent.STUDIO_TOKEN:
+    """Scheduled-job entrypoint for BNB Agent Studio (call every 60s). Proposal-only: never signs."""
+    if agent.STUDIO_TOKEN and not hmac.compare_digest(x_studio_token or "", agent.STUDIO_TOKEN):
+        devlog.log_call(what="studio tick", url=str(request.url.path), status=401, ms=0,
+                        expected="200 + mode proposal-only", actual="bad or missing X-Studio-Token")
         raise HTTPException(status_code=401, detail="bad token")
-    return await agent.studio_tick(size_usd, threshold)
+    t0 = time.monotonic()
+    out = await agent.studio_tick(size_usd, threshold)
+    ms = (time.monotonic() - t0) * 1000
+    arbs = out.get("arbs") or []
+    top = arbs[0] if arbs else {}
+    devlog.log_call(
+        what="studio tick", url=str(request.url.path), status=200, ms=ms,
+        expected="session, up to 5 arbs with netBps + viable, mode proposal-only",
+        actual=(f"mode={out.get('mode')} session={(out.get('session') or {}).get('label') or out.get('session')} "
+                f"arbs={len(arbs)} new={sum(1 for a in arbs if a.get('new'))} "
+                f"alerts={len(out.get('alerts') or [])} flatten={len(out.get('flatten') or [])}"),
+        body=(f"top: {top.get('underlying')} netBps={top.get('netBps')} viable={top.get('viable')}" if top else "no arbs"),
+    )
+    return out
 
 
 @router.get("/agent/identity")

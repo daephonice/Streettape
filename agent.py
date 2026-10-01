@@ -466,9 +466,9 @@ async def fire_flatten() -> int:
 # Same scan logic as the internal loop, exposed as a stateless tick a
 # scheduler (Agent Studio job, 60s) can call. Proposal-only: never signs.
 STUDIO_TOKEN = os.getenv("AGENT_STUDIO_TOKEN", "")
-ERC8004_REGISTRY = os.getenv("ERC8004_IDENTITY_REGISTRY", "")
-ERC8004_AGENT_ID = os.getenv("ERC8004_AGENT_ID", "")
-ERC8004_CHAIN_ID = os.getenv("ERC8004_CHAIN_ID", "56")
+ERC8004_REGISTRY = os.getenv("ERC8004_IDENTITY_REGISTRY", "").strip()
+ERC8004_AGENT_ID = os.getenv("ERC8004_AGENT_ID", "").strip()
+ERC8004_CHAIN_ID = os.getenv("ERC8004_CHAIN_ID", "").strip() or "56"
 _studio_seen: dict[str, datetime] = {}
 
 
@@ -496,7 +496,7 @@ def identity_card() -> dict:
         "active": True,
         "supportedTrust": ["reputation"],
     }
-    if ERC8004_REGISTRY and ERC8004_AGENT_ID:
+    if ERC8004_REGISTRY and ERC8004_AGENT_ID.isdigit():
         card["registrations"] = [{
             "agentId": int(ERC8004_AGENT_ID),
             "agentRegistry": f"eip155:{ERC8004_CHAIN_ID}:{ERC8004_REGISTRY}",
