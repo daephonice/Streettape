@@ -128,7 +128,7 @@ def cmd_basket(a):
          "legs": [({"underlying": l["underlying"], "symbol": l["symbol"], "platform": l["platform"],
                     "contract": l["contract"], "ratio": l["ratio"], "tape": l["tape"], "official": l["official"],
                     "fair": l["fair"], "amountUsd": l["amountUsd"], "outAmount": l["outAmount"],
-                    "provider": l["provider"], "deepLink": l["deepLink"]} if l.get("filled") else
+                    "provider": l["provider"], "route": l.get("routeLabel")} if l.get("filled") else
                    {"underlying": l["underlying"], "unfilled": True, "weight": l["weight"], "reason": l.get("reason")})
                   for l in b.get("legs") or []]})
 
