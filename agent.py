@@ -488,7 +488,7 @@ def identity_card() -> dict:
         "name": "StreetTape Desk",
         "description": "Proposal-only tokenized-stock desk on BNB Chain: flags wrappers rich vs the last cash print, "
                        "finds cross-wrapper rotations net of costs, quotes flatten sells. Never signs or auto-executes.",
-        "image": f"{base}/static/img/bnb.svg" if base else "",
+        "image": f"{base}/static/img/logos/bnb.png" if base else "",
         "services": [
             {"name": "web", "endpoint": f"{base}/board"},
             {"name": "scan", "endpoint": f"{base}/api/agent/studio/tick"},

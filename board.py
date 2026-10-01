@@ -19,6 +19,7 @@ import rwa
 import rwa_api
 import fair
 import devlog
+from logos import logo_for, group_logo
 from database import SessionLocal
 from models import PriceSnapshot
 
@@ -209,6 +210,7 @@ def _group(tokens):
         groups.append({
             "underlying": und,
             "name": rows[0]["name"],
+            "logo": group_logo(und),
             "markPrice": rows[0].get("markPrice"),
             "wrappers": rows,
             "cheapest": cheapest["symbol"] if cheapest else None,
@@ -274,7 +276,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "mint": w["address"],
             "address": w["address"],
             "hasTape": has_addr,
-            "image": tape.get("image"),
+            "image": (logo_for(w["symbol"], w["underlying"]) if w["symbol"].upper() in ("AAPLB", "AMDX") else (tape.get("image") or logo_for(w["symbol"], w["underlying"]))),
             "tokenPrice": token_price if has_addr else None,
             "markPrice": mark,
             "noYahoo": not w.get("yahoo"),

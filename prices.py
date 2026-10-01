@@ -22,11 +22,11 @@ BINANCE_BASES = ("https://data-api.binance.vision", "https://api.binance.com")
 BINANCE_PAIRS = ("BNBUSDT", "USDCUSDT")
 
 TOKEN_ASSETS = {
-    "BNB": {"name": "BNB", "image": "/static/img/bnb.svg", "mint": rwa.NATIVE,
+    "BNB": {"name": "BNB", "image": "/static/img/logos/bnb.png", "mint": rwa.NATIVE,
             "url": "https://www.bnbchain.org", "description": "Native asset of BNB Smart Chain. Pays gas."},
     "USDT": {"name": "Tether", "image": "/static/img/usdt.svg", "mint": rwa.USDT,
              "url": "https://tether.to", "description": "USDT on BNB Smart Chain."},
-    "USDC": {"name": "USD Coin", "image": "/static/img/usdc.svg", "mint": rwa.USDC,
+    "USDC": {"name": "USD Coin", "image": "/static/img/logos/usdc.png", "mint": rwa.USDC,
              "url": "https://www.circle.com/usdc", "description": "USDC on BNB Smart Chain."},
 }
 
