@@ -261,7 +261,9 @@
       sess.quoting = false;
       if (order.uiOutAmount) {
         sess.order = order;
-        if (order.priceImpactTooHigh) {
+        if (order.needsApproval) {
+          setNote('Approve this token in the wallet, then confirm the swap.');
+        } else if (order.priceImpactTooHigh) {
           setNote('Price impact is high. You can still confirm or cancel in the wallet.');
         } else if (order.sim && order.sim.ok === false) {
           setNote(order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert');
