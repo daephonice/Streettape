@@ -18,6 +18,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Called live, failed: `POST /api/v1/dex/aggregator/tx/simulate` HTTP 404; `GET /api/v1/portfolio/tokens` HTTP 202 non-JSON (19/19); `rwa/price` no usable mark on 420/420 calls in the logged window (missing `binanceChainId`, then 429).
 - Verified live (2026-10-01): one `baw market-order quote` and `/api/swap/order` returned the same out-amount for USDT to TSLAB at 50 (see Runtime log).
 - Verified live (2026-10-01): `/api/agent/studio/tick` returned an SPCX arb at 35.9 bps net, proposal-only, and 401 without the token (see Runtime log).
+- Verified live (2026-10-01): Ondo and xStock RFQ errors `40368`, `40370`, `40374`, `40375`, all HTTP 200 (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
 
 ---
@@ -119,7 +120,7 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 ## How the assets behaved
 
 - **bStocks** quoted and filled on AMM after hours. TSLAB buy settled. NVDAB build after close was flagged likely-to-fail by the wallet. Cause not proven (liquidity vs transfer limits vs stale route).
-- **Ondo / xStocks** quotes without a taker are RFQ and die. No completed RFQ fill yet. Only the required-wallet error.
+- **Ondo / xStocks** quotes without a taker are RFQ and die. With a taker, PRE-MARKET Ondo quotes failed on `40368` (USDC), `40375` ($5 minimum) and `40374` (no liquidity), and xStocks failed on `40370` (BNB). No completed RFQ quote or fill yet.
 - **xStocks tape on Gecko** is often missing for names that have a contract. No tape means no Buy and no arb leg.
 - **SpaceX** has no Yahoo mark. Premium vs official is blank. Cross-wrapper gap still exists (SPCXon rich vs SPCXB).
 
@@ -632,3 +633,32 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Token, `arb_threshold=0.002`: HTTP 200, 232 ms, `arbs=1 new=1` at 02:56:22 UTC. SPCXx rich over SPCXon, gross 45.9 bps, cost 10 bps, **net 35.9 bps, `viable: true`**, gap vs official 0.87%, gap vs fair 0.85%. Both legs fell back to Pancake links (`userWalletAddress is required for RFQ (xStock)` and `(Ondo)`), so the 10 bps cost is the 5 bps floor on each leg, not a fill.
   - `/agent-registration.json`: `x402Support: false`, `registrations` with `agentId 360062` on `eip155:56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`.
 - What we changed because of it: (1) The tick had no entry in the dev log, because the logger only recorded outbound calls. The tick now logs status, mode, session, arb count and top net bps, and the token check uses a constant-time compare. (2) A quiet after-hours window returned `arbs=[]`, which cannot show a net-bps arb. The tick takes an optional `arb_threshold`; the default stays 1%, `viable` is still computed from net bps, and the response reports the threshold used as `arbThreshold`. (3) `.env.example` held a truncated registry address and agent id `360`, and an empty `ERC8004_CHAIN_ID` would have produced `eip155::0x...`. The values are corrected, the chain id falls back to 56, and `registrations` is emitted only for a numeric agent id. (4) The build notes called for a Studio job pointed at the tick. None exists: Studio is a CLI and has no external scheduler, so the scan stays in StreetTape's own loop and Studio was not deployed. `new` is true only on the first call per symbol in 60 minutes, so the manual curl used it up.
+
+### 2026-10-01 — xStock pairs with BNB (`code=40370`)
+
+- Session: PRE-MARKET (00:46 ET / 05:46 WAT / 04:46 UTC). Cash shut.
+- What we hit: the swap sheet in a wallet dApp browser, BNB to TSLAx (buy) then TSLAx to BNB (sell), taker set. Quote only.
+- What came back (log, first call): `GET /api/v1/dex/aggregator/quote`, HTTP 200, 776 ms, `code=40370 msg=xStock token only supports trading with: USDT, USDC.` at 04:46:08 UTC. The sell leg returned the same code, 95 ms, at 04:46:43 UTC. Both fell back to a Pancake link. This is a third error code on the same endpoint (Ondo is `40368`), and the HTTP status is 200 again.
+- Fallback checked by hand (06:05 WAT, PRE-MARKET, wallet dApp browser): the Pancake link for BNB to TSLAx did quote. 0.004363 BNB (~$3.36) showed 0.008619 TSLAx (~$3.08), about 8% lost, with Pancake's own "Price impact too high" warning and a note that TSLAB gave 91.58% better output. The implied TSLAx price was about $390 against a Yahoo print of $354.81. One quote, one token, PRE-MARKET only. Nothing was confirmed.
+- What we changed because of it: nothing. The swap sheet still offers BNB against xStocks and the quote falls back to Pancake. The MetaMask eligibility list we followed says BNB is swappable for xStocks, so the Binance aggregator and MetaMask disagree on this pair. A different handling of this pair is planned later.
+
+### 2026-10-01 — Ondo pairs only with allowed stablecoins (`code=40368`)
+
+- Session: PRE-MARKET (00:50 ET / 05:50 WAT / 04:50 UTC).
+- What we hit: `GET /api/_swapcheck` USDC to TSLAon, 5 USDC, taker set. First without a taker at 04:48:02 UTC, which returned the known `40001 userWalletAddress is required for RFQ (Ondo) quote`.
+- What came back (log, first call): HTTP 200, 94 ms, `code=40368 msg=Ondo asset on chain 56 can only pair with allowed stablecoin(s); got: 0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d` at 04:50:49 UTC. USDC is not an allowed stablecoin for Ondo. The message does not list the allowed ones.
+- What we changed because of it: `swap.js` already limited Ondo to USDT as the pay token, from the 2026-09-30 live call. This is the first captured body for it. Added a server-side block so BNB and Ondo never reach Binance: `swap.quote` and `/api/swap/order` return the notice, `/api/swap/order` as HTTP 400. The guarded call leaves no entry in this log, which is how we confirmed it. USDC to Ondo is still not blocked server-side.
+
+### 2026-10-01 — Ondo RFQ minimum order (`code=40375`)
+
+- Session: PRE-MARKET (00:51 ET / 05:51 WAT / 04:51 UTC).
+- What we hit: `GET /api/_swapcheck` USDT to TSLAon, 5 USDT, taker set.
+- What came back (log, first call): HTTP 200, 105 ms, `code=40375 msg=Minimum order amount is 5 USD.` at 04:51:55 UTC. 5 USDT was rejected, so the check is on USD value and USDT priced under $1 falls below it. The limit is not in the docs we used.
+- What we changed because of it: nothing yet. The swap sheet does not warn about the $5 floor.
+
+### 2026-10-01 — Ondo RFQ liquidity (`code=40374`)
+
+- Session: PRE-MARKET (00:52 ET / 05:52 WAT / 04:52 UTC).
+- What we hit: `GET /api/_swapcheck` USDT to TSLAon, 6 USDT, taker set.
+- What came back (log, first call): HTTP 200, 323 ms, `code=40374 msg=Insufficient liquidity for a quote. Please decrease the transaction amount or try again later.` at 04:52:53 UTC. Repeated on the next two calls. Above the $5 floor and with a wallet, the RFQ still returned no quote in PRE-MARKET.
+- What we changed because of it: nothing. Still no completed Ondo RFQ quote, so no Ondo fill. Not tested at CASH OPEN, when RFQ inventory may exist.
