@@ -116,6 +116,12 @@
         <button type="button" class="snd-cta swp-cta"></button>
         <p class="swp-est"></p>
         <span class="swp-mode-chip" hidden></span>
+        <dl class="swp-det" hidden>
+          <div><dt>Route</dt><dd data-d="route"></dd></div>
+          <div><dt>Price impact</dt><dd data-d="impact"></dd></div>
+          <div><dt>Fees</dt><dd data-d="fees"></dd></div>
+          <div><dt>Min received</dt><dd data-d="min"></dd></div>
+        </dl>
         <p class="swp-note" role="alert"></p>
       </div>`;
     document.body.appendChild(root);
@@ -125,7 +131,8 @@
       backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
-      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), modeChip: q('.swp-mode-chip'),
+      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
+      dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'),
     });
 
     R.backdrop.addEventListener('click', () => { if (S && !S.busy) close(); });
@@ -252,20 +259,20 @@
       });
       if (S !== sess || sess.quoteReq !== reqId) return;
       sess.quoting = false;
-      if (order.uiOutAmount || order.deepLink) {
+      if (order.uiOutAmount) {
         sess.order = order;
         if (order.sim && order.sim.ok === false) {
           setNote(order.sim.error ? `Simulation failed: ${order.sim.error}` : 'Simulation failed — this swap would likely revert');
         } else if (order.sim && order.sim.ok && order.sim.gas) {
           setNote(`Simulated OK · ~${order.sim.gas} gas`);
         } else {
-          setNote(order.transaction ? '' : 'Opens PancakeSwap to complete the swap');
+          setNote('');
         }
       } else {
         sess.order = null;
         const c2 = sess.host.getCtx();
         const platform = ((c2.assets[sess.symbol] || {}).platform || '').toLowerCase();
-        setNote(platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found');
+        setNote(platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found (Binance, PancakeSwap, OpenOcean)');
       }
       render();
     } catch (err) {
@@ -352,10 +359,37 @@
     return '';
   }
 
+  function fmtImpact(v) {
+    if (v === undefined || v === null || isNaN(parseFloat(v))) return '\u2014';
+    const pct = Math.abs(parseFloat(v)) * 100; // fraction -> %
+    return pct < 0.01 ? '<0.01%' : pct.toFixed(2) + '%';
+  }
+
+  function fmtFees(o) {
+    const f = o.fees || {};
+    const parts = [];
+    if (f.gasBnb) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
+    if (f.tradeFeeUsd) parts.push(`$${f.tradeFeeUsd.toFixed(2)} trade fee`);
+    if (o.transferFeeBps) parts.push(`${(o.transferFeeBps / 100).toFixed(2)}% transfer fee`);
+    return parts.length ? parts.join(' + ') : '\u2014';
+  }
+
+  function renderDetails() {
+    const o = S.order;
+    R.det.hidden = !(o && o.uiOutAmount);
+    if (R.det.hidden) return;
+    R.dRoute.textContent = (o.routeLabel || (o.routes || []).join(', ') || '\u2014')
+      + (o.fallbackFrom ? ` (${o.fallbackFrom} quote failed)` : '');
+    R.dImpact.textContent = fmtImpact(o.priceImpactPct);
+    R.dFees.textContent = fmtFees(o);
+    R.dMin.textContent = o.uiMinReceived ? `${fmtTok(o.uiMinReceived)} ${S.side === 'buy' ? S.symbol : S.cur}` : '\u2014';
+  }
+
   function render() {
     if (!S) return;
     const c = S.host.getCtx();
     const buying = S.side === 'buy';
+    renderDetails();
     R.buy.hidden = !buying;
     R.sell.hidden = buying;
 
@@ -426,13 +460,6 @@
     setNote('');
     render();
     try {
-      if (sess.order.deepLink && !sess.order.transaction) {
-        window.open(sess.order.deepLink, '_blank', 'noopener');
-        const host = sess.host;
-        close();
-        if (host.onSent) host.onSent();
-        return;
-      }
       if (sess.order.executionMode === 'RFQ') {
         let userSignature;
         try {
@@ -471,7 +498,7 @@
             signedTransaction: signed.signedTransactionBase64,
             txHash: signed.signature,
             requestId: sess.order.requestId,
-            provider: sess.order.provider || 'pancake',
+            provider: sess.order.provider || 'binance_web3',
           });
           if (res.status && res.status !== 'Success' && res.status !== 'success') {
             throw new Error('Swap failed on-chain, please try again');

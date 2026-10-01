@@ -63,7 +63,6 @@
       const detail = data && data.detail;
       const msg = typeof detail === 'string' ? detail : (detail && detail.message) || 'Something went wrong, try again';
       const err = new Error(msg);
-      err.deepLink = detail && detail.deepLink;
       throw err;
     }
     return data;
@@ -126,6 +125,7 @@
         <button type="button" class="trd-info-row" data-info-row hidden>
           <span class="trd-rate" data-rate></span>
           <span class="trd-info-r">
+            <span class="trd-route" data-route hidden></span>
             <span class="trd-mode-chip" data-mode hidden></span>
             <span class="trd-gasless" data-gasless hidden>${ICON.info}Gasless</span>
             <span class="trd-warn-chip" data-warn hidden></span>
@@ -191,7 +191,7 @@
       balSell: q('.trd-bal-sell'), balBuy: q('.trd-bal-buy'),
       subSell: q('[data-sub="sell"]'), subBuy: q('[data-sub="buy"]'),
       dir: q('.trd-dir'), infoRow: q('[data-info-row]'), rate: q('[data-rate]'),
-      modeChip: q('[data-mode]'), gasless: q('[data-gasless]'), warnChip: q('[data-warn]'),
+      modeChip: q('[data-mode]'), routeEl: q('[data-route]'), gasless: q('[data-gasless]'), warnChip: q('[data-warn]'),
       note: q('[data-note]'), cta: q('[data-cta]'), keys: q('[data-keys]'),
       tok: q('[data-tok]'), tokBack: q('.trd-tok-back'), tokList: q('[data-tok-list]'),
       infoModal: q('[data-info-modal]'), infoBack: q('.trd-info-back'), infoClose: q('.trd-info-close'),
@@ -422,7 +422,7 @@
         }
       } else {
         sess.order = null;
-        sess.note = order.transaction ? '' : (order.deepLink ? 'Opens PancakeSwap to complete the swap' : 'No route found');
+        sess.note = order.noRoute ? 'No route found (Binance, PancakeSwap, OpenOcean)' : '';
       }
       render();
     } catch (err) {
@@ -540,6 +540,8 @@
       R.gasless.hidden = true;
       R.warnChip.hidden = true;
     }
+    R.routeEl.hidden = !hasOrder;
+    R.routeEl.textContent = hasOrder ? (S.order.routeLabel || '') : '';
     if (mode) {
       R.modeChip.hidden = false;
       R.modeChip.textContent = mode;
@@ -586,6 +588,23 @@
   // ---- Price Info modal ------------------------------------------------------
   const shortMint = (m) => (m && m.length > 8 ? m.slice(0, 4) + '...' + m.slice(-4) : m || '');
 
+  // priceImpactPct is a fraction (0.0012 = 0.12%), see DEVEX 2026-09-30.
+  function fmtImpact(v) {
+    if (v === undefined || v === null || isNaN(parseFloat(v))) return '\u2014';
+    const pct = Math.abs(parseFloat(v)) * 100;
+    return pct < 0.01 ? '<0.01%' : pct.toFixed(2) + '%';
+  }
+
+  function fmtFees(o) {
+    const f = o.fees || {};
+    const parts = [];
+    if (f.gasBnb) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
+    if (f.tradeFeeUsd) parts.push(`$${f.tradeFeeUsd.toFixed(2)} trade fee`);
+    const bps = o.transferFeeBps || 0;
+    if (bps) parts.push(`${(bps / 100).toFixed(2)}% token transfer fee`);
+    return parts.length ? parts.join(' + ') : '\u2014';
+  }
+
   function openInfo() {
     if (!S || !S.order) return;
     const o = S.order;
@@ -597,15 +616,12 @@
       R.feeSub.textContent = `This token has a transfer fee of ${pct}%`;
     }
     R.iRate.textContent = o.rate ? `1 ${S.sell} \u2248 ${fmtAmount(o.rate)} ${S.buy}` : '\u2014';
-    R.iImpact.textContent = o.priceImpactPct !== undefined && o.priceImpactPct !== null
-      ? `< ${(Math.abs(parseFloat(o.priceImpactPct)) || 0).toFixed(2)}%` : '\u2014';
+    R.iImpact.textContent = fmtImpact(o.priceImpactPct);
     R.iMin.textContent = o.uiMinReceived ? `${fmtAmount(o.uiMinReceived)} ${S.buy}` : '\u2014';
-    const feeBpsTotal = o.feeBps || 0;
-    R.iFees.textContent = feeBpsTotal ? `${(feeBpsTotal / 100).toFixed(1)}%` : (feeBps ? `${(feeBps / 100).toFixed(1)}%` : '\u2014');
+    R.iFees.textContent = fmtFees(o);
     const execLabel = o.executionMode === 'RFQ' ? 'RFQ' : o.executionMode === 'SWAP' ? 'AMM' : '';
-    R.iRoutes.textContent = (o.routes && o.routes.length)
-      ? o.routes.join(', ') + (execLabel ? ` (${execLabel})` : '')
-      : '\u2014';
+    R.iRoutes.textContent = (o.routeLabel || (o.routes || []).join(', ') || '\u2014') + (execLabel ? ` (${execLabel})` : '')
+      + (o.fallbackFrom ? ` \u00b7 ${o.fallbackFrom} quote failed` : '');
     const c = S.host.getCtx();
     R.iIn.innerHTML = '';
     R.iIn.appendChild(document.createTextNode(shortMint((c.assets[S.sell] || {}).mint) + ' '));
@@ -633,9 +649,6 @@
   // ---- Swap ------------------------------------------------------------------
   async function doSwap() {
     if (!S || S.swapping || !S.order || !S.order.uiOutAmount) return;
-    if (S.order.executionMode !== 'RFQ' && !S.order.transaction && S.order.deepLink) {
-      window.open(S.order.deepLink, '_blank', 'noopener'); return;
-    }
     if (S.order.executionMode !== 'RFQ' && !S.order.transaction) { scheduleQuote(); return; }
     const sess = S;
     sess.swapping = true;
