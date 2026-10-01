@@ -41,10 +41,37 @@ def call(path, params=None, body=None):
 
 def _baw(*args):
     r = subprocess.run([BAW, *args, "--json"], capture_output=True, text=True, timeout=60)
-    d = json.loads(r.stdout)
+    try:
+        d = json.loads(r.stdout)
+    except ValueError:
+        raise RuntimeError(f"baw exit {r.returncode}: {(r.stdout or r.stderr).strip()[:300]}")
     if not d.get("success"):
         raise RuntimeError(str(d)[:300])
     return d.get("data")
+
+
+def _qty(amount):
+    return format(float(amount), ".18f").rstrip("0").rstrip(".") or "0"
+
+
+def _pick(d, *keys):
+    for k in keys:
+        if d.get(k) not in (None, ""):
+            return d[k]
+    return None
+
+
+def baw_quote(input_mint, output_mint, amount):
+    """One `baw market-order quote`. Raises when baw is missing or fails."""
+    if not BAW:
+        raise RuntimeError("baw not on PATH")
+    d = _baw("market-order", "quote", "--fromTokenQty", _qty(amount), "--fromToken", input_mint,
+             "--toToken", output_mint, "--binanceChainId", CHAIN)
+    imp = _pick(d, "priceImpactPct", "priceImpactPercent", "priceImpact")
+    return {"provider": "binance_agentic_wallet", "signed": False, "uiOutAmount": float(d["toCoinAmount"]),
+            "route": _pick(d, "route", "routes", "vendorName", "vendor", "provider"),
+            "priceImpactPct": float(imp) if imp is not None else None,
+            "slippage": d.get("slippage"), "needsWallet": False, "raw": d}
 
 
 def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
@@ -52,13 +79,11 @@ def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
     Returns None when baw is missing or fails, so callers fall back to the StreetTape API."""
     if not BAW:
         return None
-    base = ["market-order", "quote" if not sign else "swap", "--fromTokenQty", repr(float(amount)),
-            "--fromToken", input_mint, "--toToken", output_mint, "--binanceChainId", CHAIN]
     try:
-        d = _baw(*base)
         if not sign:
-            return {"provider": "binance_agentic_wallet", "signed": False, "uiOutAmount": float(d["toCoinAmount"]),
-                    "priceImpactPct": None, "slippage": d.get("slippage"), "needsWallet": False}
+            return baw_quote(input_mint, output_mint, amount)
+        d = _baw("market-order", "swap", "--fromTokenQty", _qty(amount), "--fromToken", input_mint,
+                 "--toToken", output_mint, "--binanceChainId", CHAIN)
         oid = d["orderId"]
         for _ in range(15):  # orderId is only "submitted"; poll to a terminal state
             time.sleep(2)
@@ -67,7 +92,8 @@ def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
                 return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid,
                         "status": o["status"], "txHash": o.get("txHash")}
         return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid, "status": "PENDING"}
-    except Exception:
+    except Exception as e:
+        print(f"baw failed, using API: {e}", file=sys.stderr)
         return None
 
 
@@ -109,6 +135,33 @@ def cmd_basket(a):
 
 def cmd_quote(a):
     out(order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign))
+
+
+def cmd_verify(a):
+    """Same pair, same size: official `baw` quote vs StreetTape /api/swap/order. Quote only, never signs."""
+    try:
+        b = baw_quote(a.input_mint, a.output_mint, a.amount)
+    except Exception as e:
+        b = {"provider": "binance_agentic_wallet", "error": str(e)}
+    t = call("/api/swap/order", body={"inputMint": a.input_mint, "outputMint": a.output_mint,
+                                      "uiAmount": a.amount, "taker": a.taker})
+    api = {"provider": t.get("provider"), "executionMode": t.get("executionMode"), "uiOutAmount": t.get("uiOutAmount"),
+           "route": t.get("routes"), "priceImpactPct": t.get("priceImpactPct"),
+           "fallbackReason": t.get("fallbackReason"), "raw": t}
+    res = {"pair": {"in": a.input_mint, "out": a.output_mint, "amount": a.amount, "chain": CHAIN, "taker": a.taker},
+           "baw": b, "api": api}
+    bo, ao = b.get("uiOutAmount"), api.get("uiOutAmount")
+    if b.get("error"):
+        res["verdict"] = "NO LIVE baw QUOTE: not verified. Use the failure above in DEVEX.md."
+    elif api["provider"] != "binance_web3" or not (bo and ao):
+        res["verdict"] = f"NOT COMPARABLE: API side is {api['provider']} ({api.get('fallbackReason') or 'no quote'}). Pass --taker, or use a pair with an AMM route."
+    else:
+        d = abs(bo - ao) / ao * 10000
+        res["deltaBps"] = round(d, 2)
+        res["verdict"] = "SAME ORDER" if d <= a.tol else f"DIFFERENT: out-amounts {d:.1f} bps apart (> {a.tol})"
+    out(res)
+    if not str(res["verdict"]).startswith("SAME"):
+        sys.exit(1)
 
 
 def cmd_flatten(a):
@@ -186,6 +239,10 @@ def main():
     q.add_argument("--taker")
     q.add_argument("--sign", action="store_true", help="sign via official skill; only after the user confirmed")
     q.set_defaults(f=cmd_quote)
+    v = s.add_parser("verify", help="baw quote vs /api/swap/order on the same pair and size (quote only)")
+    v.add_argument("input_mint"); v.add_argument("output_mint"); v.add_argument("amount", type=float)
+    v.add_argument("--taker"); v.add_argument("--tol", type=float, default=50.0, help="max out-amount gap in bps")
+    v.set_defaults(f=cmd_verify)
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
     f.add_argument("--taker"); f.add_argument("--pct", type=float, help="min premium as fraction, default 0.02"); f.set_defaults(f=cmd_flatten)
     bk = s.add_parser("basket"); bk.add_argument("--usd", type=float, default=50.0); bk.set_defaults(f=cmd_basket)
