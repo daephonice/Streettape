@@ -17,6 +17,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Verified live: aggregator quotes and built SWAP transactions (LiquidMesh), RFQ-requires-wallet, RWA `platforms` / `search` / `underlying-profile` / `underlying-market`, rate-limit behaviour, ERC-8004 registration on BSC, one settled TSLAB buy.
 - Called live, failed: `POST /api/v1/dex/aggregator/tx/simulate` HTTP 404; `GET /api/v1/portfolio/tokens` HTTP 202 non-JSON (19/19); `rwa/price` no usable mark on 420/420 calls in the logged window (missing `binanceChainId`, then 429).
 - Verified live (2026-10-01): one `baw market-order quote` and `/api/swap/order` returned the same out-amount for USDT to TSLAB at 50 (see Runtime log).
+- Verified live (2026-10-01): `/api/agent/studio/tick` returned an SPCX arb at 35.9 bps net, proposal-only, and 401 without the token (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
 
 ---
@@ -106,7 +107,7 @@ After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to f
 
 Identity Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` (BSC, ERC1967 proxy). Three unlabeled `register` overloads on BscScan. Used the `agentURI`-only one. Token / agent id **360062**. Fee ~0.000009 BNB. Registration file is served at `/agent-registration.json`.
 
-Agent Studio full deploy was not built. The special is for a self-funding seller on their runtime (x402, ERC-8183). StreetTape has no paid endpoint and never signs. The submission is a Studio job calling `GET /api/agent/studio/tick` every 60 s (proposal-only); `x402Support` stays false in the card.
+Agent Studio full deploy was not built. The special is for a self-funding seller on their runtime (x402, ERC-8183). StreetTape has no paid endpoint and never signs. BNB Agent Studio is a CLI (`bag`), not a dashboard, and has no scheduler that calls an external URL, so no Studio job exists. The scan runs in StreetTape's own loop, and `GET /api/agent/studio/tick` exposes the same scan to any caller (proposal-only, token-gated). Studio was not deployed. Mainnet agent 360062 is the product identity, registered directly on the Identity Registry. `x402Support` stays false in the card.
 
 ### Multiplier and missing contracts
 
@@ -621,10 +622,13 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - `wallet balance` returned an empty list, so no signed fill was run.
 - What we changed because of it: added `streettape.py verify` (runs `baw` and the API on the same pair and size, prints both, `deltaBps` and a verdict, exit 1 unless `SAME ORDER`; quote only). `baw` failures now print to stderr instead of falling back silently. Amounts are sent to `baw` without scientific notation. `baw` has no route or impact fields, so those read `null` on its side. Not done: a signed `baw` swap.
 
-### YYYY-MM-DD — Agent Studio tick (proposal-only)
+### 2026-10-01 — Agent Studio tick (`/api/agent/studio/tick`, identity card)
 
-- Session: <CASH OPEN | PRE-MARKET | AFTER-HOURS | WEEKEND, from `session.label` in the response>
-- What we hit: Studio job -> `GET /api/agent/studio/tick` every 60 s, header `X-Studio-Token`; `GET /agent-registration.json`.
-- What came back (first of each outcome from `/api/_devex`, label `studio tick`): <200, `mode=proposal-only`, arbs=N, new=N, top arb underlying + netBps + viable>; <401 on a call with no token>; <the card's `registrations` block with agentId 360062>.
-- What we changed because of it: <fill after the run>
-
+- Session: AFTER-HOURS (22:37 to 22:56 ET on 2026-09-30; 03:37 to 03:56 WAT on 2026-10-01). Cash shut. Not tested at CASH OPEN.
+- What we hit: `GET /api/health`; `GET /agent-registration.json`; `GET /api/_ratiocheck`; `GET /api/agent/scan`; `GET /api/agent/studio/tick` with no token, then with `X-Studio-Token` (curl from Termux), then with `?arb_threshold=0.002`.
+- What came back (log label `studio tick`, first of each outcome):
+  - No token: HTTP 401 `{"detail":"bad token"}` at 02:38:38 UTC.
+  - Token, default threshold: HTTP 200, `mode=proposal-only`, `session=AFTER-HOURS`, `arbs=0 alerts=0 flatten=0` at 02:41:29 UTC. `/api/agent/scan` also returned `hits: []`, `arbs: []`, `best: null`. `/api/_ratiocheck` returned all 20 share ratios with `missing: []`, so the empty list was not a ratio failure. Every xStocks wrapper except SPCXx showed as a thin pool, so only bStocks against Ondo were comparable, and their gap was under the 1% arb floor.
+  - Token, `arb_threshold=0.002`: HTTP 200, 232 ms, `arbs=1 new=1` at 02:56:22 UTC. SPCXx rich over SPCXon, gross 45.9 bps, cost 10 bps, **net 35.9 bps, `viable: true`**, gap vs official 0.87%, gap vs fair 0.85%. Both legs fell back to Pancake links (`userWalletAddress is required for RFQ (xStock)` and `(Ondo)`), so the 10 bps cost is the 5 bps floor on each leg, not a fill.
+  - `/agent-registration.json`: `x402Support: false`, `registrations` with `agentId 360062` on `eip155:56:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`.
+- What we changed because of it: (1) The tick had no entry in the dev log, because the logger only recorded outbound calls. The tick now logs status, mode, session, arb count and top net bps, and the token check uses a constant-time compare. (2) A quiet after-hours window returned `arbs=[]`, which cannot show a net-bps arb. The tick takes an optional `arb_threshold`; the default stays 1%, `viable` is still computed from net bps, and the response reports the threshold used as `arbThreshold`. (3) `.env.example` held a truncated registry address and agent id `360`, and an empty `ERC8004_CHAIN_ID` would have produced `eip155::0x...`. The values are corrected, the chain id falls back to 56, and `registrations` is emitted only for a numeric agent id. (4) The build notes called for a Studio job pointed at the tick. None exists: Studio is a CLI and has no external scheduler, so the scan stays in StreetTape's own loop and Studio was not deployed. `new` is true only on the first call per symbol in 60 minutes, so the manual curl used it up.
