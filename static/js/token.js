@@ -3,8 +3,8 @@
  *   /api/prices           shared price cache (polled every second)
  *   /api/balances/{addr}  wallet holdings
  *   /api/chart/{symbol}   price history for the chart
- * Send opens send.js on this page; Buy / Sell open swap.js (frontend only for now).
- * With no holdings only the Buy button shows.
+ * Buy / Sell always show and open swap.js (stock picker inside the sheet).
+ * Position card always shows X / Ondo / B rows (0 when empty or disconnected).
  *
  * Group pages (data-kind="group", e.g. /t/NVDA or the legacy /t/NVDAx): the traded
  * SYMBOL is the cheapest rail (auto-picked, or the wrapper the URL/legacy link named
@@ -29,15 +29,14 @@
 
   const $ = (id) => document.getElementById(id);
   const els = {
-    price: $('tk-price'), chg: $('tk-chg'), chgAbs: $('tk-chg-abs'), chgPct: $('tk-chg-pct'),
-    stats: $('tk-stats'), mc: $('tk-mc'), mark: $('tk-mark'), prem: $('tk-prem'),
-    fairRow: $('tk-fair-row'), fair: $('tk-fair'), premFairRow: $('tk-prem-fair-row'), premFair: $('tk-prem-fair'),
-    plot: $('tk-plot'), axis: $('tk-axis'), noHist: $('tk-nohist'), ranges: $('tk-ranges'),
-    pos: $('tk-pos'), posVal: $('tk-pos-val'), posAmt: $('tk-pos-amt'), posDelta: $('tk-pos-delta'), posPct: $('tk-pos-pct'), posPnl: $('tk-pos-pnl'),
-    bar: $('tk-bar'), send: $('tk-send'), sell: $('tk-sell'), buy: $('tk-buy'),
-    back: $('tk-back'), share: $('tk-share'), mint: $('tk-mint'), mintText: $('tk-mint-text'),
+    stats: $('tk-stats'), mark: $('tk-mark'), prem: $('tk-prem'), fair: $('tk-fair'), premFair: $('tk-prem-fair'),
+    plot: $('tk-plot'), axis: $('tk-axis'), xaxis: $('tk-xaxis'), cursor: $('tk-cursor'), tip: $('tk-tip'),
+    noHist: $('tk-nohist'), ranges: $('tk-ranges'),
+    posList: $('tk-pos-list'), posTotal: $('tk-pos-total'),
+    bar: $('tk-bar'), sell: $('tk-sell'), buy: $('tk-buy'),
+    back: $('tk-back'), copy: $('tk-copy'), copyMenu: $('tk-copy-menu'),
     about: $('tk-about'), aboutText: $('tk-about-text'), more: $('tk-readmore'),
-    logo: $('tk-logo'), symText: $('tk-sym-text'), aboutName: $('tk-about-name'), urlLink: $('tk-url-link'), urlText: $('tk-url-text'),
+    logo: $('tk-logo'), symText: $('tk-sym-text'), aboutName: $('tk-about-name'), urlLink: $('tk-url-link'),
     tapeRow: $('tk-tape-row'),
     newsList: $('tk-news-list'), newsEmpty: $('tk-news-empty'),
   };
@@ -101,84 +100,65 @@
     return p.change24h === null || p.change24h === undefined ? p.price : p.price / (1 + p.change24h / 100);
   }
 
+  const DASH = '\u2013';
+  function setVal(el, text, cls) {
+    el.textContent = text;
+    el.className = cls || '';
+  }
+  function premVal(el, v) {
+    if (v === null || v === undefined || !isFinite(v)) return setVal(el, DASH);
+    const r = Number((v * 100).toFixed(1));
+    setVal(el, (r > 0 ? '+' : '') + r + '%', r > 0 ? 'pos' : r < 0 ? 'neg' : 'flat');
+  }
+
+  // Wrappers shown in Position / copy menu: always X, Ondo, B on group pages.
+  function railList() {
+    if (!IS_GROUP) return [{ plat: null, label: SYMBOL, symbol: SYMBOL, mint: els.copy.dataset.mint || '' }];
+    const ws = (state.group && state.group.wrappers) || [];
+    return ['xstocks', 'ondo', 'bstocks'].map((plat) => {
+      const w = ws.find((x) => x.platform === plat) || {};
+      return { plat, label: PLAT_LABEL[plat], symbol: w.symbol || '', mint: w.mint || w.address || '', tokenPrice: w.tokenPrice };
+    });
+  }
+
+  function renderPosition() {
+    const rows = railList();
+    let total = 0;
+    els.posList.textContent = '';
+    rows.forEach((r) => {
+      const key = r.symbol ? keyFor(r.symbol) : '';
+      const amount = state.address && state.holdings && key ? state.holdings[key] || 0 : 0;
+      const px = (state.prices[key] && state.prices[key].price) || r.tokenPrice || 0;
+      const val = amount * px;
+      total += val;
+      const row = document.createElement('div');
+      row.className = 'tk-pos-row';
+      const left = document.createElement('div');
+      const lbl = document.createElement('div'); lbl.className = 'tk-pos-lbl'; lbl.textContent = r.label;
+      const amt = document.createElement('div'); amt.className = 'tk-pos-amt'; amt.textContent = `${fmtAmount(amount)} ${r.symbol || ''}`.trim();
+      left.appendChild(lbl); left.appendChild(amt);
+      const v = document.createElement('div'); v.className = 'tk-pos-val'; v.textContent = fmtUsd(val);
+      row.appendChild(left); row.appendChild(v);
+      els.posList.appendChild(row);
+    });
+    els.posTotal.textContent = fmtUsd(total);
+  }
+
   function render() {
     const p = state.prices[SYMBOL];
 
-    els.price.textContent = p ? fmtPrice(p.price) : '—';
-    const info = p ? pct(p.change24h) : null;
-    els.chg.hidden = !info;
-    if (info) {
-      els.chgAbs.textContent = fmtDelta(p.price - open24h(p));
-      setTone(els.chg, 'tk-chg', info.cls);
-      els.chgPct.textContent = info.text;
-      setTone(els.chgPct, 'tk-pill', info.cls);
-    }
-    if (els.stats) {
-      const show = !!p;
-      els.stats.hidden = !show;
-      if (show) {
-        els.mc.textContent = p.mc ? fmtCompact(p.mc) : '—';
-        if (p.noYahoo) {
-          els.mark.textContent = 'No Yahoo mark. Tape only.';
-          els.mark.className = 'tk-empty-note';
-        } else {
-          els.mark.textContent = p.mark ? fmtPrice(p.mark) : '—';
-          els.mark.className = '';
-        }
-        if (p.noYahoo) {
-          els.prem.textContent = '—';
-          els.prem.className = '';
-        } else if (p.premium === null || p.premium === undefined || !isFinite(p.premium)) {
-          els.prem.textContent = '—';
-          els.prem.className = '';
-        } else {
-          const pctv = Number((p.premium * 100).toFixed(1));
-          const tiny = Math.abs(pctv) < 0.3;
-          if (tiny && state.session && state.session.cashOpen) {
-            els.prem.textContent = 'Gap usually prints after 16:00 ET.';
-            els.prem.className = 'tk-empty-note';
-          } else {
-            els.prem.textContent = (pctv > 0 ? '+' : '') + pctv + '%';
-            els.prem.className = pctv > 0 ? 'pos' : pctv < 0 ? 'neg' : 'flat';
-          }
-        }
-        // Synthetic mark only adds information when cash is shut (equals
-        // official mark while the cash session is open).
-        const showFair = !p.noYahoo && p.fairPrice && state.session && !state.session.cashOpen;
-        if (els.fairRow) els.fairRow.hidden = !showFair;
-        if (els.premFairRow) els.premFairRow.hidden = !showFair;
-        if (showFair) {
-          els.fair.textContent = fmtPrice(p.fairPrice);
-          if (p.premiumToFair === null || p.premiumToFair === undefined || !isFinite(p.premiumToFair)) {
-            els.premFair.textContent = '—';
-            els.premFair.className = '';
-          } else {
-            const fpct = Number((p.premiumToFair * 100).toFixed(1));
-            els.premFair.textContent = (fpct > 0 ? '+' : '') + fpct + '%';
-            els.premFair.className = fpct > 0 ? 'pos' : fpct < 0 ? 'neg' : 'flat';
-          }
-        }
-      }
+    // Four stats, always rendered; dash when a value isn't available.
+    if (!p || p.noYahoo) {
+      setVal(els.mark, DASH); setVal(els.prem, DASH); setVal(els.fair, DASH); setVal(els.premFair, DASH);
+    } else {
+      setVal(els.mark, p.mark ? fmtPrice(p.mark) : DASH);
+      premVal(els.prem, p.premium);
+      const showFair = !!p.fairPrice && state.session && !state.session.cashOpen;
+      setVal(els.fair, showFair ? fmtPrice(p.fairPrice) : DASH);
+      if (showFair) premVal(els.premFair, p.premiumToFair); else setVal(els.premFair, DASH);
     }
 
-    // Portfolio card + bottom bar
-    const amount = state.address && state.holdings ? state.holdings[SYMBOL] || 0 : 0;
-    const held = amount > 0 && !!p;
-    els.pos.hidden = !held;
-    els.send.hidden = els.sell.hidden = !held;
-    els.bar.classList.toggle('only-buy', !held);
-    if (held) {
-      els.posVal.textContent = fmtUsd(amount * p.price);
-      const assetMeta = state.assets[SYMBOL] || {};
-      const m = assetMeta.multiplier || null;
-      const note = sharesNote(amount, m);
-      els.posAmt.textContent = note || `${fmtAmount(amount)} ${SYMBOL} · est. shares n/a`;
-      const delta = amount * (p.price - open24h(p)); // 24h move of the position
-      const pi = pct(p.change24h);
-      els.posDelta.textContent = fmtDelta(delta);
-      els.posPct.textContent = pi ? pi.text : '';
-      setTone(els.posPnl, 'tk-pos-pnl', pi ? pi.cls : 'flat');
-    }
+    renderPosition();
     drawChart();
   }
 
@@ -186,8 +166,9 @@
   const NS = 'http://www.w3.org/2000/svg';
   const W = 360;
   const H = 230;
-  const PAD_T = 16;
-  const PAD_B = 16;
+  const PAD_T = 14;
+  const PAD_B = 14;
+  const BUCKETS = 96;
 
   function svgEl(tag, attrs) {
     const n = document.createElementNS(NS, tag);
@@ -195,132 +176,205 @@
     return n;
   }
 
-  // Multi-series palette: cash mark + three wrapper platforms
   const SERIES_COLORS = {
-    mark:    '#94a3b8', // slate — cash/reference line
+    mark:    '#94a3b8', // slate: cash/reference
     xstocks: '#60a5fa', // blue
     ondo:    '#a78bfa', // purple
     bstocks: '#34d399', // green
   };
 
-  // Map wrapper symbol → platform using the group data
   function _wrapperPlatform(sym) {
     if (!state.group) return null;
     const w = (state.group.wrappers || []).find((x) => x.symbol === sym);
     return w ? w.platform : null;
   }
 
-  function drawChart() {
-    els.plot.textContent = '';
+  // Resample onto a shared grid (last value per bucket, carried forward).
+  function resample(pts, t0, t1) {
+    const span = t1 - t0 || 1;
+    const out = new Array(BUCKETS).fill(null);
+    const sorted = pts.slice().sort((a, b) => a[0] - b[0]);
+    sorted.forEach(([t, v]) => {
+      const i = Math.min(BUCKETS - 1, Math.max(0, Math.round(((t - t0) / span) * (BUCKETS - 1))));
+      out[i] = v;
+    });
+    let last = null;
+    for (let i = 0; i < BUCKETS; i++) {
+      if (out[i] === null) out[i] = last; else last = out[i];
+    }
+    return out;
+  }
 
-    // ---- Multi-series mode (group page after first fetch) ----
+  // Monotone cubic (Fritsch-Carlson): smooth, never overshoots the data.
+  function smoothPath(xs, ys) {
+    const n = xs.length;
+    if (n < 2) return '';
+    const dx = [], m = [], t = new Array(n);
+    for (let i = 0; i < n - 1; i++) { dx.push(xs[i + 1] - xs[i]); m.push((ys[i + 1] - ys[i]) / dx[i]); }
+    t[0] = m[0]; t[n - 1] = m[n - 2];
+    for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2;
+    for (let i = 0; i < n - 1; i++) {
+      if (m[i] === 0) { t[i] = 0; t[i + 1] = 0; continue; }
+      const a = t[i] / m[i], b = t[i + 1] / m[i], h = Math.hypot(a, b);
+      if (h > 3) { t[i] = (3 * a / h) * m[i]; t[i + 1] = (3 * b / h) * m[i]; }
+    }
+    let d = `M${xs[0].toFixed(2)},${ys[0].toFixed(2)}`;
+    for (let i = 0; i < n - 1; i++) {
+      const c1x = xs[i] + dx[i] / 3, c1y = ys[i] + (t[i] * dx[i]) / 3;
+      const c2x = xs[i + 1] - dx[i] / 3, c2y = ys[i + 1] - (t[i + 1] * dx[i]) / 3;
+      d += ` C${c1x.toFixed(2)},${c1y.toFixed(2)} ${c2x.toFixed(2)},${c2y.toFixed(2)} ${xs[i + 1].toFixed(2)},${ys[i + 1].toFixed(2)}`;
+    }
+    return d;
+  }
+
+  function fmtTime(ms, range) {
+    const d = new Date(ms);
+    const hm = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    return range === '1W' ? d.toLocaleDateString([], { weekday: 'short' }) + ' ' + hm : hm;
+  }
+
+  let chartModel = null;
+
+  function clearChart() {
+    els.plot.textContent = '';
+    els.axis.textContent = '';
+    els.cursor.hidden = true;
+    els.tip.hidden = true;
+    els.plot.parentElement.querySelectorAll('.tk-end').forEach((n) => n.remove());
+    chartModel = null;
+  }
+
+  function drawChart() {
+    clearChart();
+    let series = [];
+    let empty = 'No price history yet';
+
     if (IS_GROUP && state.multiChart) {
       const mc = state.multiChart;
-      const hasMark = (mc.mark || []).length >= 2;
-      const wrapperEntries = Object.entries(mc.wrappers || {}).filter(([, pts]) => pts.length >= 2);
-      const hasAny = hasMark || wrapperEntries.length > 0;
-
-      els.noHist.hidden = hasAny;
-      els.axis.hidden = !hasAny;
-      if (!hasAny) {
-        els.noHist.hidden = false;
-        els.noHist.textContent = 'Tape history starts after first refresh.';
-        return;
-      }
-
-      // Collect all values for global min/max
-      const allVals = [];
-      if (hasMark) mc.mark.forEach(([, v]) => allVals.push(v));
-      wrapperEntries.forEach(([, pts]) => pts.forEach(([, v]) => allVals.push(v)));
-
-      const min = Math.min(...allVals);
-      const max = Math.max(...allVals);
-      const span = max - min || Math.abs(max) * 0.001 || 1;
-
-      // Shared x-axis: use wall-clock timestamps mapped to [0,W]
-      const allTs = [];
-      if (hasMark) mc.mark.forEach(([t]) => allTs.push(t));
-      wrapperEntries.forEach(([, pts]) => pts.forEach(([t]) => allTs.push(t)));
-      const minTs = Math.min(...allTs);
-      const maxTs = Math.max(...allTs);
-      const tsSpan = maxTs - minTs || 1;
-
-      const xTs = (t) => ((t - minTs) / tsSpan) * W;
-      const y   = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - (v - min) / span);
-
-      function pathD(pts) {
-        return pts.map(([t, v], i) => `${i ? 'L' : 'M'}${xTs(t).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-      }
-
-      [0, 0.5, 1].forEach((f) => {
-        const gy = PAD_T + (H - PAD_T - PAD_B) * f;
-        els.plot.appendChild(svgEl('line', { class: 'tk-grid', x1: 0, x2: W, y1: gy, y2: gy }));
-      });
-
-      // Draw wrappers first (underneath mark)
-      wrapperEntries.forEach(([sym, pts]) => {
+      empty = 'Tape history starts after first refresh.';
+      Object.entries(mc.wrappers || {}).forEach(([sym, pts]) => {
+        if (pts.length < 2) return;
         const plat = _wrapperPlatform(sym) || 'xstocks';
-        const color = SERIES_COLORS[plat] || UP;
-        els.plot.appendChild(svgEl('path', { d: pathD(pts), class: 'tk-line tk-line-wrapper', stroke: color, 'stroke-opacity': '0.75' }));
+        series.push({ label: sym, color: SERIES_COLORS[plat] || UP, pts, w: 1.8 });
       });
-
-      // Draw cash mark on top with gradient fill
-      if (hasMark) {
-        const color = SERIES_COLORS.mark;
-        const line = pathD(mc.mark);
-        const defs = svgEl('defs', {});
-        const grad = svgEl('linearGradient', { id: 'tk-grad', x1: 0, y1: 0, x2: 0, y2: 1 });
-        grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': 0.18 }));
-        grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0 }));
-        defs.appendChild(grad);
-        els.plot.appendChild(defs);
-        const lastMark = mc.mark[mc.mark.length - 1];
-        els.plot.appendChild(svgEl('path', { d: `${line} L${xTs(lastMark[0]).toFixed(1)},${H} L${xTs(mc.mark[0][0]).toFixed(1)},${H} Z`, fill: 'url(#tk-grad)' }));
-        els.plot.appendChild(svgEl('path', { d: line, class: 'tk-line', stroke: color }));
+      if ((mc.mark || []).length >= 2) series.push({ label: 'Cash', color: SERIES_COLORS.mark, pts: mc.mark, w: 1.3, dash: '4 4', last: true });
+    } else if (!IS_GROUP) {
+      const pts = state.points.slice();
+      const live = state.prices[SYMBOL];
+      if (live && pts.length) pts.push([Date.now(), live.price]);
+      if (pts.length >= 2) {
+        const color = pts[pts.length - 1][1] >= pts[0][1] ? UP : DOWN;
+        series.push({ label: SYMBOL, color, pts, w: 2, fill: true });
       }
-
-      const labels = els.axis.children;
-      labels[0].textContent = fmtPrice(max);
-      labels[1].textContent = fmtPrice((max + min) / 2);
-      labels[2].textContent = fmtPrice(min);
-      return;
     }
 
-    // ---- Single-series mode (crypto / individual wrapper) ----
-    const vals = state.points.map((pt) => pt[1]);
-    const live = state.prices[SYMBOL];
-    if (live && vals.length) vals.push(live.price);
-    els.noHist.hidden = vals.length >= 2;
-    els.axis.hidden = vals.length < 2;
-    if (vals.length < 2) return;
+    const hasAny = series.length > 0;
+    els.noHist.hidden = hasAny;
+    els.noHist.textContent = empty;
+    els.axis.hidden = !hasAny;
+    els.xaxis.hidden = !hasAny;
+    if (!hasAny) return;
 
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = max - min || Math.abs(max) * 0.001 || 1;
-    const x = (i) => (i / (vals.length - 1)) * W;
+    const all = series.flatMap((s) => s.pts);
+    const t0 = Math.min(...all.map((q) => q[0]));
+    const t1 = Math.max(...all.map((q) => q[0]));
+    series.forEach((s) => { s.vals = resample(s.pts, t0, t1); });
+
+    const flat = series.flatMap((s) => s.vals.filter((v) => v !== null));
+    let min = Math.min(...flat);
+    let max = Math.max(...flat);
+    const base = Math.abs(max) || 1;
+    if (max - min < base * 0.0005) { min -= base * 0.0005; max += base * 0.0005; }
+    const padV = (max - min) * 0.12;
+    min -= padV; max += padV;
+    const span = max - min;
+    const x = (i) => (i / (BUCKETS - 1)) * W;
     const y = (v) => PAD_T + (H - PAD_T - PAD_B) * (1 - (v - min) / span);
-    const color = vals[vals.length - 1] >= vals[0] ? UP : DOWN;
 
-    [0, 0.5, 1].forEach((f) => {
+    // Grid + price labels (4 lines)
+    [0, 1 / 3, 2 / 3, 1].forEach((f) => {
       const gy = PAD_T + (H - PAD_T - PAD_B) * f;
       els.plot.appendChild(svgEl('line', { class: 'tk-grid', x1: 0, x2: W, y1: gy, y2: gy }));
+      const lab = document.createElement('span');
+      lab.style.top = ((gy / H) * 100).toFixed(2) + '%';
+      lab.textContent = fmtPrice(max - (max - min) * f);
+      els.axis.appendChild(lab);
     });
 
-    const line = vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const defs = svgEl('defs', {});
-    const grad = svgEl('linearGradient', { id: 'tk-grad', x1: 0, y1: 0, x2: 0, y2: 1 });
-    grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': color, 'stop-opacity': 0.22 }));
-    grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': color, 'stop-opacity': 0 }));
-    defs.appendChild(grad);
-    els.plot.appendChild(defs);
-    els.plot.appendChild(svgEl('path', { d: `${line} L${W},${H} L0,${H} Z`, fill: 'url(#tk-grad)' }));
-    els.plot.appendChild(svgEl('path', { d: line, class: 'tk-line', stroke: color }));
+    // Time labels
+    const xl = els.xaxis.children;
+    xl[0].textContent = fmtTime(t0, state.range);
+    xl[1].textContent = fmtTime((t0 + t1) / 2, state.range);
+    xl[2].textContent = fmtTime(t1, state.range);
 
-    const labels = els.axis.children;
-    labels[0].textContent = fmtPrice(max);
-    labels[1].textContent = fmtPrice((max + min) / 2);
-    labels[2].textContent = fmtPrice(min);
+    // Lines (cash last-drawn on top only if it has no wrappers beneath)
+    series.forEach((s, si) => {
+      const idx = [];
+      s.vals.forEach((v, i) => { if (v !== null) idx.push(i); });
+      const xs = idx.map(x);
+      const ys = idx.map((i) => y(s.vals[i]));
+      const d = smoothPath(xs, ys);
+      if (s.fill) {
+        const defs = svgEl('defs', {});
+        const grad = svgEl('linearGradient', { id: 'tk-grad', x1: 0, y1: 0, x2: 0, y2: 1 });
+        grad.appendChild(svgEl('stop', { offset: '0%', 'stop-color': s.color, 'stop-opacity': 0.22 }));
+        grad.appendChild(svgEl('stop', { offset: '100%', 'stop-color': s.color, 'stop-opacity': 0 }));
+        defs.appendChild(grad);
+        els.plot.appendChild(defs);
+        els.plot.appendChild(svgEl('path', { d: `${d} L${xs[xs.length - 1].toFixed(2)},${H} L${xs[0].toFixed(2)},${H} Z`, fill: 'url(#tk-grad)' }));
+      }
+      const attrs = { d, class: 'tk-line', stroke: s.color, 'stroke-width': s.w };
+      if (s.dash) attrs['stroke-dasharray'] = s.dash;
+      els.plot.appendChild(svgEl('path', attrs));
+      // End dot
+      const lastI = idx[idx.length - 1];
+      const dot = document.createElement('i');
+      dot.className = 'tk-end';
+      dot.style.left = ((x(lastI) / W) * 100).toFixed(2) + '%';
+      dot.style.top = ((y(s.vals[lastI]) / H) * 100).toFixed(2) + '%';
+      dot.style.background = s.color;
+      els.plot.parentElement.appendChild(dot);
+    });
+
+    chartModel = { series, t0, t1, x, y };
   }
+
+  // Touch / hover crosshair with per-series values
+  function moveCursor(clientX) {
+    if (!chartModel) return;
+    const rect = els.plot.getBoundingClientRect();
+    const f = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    const i = Math.round(f * (BUCKETS - 1));
+    const { series, t0, t1 } = chartModel;
+    els.cursor.hidden = false;
+    els.cursor.style.left = ((i / (BUCKETS - 1)) * 100).toFixed(2) + '%';
+    const t = t0 + (i / (BUCKETS - 1)) * (t1 - t0);
+    els.tip.textContent = '';
+    const head = document.createElement('div');
+    head.className = 'tk-tip-time';
+    head.textContent = fmtTime(t, state.range);
+    els.tip.appendChild(head);
+    series.forEach((s) => {
+      const v = s.vals[i];
+      if (v === null) return;
+      const row = document.createElement('div');
+      row.className = 'tk-tip-row';
+      const dot = document.createElement('i'); dot.style.background = s.color;
+      const name = document.createElement('span'); name.textContent = s.label;
+      const val = document.createElement('b'); val.textContent = fmtPrice(v);
+      row.appendChild(dot); row.appendChild(name); row.appendChild(val);
+      els.tip.appendChild(row);
+    });
+    els.tip.hidden = false;
+    els.tip.classList.toggle('left', f > 0.55);
+  }
+  function hideCursor() { els.cursor.hidden = true; els.tip.hidden = true; }
+  const plotWrap = els.plot.parentElement;
+  plotWrap.addEventListener('pointerdown', (e) => moveCursor(e.clientX));
+  plotWrap.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' || e.buttons || e.pressure) moveCursor(e.clientX); });
+  plotWrap.addEventListener('pointerleave', hideCursor);
+  plotWrap.addEventListener('pointerup', () => { if (plotWrap.dataset.touch) hideCursor(); });
+  plotWrap.addEventListener('pointercancel', hideCursor);
 
   // ---- Chart legend (group pages only) -----------------------------------
   function renderLegend(multiChart) {
@@ -488,8 +542,7 @@
     const tradeW = focusW || cheapW || anyTradeable;
     if (!tradeW) {
       // No wrapper for this underlying has a contract yet — nothing to trade.
-      if (els.bar) els.bar.hidden = true;
-      SYMBOL = (g.wrappers.find((w) => w.symbol === FOCUS) || g.wrappers[0] || {}).symbol || SYMBOL;
+        SYMBOL = (g.wrappers.find((w) => w.symbol === FOCUS) || g.wrappers[0] || {}).symbol || SYMBOL;
       page.dataset.symbol = SYMBOL;
       return;
     }
@@ -506,14 +559,12 @@
       const src = g.wrappers.map((w) => w.image).find(Boolean);
       if (src && els.logo.tagName === 'IMG') els.logo.src = src;
     }
-    if (els.mint) els.mint.dataset.mint = tradeW.mint || '';
-    if (els.mintText && tradeW.mint) els.mintText.textContent = tradeW.mint.slice(0, 4) + '...' + tradeW.mint.slice(-4);
-    if (els.share) els.share.dataset.link = location.href;
-    if (els.urlLink && tradeW.url) {
-      els.urlLink.href = tradeW.url;
+    const tmint = tradeW.mint || tradeW.address || '';
+    if (els.urlLink && tmint) {
+      els.urlLink.href = tradeW.url || ('https://pancakeswap.finance/swap?chain=bsc&outputCurrency=' + tmint);
       els.urlLink.hidden = false;
-      if (els.urlText) els.urlText.textContent = tradeW.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
     }
+    if (!els.copyMenu.hidden) renderCopyMenu();
 
     renderTapeRow(g);
     render();
@@ -693,11 +744,6 @@
     if (window.MarktapeWallet) window.MarktapeWallet.connectWithPicker();
   }
 
-  els.send.addEventListener('click', () => {
-    if (!state.address || !window.MarktapeSend) return;
-    window.MarktapeSend.open({ symbol: SYMBOL, getCtx, onSent: refreshBalances });
-  });
-
   // Server keys prices/assets/holdings by UPPERCASE symbol (TSLAon -> TSLAON).
   function keyFor(sym) {
     const u = String(sym || '').toUpperCase();
@@ -705,10 +751,19 @@
   }
 
   function openSwap(side, sym, onClose, pre) {
-    if (!state.address) { connect(); return false; }
     const label = sym || SYMBOL;
     const key = keyFor(label);
-    return !!(window.MarktapeSwap && window.MarktapeSwap.open({ side, symbol: key, label, getCtx, onDone: refreshBalances, onClose, pay: pre && pre.pay, amount: pre && pre.amount }));
+    let stocks = [];
+    if (IS_GROUP && state.group) {
+      stocks = ['xstocks', 'ondo', 'bstocks'].map((plat) => {
+        const w = (state.group.wrappers || []).find((x) => x.platform === plat);
+        return { symbol: w ? keyFor(w.symbol) : '', name: w ? w.symbol : '', label: PLAT_LABEL[plat], disabled: !w || !(w.mint || w.address) };
+      });
+    }
+    return !!(window.MarktapeSwap && window.MarktapeSwap.open({
+      side, symbol: key, label, title: IS_GROUP ? UNDERLYING : label, stocks, getCtx, onDone: refreshBalances, onClose,
+      connect, pay: pre && pre.pay, amount: pre && pre.amount,
+    }));
   }
   els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));
@@ -733,23 +788,36 @@
     }
   }
 
-  // Share = copy the PancakeSwap link; the icon turns into "Copied" for 2s.
-  let shareTimer = null;
-  els.share.addEventListener('click', async () => {
-    if (els.share.classList.contains('done')) return;
-    if (!(await copyText(els.share.dataset.link))) return;
-    els.share.classList.add('done');
-    clearTimeout(shareTimer);
-    shareTimer = setTimeout(() => els.share.classList.remove('done'), 2000);
-  });
+  // Copy button: toggles a dropdown listing each stock's short CA with its own copy button.
+  const shortCa = (a) => (a ? a.slice(0, 6) + '...' + a.slice(-4) : DASH);
+  const COPY_IC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>';
+  const OK_IC = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5L20 7"/></svg>';
 
-  let mintTimer = null;
-  const mintShort = els.mintText.textContent;
-  els.mint.addEventListener('click', async () => {
-    if (!(await copyText(els.mint.dataset.mint))) return;
-    els.mintText.textContent = 'Copied';
-    clearTimeout(mintTimer);
-    mintTimer = setTimeout(() => { els.mintText.textContent = mintShort; }, 1200);
+  function renderCopyMenu() {
+    els.copyMenu.textContent = '';
+    railList().forEach((r) => {
+      const row = document.createElement('div');
+      row.className = 'tk-copy-row';
+      const lbl = document.createElement('b'); lbl.textContent = r.label;
+      const ca = document.createElement('span'); ca.textContent = shortCa(r.mint);
+      const btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'tk-copy-one'; btn.setAttribute('aria-label', 'Copy ' + r.label + ' address');
+      btn.innerHTML = COPY_IC; btn.disabled = !r.mint;
+      btn.addEventListener('click', async () => {
+        if (!r.mint || !(await copyText(r.mint))) return;
+        btn.innerHTML = OK_IC; btn.classList.add('done');
+        setTimeout(() => { btn.innerHTML = COPY_IC; btn.classList.remove('done'); }, 1200);
+      });
+      row.appendChild(lbl); row.appendChild(ca); row.appendChild(btn);
+      els.copyMenu.appendChild(row);
+    });
+  }
+  els.copy.addEventListener('click', () => {
+    const open = els.copyMenu.hidden;
+    if (open) renderCopyMenu();
+    els.copyMenu.hidden = !open;
+    els.copy.setAttribute('aria-expanded', String(open));
+    els.copy.classList.toggle('on', open);
   });
 
   els.back.addEventListener('click', () => {

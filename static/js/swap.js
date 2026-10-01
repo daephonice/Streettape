@@ -98,6 +98,7 @@
       <div class="swp-sheet" role="dialog" aria-modal="true">
         <div class="snd-handle"></div>
         <h3 class="swp-title"></h3>
+        <div class="swp-stk"></div>
         <div class="swp-cur"></div>
         <p class="swp-bal"></p>
         <div class="swp-buy">
@@ -128,7 +129,7 @@
 
     const q = (s) => root.querySelector(s);
     Object.assign(R, {
-      backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), cur: q('.swp-cur'),
+      backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), stk: q('.swp-stk'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
       cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
@@ -136,6 +137,10 @@
     });
 
     R.backdrop.addEventListener('click', () => { if (S && !S.busy) close(); });
+    R.stk.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-stk]');
+      if (b && S && !S.busy && !b.disabled) setStock(b.dataset.stk);
+    });
     R.cur.addEventListener('click', (e) => {
       const b = e.target.closest('[data-cur]');
       if (b && S && !S.busy) setCur(b.dataset.cur);
@@ -159,13 +164,18 @@
     R.range.addEventListener('input', () => setPct(Number(R.range.value)));
     R.minus.addEventListener('click', () => setPct(S.pct - STEP));
     R.plus.addEventListener('click', () => setPct(S.pct + STEP));
-    R.cta.addEventListener('click', doSwap);
+    R.cta.addEventListener('click', () => {
+      if (S && !S.address) { const h = S.host; close(); if (h.connect) h.connect(); return; }
+      doSwap();
+    });
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && S && !S.busy) close();
     });
     window.addEventListener('marktape:wallet', (e) => {
-      if (S && e.detail.address !== S.address) close();
+      if (!S) return;
+      if (!S.address && e.detail.address) { S.address = e.detail.address; render(); scheduleQuote(); return; }
+      if (e.detail.address !== S.address) close();
     });
     if (window.visualViewport) {
       const sync = () => {
@@ -200,6 +210,39 @@
     scheduleQuote();
   }
 
+  function setStock(sym) {
+    if (sym === S.symbol) return;
+    S.symbol = sym;
+    const c = S.host.getCtx();
+    const opts = payOptions();
+    if (!opts.includes(S.cur)) S.cur = opts[0];
+    S.raw = '';
+    setNote('');
+    resetQuote();
+    renderStk();
+    renderCur();
+    renderQuick();
+    render();
+    scheduleQuote();
+  }
+
+  function renderStk() {
+    const list = S.host.stocks || [];
+    R.stk.hidden = list.length < 2;
+    R.stk.textContent = '';
+    list.forEach((st) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.stk = st.symbol;
+      b.disabled = !!st.disabled;
+      b.className = 'swp-stk-opt' + (st.symbol === S.symbol ? ' active' : '');
+      const t = document.createElement('b'); t.textContent = st.label;
+      const n = document.createElement('small'); n.textContent = st.name || st.symbol;
+      b.appendChild(t); b.appendChild(n);
+      R.stk.appendChild(b);
+    });
+  }
+
   function setPct(v) {
     if (S.busy) return;
     S.pct = Math.max(0, Math.min(100, Math.round(v)));
@@ -222,7 +265,7 @@
     S.order = null;
     clearTimeout(S.quoteTimer);
     const amt = S.side === 'buy' ? parseFloat(S.raw) || 0 : sellCalcAmount();
-    if (!(amt > 0)) { S.quoting = false; return; }
+    if (!S.address || !(amt > 0)) { S.quoting = false; return; }
     S.quoting = true;
     S.quoteTimer = setTimeout(fetchQuote, DEBOUNCE_MS);
   }
@@ -393,6 +436,8 @@
     if (!S) return;
     const c = S.host.getCtx();
     const buying = S.side === 'buy';
+    const st = (S.host.stocks || []).find((x) => x.symbol === S.symbol);
+    R.title.textContent = `${buying ? 'Buy' : 'Sell'} ${S.host.title || S.host.label || S.symbol}${st ? ' ' + st.label : ''}`.trim();
     renderDetails();
     R.buy.hidden = !buying;
     R.sell.hidden = buying;
@@ -417,6 +462,7 @@
       });
       if (S.busy) setCta('Buying', true, true);
       else if (!(d.v > 0)) setCta('Enter an amount', true);
+      else if (!S.address) setCta('Connect wallet', false);
       else if (d.over) setCta(`Insufficient ${S.cur} balance`, true);
       else if (S.quoting) setCta('Getting price...', true, true);
       else if (!S.order || !S.order.uiOutAmount) setCta(`Buy with ${S.raw.replace(/\.$/, '')} ${S.cur}`, true);
@@ -438,8 +484,10 @@
       R.range.style.setProperty('--pct', S.pct + '%');
       R.minus.disabled = S.busy || S.pct <= 0;
       R.plus.disabled = S.busy || S.pct >= 100;
-      R.range.disabled = S.busy;
+      R.range.disabled = S.busy || !(d.bal > 0);
+      if (!(d.bal > 0)) { R.minus.disabled = true; R.plus.disabled = true; }
       if (S.busy) setCta('Selling', true, true);
+      else if (!(d.bal > 0)) setCta('Insufficient balance', true);
       else if (!(d.amt > 0)) setCta('Select an amount', true);
       else if (S.quoting) setCta('Getting price...', true, true);
       else if (!S.order || !S.order.uiOutAmount) setCta(`Sell ${trunc(d.amt, TOKEN_DEC)} ${S.symbol}`, true);
@@ -538,19 +586,19 @@
 
   function open(host) {
     const c = host.getCtx();
-    if (S || !c.address || !c.prices[host.symbol]) return false;
+    if (S) return false;
     const opts = allowedPay(c, host.symbol);
     const cur = opts.includes(host.pay) ? host.pay : opts[0];
-    if (!cur || !c.prices[cur]) return false;
+    if (!cur) return false;
     build();
     S = {
-      host, address: c.address, side: host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
+      host, address: c.address || null, side: host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
       cur, raw: '', pct: 25, busy: false,
       order: null, quoting: false, quoteTimer: null, quoteReq: 0,
     };
-    R.title.textContent = `${S.side === 'buy' ? 'Buy' : 'Sell'} ${host.label || S.symbol}`;
     R.input.value = '';
     setNote('');
+    renderStk();
     renderCur();
     renderQuick();
     render();
