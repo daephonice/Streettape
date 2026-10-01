@@ -288,41 +288,15 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                     "data": tx["data"],
                     "value": hex(int(tx.get("value") or "0")),
                 }
-                sim = await _eth_ok(built_tx, taker)
-                if sim == "allowance":
-                    result["needsApproval"] = True
-                elif sim == "revert":
-                    rfq_route = next((r for r in routes if r.get("executionMode") == "RFQ" and r.get("quoteId")), None)
-                    if rfq_route:
-                        devlog.log_call(what="drop LiquidMesh", url=f"{BASE_URL}/api/v1/dex/aggregator/swap", status="revert", ms=0,
-                                        expected="signable SWAP", actual=f"eth_call reverted, using RFQ {rfq_route.get('quoteId')}")
-                        quote_id = rfq_route["quoteId"]
-                        swap_params["quoteId"] = quote_id
-                        swap_data = await _request(client, "GET", "/api/v1/dex/aggregator/swap", params=swap_params)
-                        router_result = (swap_data or {}).get("routerResult") or {}
-                        exec_mode = swap_data.get("executionMode", "RFQ")
-                        result["executionMode"] = exec_mode
-                        result["routes"] = [router_result.get("vendorName") or rfq_route.get("vendorName") or "PcsXRfq"]
-                        rfq = swap_data.get("rfq") or {}
-                        result["transaction"] = None
-                        result["typedDataToSign"] = rfq.get("typedDataToSign")
-                        result["rfqVendor"] = rfq.get("vendor")
-                        result["signingScheme"] = rfq.get("signingScheme", "EIP712")
-                        result["requestId"] = str(uuid.uuid4())
-                        result["quoteId"] = rfq.get("orderId") or quote_id
-                        result["uiMinReceived"] = out_ui
-                        result["sim"] = {"ok": None, "gas": None, "error": None, "note": "SWAP reverted; RFQ sibling"}
-                        if result.get("typedDataToSign"):
-                            return result
-                    result["sim"] = {"ok": False, "gas": None, "error": "Simulation reverted. You can still confirm or cancel in the wallet."}
-                    result["needsApproval"] = True
+                if not rwa.is_bnb(input_mint):
+                    result["approval"] = {"to": input_mint, "data": _approve_data(built_tx["to"]), "value": "0x0", "from": taker}
                 if tx.get("gas"):
                     built_tx["gas"] = hex(int(tx["gas"]))
                 if tx.get("gasPrice"):
                     built_tx["gasPrice"] = hex(int(tx["gasPrice"]))
                 result["transaction"] = built_tx
                 result["uiMinReceived"] = _from_units(tx.get("minReceiveAmount"), to_dec) if tx.get("minReceiveAmount") else None
-                result["sim"] = await simulate_transaction(built_tx, taker)
+                result["sim"] = None
                 gp = built_tx.get("gasPrice"); g = built_tx.get("gas")
                 if gp and g and result["fees"]["gasBnb"] is None:
                     result["fees"]["gasBnb"] = int(gp, 16) * int(g, 16) / 1e18
@@ -366,6 +340,12 @@ def _find(d, keys, depth=0):
 def _int(v) -> int:
     s = str(v or "0")
     return int(s, 16) if s.startswith("0x") else int(float(s))
+
+
+def _approve_data(spender: str) -> str:
+    # approve(address,uint256) max uint256. MetaMask does this before a token sell.
+    pad = spender.lower().replace("0x", "").rjust(64, "0")
+    return "0x095ea7b3" + pad + ("f" * 64)
 
 
 def _tx(taker: str, to: str, data: str, value, gas=None) -> dict:
@@ -459,11 +439,9 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
             if not (cd.get("to") and cd.get("calldata")):
                 raise RuntimeError("pancake: calldata response missing to/calldata")
             tx = _tx(taker, cd["to"], cd["calldata"], cd.get("value"))
-            sim = await _eth_ok(tx, taker)
         shaped = _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
-        if taker and sim in ("allowance", "revert"):
-            shaped["needsApproval"] = True
-            shaped["sim"] = {"ok": False, "gas": None, "error": "Simulation reverted. You can still confirm or cancel in the wallet."}
+        if taker and tx and not rwa.is_bnb(input_mint):
+            shaped["approval"] = {"to": input_mint, "data": _approve_data(tx["to"]), "value": "0x0", "from": taker}
         return shaped
 
 
