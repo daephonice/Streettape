@@ -16,7 +16,8 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Built against Binance Web3 quote/RFQ/swap-build, RWA Data, Transaction sim, Address Portfolio, GeckoTerminal tape, Yahoo last cash print, BSC RPC.
 - Verified live: aggregator quotes and built SWAP transactions (LiquidMesh), RFQ-requires-wallet, RWA `platforms` / `search` / `underlying-profile` / `underlying-market`, rate-limit behaviour, ERC-8004 registration on BSC, one settled TSLAB buy.
 - Called live, failed: `POST /api/v1/dex/aggregator/tx/simulate` HTTP 404; `GET /api/v1/portfolio/tokens` HTTP 202 non-JSON (19/19); `rwa/price` no usable mark on 420/420 calls in the logged window (missing `binanceChainId`, then 429).
-- Not verified live: `baw` signing against an MPC session.
+- Verified live (2026-10-01): one `baw market-order quote` and `/api/swap/order` returned the same out-amount for USDT to TSLAB at 50 (see Runtime log).
+- Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
 
 ---
 
@@ -95,8 +96,11 @@ After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to f
 
 - `npx skills add binance-agentic-wallet` fails. The CLI wants the GitHub folder path under `binance/binance-skills-hub`.
 - On Termux the same command needs `git` on PATH, then a Node/OpenSSL upgrade.
+- On Termux the CLI itself (`npm install -g @binance/agentic-wallet`, `baw` 1.10.0) failed first on `keytar` (`Package 'libsecret-1' was not found`). It installed after `pkg install libsecret pkg-config python make clang` and `npm install -g --allow-scripts=@github/keytar @binance/agentic-wallet`.
+- `baw auth verify` returned `DNS_RESOLVE_FAILED (www.binance.com)` while `auth signin` and `app.binance.com` worked. Changing the phone's Private DNS fixed it. The pairing code lasts about 5 minutes and the link is a QR to scan with the Binance app.
+- `baw market-order quote` returns symbols, amounts and slippage only. No route and no price impact. Those come from the API path.
 - The skill wraps `baw market-order quote` / `swap`. It does not sign from Python.
-- StreetTape calls `baw` when it is on PATH, else `/api/swap/order`. `--sign` is explicit. `baw` against a live MPC session has not been run.
+- StreetTape calls `baw` when it is on PATH, else `/api/swap/order`. `--sign` is explicit. A live `baw` quote has been run (Runtime log 2026-10-01). A signed `baw` fill has not.
 
 ### ERC-8004 identity. No Agent Studio runtime.
 
@@ -140,7 +144,7 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 - Confirm `rwa/price` with `binanceChainId=56` (and `tokenContractAddress` if needed).
 - Ask what `priceImpactPct` measures (it falls as size grows on TSLAB). Unit is settled as a fraction.
 - Do not retry simulate or Address Portfolio until a documented path exists.
-- One live `baw market-order quote` against a signed-in session.
+- One signed `baw market-order swap` (`quote --sign`). Needs a funded agentic wallet.
 
 ---
 
@@ -603,3 +607,16 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Session chip on `/basket/ai` rendered grey while the board chip was green at CASH OPEN. The chip had no state class.
   - Also in the window: `GET /portfolio/tokens` 202 non-JSON at 19:19:24 (wallet connect, known). GeckoTerminal 429 on both tries for six wrapper addresses at 19:11:47-19:12:01, and AMDx `price_usd=None`. The basket reads the cached snapshot, so those did not add calls of their own.
 - What we changed because of it: (1) `Review & confirm` now links to `/t/{symbol}#swap?pay=USDT&amt=16.67` and the token page opens the Buy sheet with USDT and that amount filled in (wallet must be connected first). (2) The swap sheet now offers USDT. Ondo wrappers pay in USDT only; USDC is removed for them, which corrects the 2026-09-30 share-normalized item 4 ("USDC only"). (3) The basket chip now takes the session class. (4) A leg quoted through the Pancake fallback is labelled "PancakeSwap · estimate, no firm quote" with an approximate out-amount, not `SWAP`. Not yet verified live: any of these four after deploy; whether Ondo accepts USDT (the wallet-less USDT quote stopped at 40001, before any pair check was seen); the likely-to-fail warning on the NVDAB BNB buy, and whether a USDT buy of NVDAB clears it; CASH SHUT (Fair row); an unfilled leg; signing; `baw`.
+
+### 2026-10-01 — Agentic Wallet, one verified quote (`streettape.py verify`)
+
+- Session: AFTER-HOURS (03:13 WAT / 02:13 UTC / 22:13 ET, 2026-09-30). Not run at CASH OPEN.
+- What we hit: `baw market-order quote --fromTokenQty 50 --fromToken <USDT> --toToken <TSLAB> --binanceChainId 56 --json` by hand, then `python skills/streettape.py verify <USDT> <TSLAB> 50 --taker 0x6a12...6CAb` from Termux on a phone, against the deployed app. `baw` 1.10.0, signed in (`wallet status` CONNECTED). Quote only, nothing signed.
+- What came back:
+  - `baw` (JSON): `{"fromCoinSymbol":"USDT","fromCoinAmount":"50","toCoinSymbol":"TSLAB","toCoinAmount":"0.140416698567950691","slippage":0.01}`. No route, no price impact.
+  - `/api/swap/order` (JSON, trimmed to the fields compared): `{"provider":"binance_web3","executionMode":"SWAP","uiOutAmount":0.1404166985679507,"routes":["LiquidMesh"],"priceImpactPct":0.000566223,"uiMinReceived":0.13901253158227117,"rate":0.0028083339713590137,"transactionFrom":"0x6a12...6CAb"}`. The full response also carried a built `transaction` (`to` 0xB444...DDA5, `value` 0x0, `gas` 0x6ddd0) and `sim.error: HTTP 404`.
+  - `verify`: `deltaBps` 0.0, verdict `SAME ORDER`. Out-amount 0.1404166985679507 TSLAB on both paths. Impact 0.000566223 as a fraction is about 5.7 bps (API side only).
+  - `/api/_devex`, first of each outcome (UTC, 02:12:53): `aggregator/quote` 200 ok (104 ms, taker set); `aggregator/swap` 200 ok (780 ms), `mode=SWAP`, vendor LiquidMesh; `tx/simulate` 404 (99 ms), body `{'message': 'No message available', 'status': 404, 'path': 'api/v1/dex/aggregator/tx/simulate', 'error': 'Not Found'}`. Same known simulate failure as 2026-09-29. No RFQ error: a taker was passed.
+  - Termux failures before the pass: see Findings, Agentic Wallet skill (keytar/libsecret build, `DNS_RESOLVE_FAILED`). Two `auth verify` calls returned `AUTH_REJECTED` (`QR code does not exist or expired`, code 10002004) before the third succeeded, 1 min 48 s after `signin` (03:06:53 to 03:08:41).
+  - `wallet balance` returned an empty list, so no signed fill was run.
+- What we changed because of it: added `streettape.py verify` (runs `baw` and the API on the same pair and size, prints both, `deltaBps` and a verdict, exit 1 unless `SAME ORDER`; quote only). `baw` failures now print to stderr instead of falling back silently. Amounts are sent to `baw` without scientific notation. `baw` has no route or impact fields, so those read `null` on its side. Not done: a signed `baw` swap.
