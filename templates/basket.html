@@ -33,11 +33,10 @@
     <div class="bk-r"><span>Tape</span><b>{{ '$%.2f'|format(l.tape) }}</b></div>
     <div class="bk-r"><span>Official</span><b>{{ '$%.2f'|format(l.official) if l.official is not none else '—' }}</b></div>
     {% if not cash_open %}<div class="bk-r"><span>Fair (cash shut)</span><b>{{ '$%.2f'|format(l.fair) if l.fair is not none else '—' }}</b></div>{% endif %}
-    <div class="bk-r"><span>Buy</span><b>${{ '%.2f'|format(l.amountUsd) }} USDT → {{ '≈ ' if l.provider == 'pancake' else '' }}{{ '%.6f'|format(l.outAmount) if l.outAmount is not none else '—' }} {{ l.symbol }}</b></div>
-    <div class="bk-r"><span>Route</span><b>{% if l.provider == 'pancake' %}PancakeSwap · estimate, no firm quote{% else %}{{ l.provider }}{% if l.executionMode %} · {{ l.executionMode }}{% endif %}{% endif %}</b></div>
+    <div class="bk-r"><span>Buy</span><b>${{ '%.2f'|format(l.amountUsd) }} USDT → {{ '%.6f'|format(l.outAmount) if l.outAmount is not none else '—' }} {{ l.symbol }}</b></div>
+    <div class="bk-r"><span>Route</span><b>{{ l.routeLabel or l.provider }}{% if l.executionMode %} · {{ l.executionMode }}{% endif %}{% if l.fallbackFrom %} ({{ l.fallbackFrom }} quote failed){% endif %}</b></div>
     <div class="bk-act">
       <a href="/t/{{ l.symbol }}#swap?pay=USDT&amp;amt={{ '%.2f'|format(l.amountUsd) }}">Review &amp; confirm</a>
-      {% if l.provider == 'pancake' and l.deepLink %}<a class="alt" href="{{ l.deepLink }}" target="_blank" rel="noopener noreferrer">PancakeSwap</a>{% endif %}
     </div>
     {% else %}
     <p class="bk-off">Unfilled: {{ l.reason }}. ${{ '%.2f'|format(b.legUsd) }} stays unallocated.</p>
