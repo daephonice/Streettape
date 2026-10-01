@@ -15,15 +15,11 @@
     {% if token and token.image %}<img class="tk-logo" id="tk-logo" src="{{ token.image }}" alt="">{% else %}<span class="tk-logo" id="tk-logo"></span>{% endif %}
     <div class="tk-id">
       <div class="tk-sym"><span id="tk-sym-text">{{ token.symbol if token else underlying }}</span><svg class="hm-verified" width="18" height="18"><use href="#i-verified"/></svg></div>
-      <button class="tk-mint" id="tk-mint" type="button" data-mint="{{ token.mint if token else '' }}" aria-label="Copy mint address">
-        <span id="tk-mint-text">{{ (token.mint[:4] ~ '...' ~ token.mint[-4:]) if token else '' }}</span>
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
-      </button>
     </div>
-    <button class="tk-share" id="tk-share" type="button" data-link="{{ ('https://pancakeswap.finance/swap?chain=bsc&outputCurrency=' ~ token.mint) if token else '' }}" aria-label="Share">
-      <svg class="tk-share-ic" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/></svg>
-      <span class="tk-share-done">Copied</span>
+    <button class="tk-share" id="tk-copy" type="button" data-mint="{{ token.mint if token else '' }}" data-symbol="{{ token.symbol if token else '' }}" aria-label="Copy contract address" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
     </button>
+    <div class="tk-copy-menu" id="tk-copy-menu" hidden></div>
   </div>
 </header>
 {% endblock %}
@@ -45,18 +41,11 @@
   </section>
   {% endif %}
 
-  <section class="tk-price-row">
-    <div>
-      <div class="tk-price" id="tk-price">—</div>
-      <div class="tk-chg" id="tk-chg" hidden><span id="tk-chg-abs"></span><span class="tk-pill" id="tk-chg-pct"></span></div>
-    </div>
-    <div class="tk-stats" id="tk-stats" hidden>
-      <div class="tk-stat"><span>Underlying mcap:</span><b id="tk-mc">—</b></div>
-      <div class="tk-stat"><span>Official mark:</span><b id="tk-mark">—</b></div>
-      <div class="tk-stat"><span>Prem (official):</span><b id="tk-prem">—</b></div>
-      <div class="tk-stat" id="tk-fair-row" hidden><span>Synthetic mark:</span><b id="tk-fair">—</b></div>
-      <div class="tk-stat" id="tk-prem-fair-row" hidden><span>Prem (synthetic):</span><b id="tk-prem-fair">—</b></div>
-    </div>
+  <section class="tk-stats" id="tk-stats">
+    <div class="tk-stat"><span>Official mark</span><b id="tk-mark">–</b></div>
+    <div class="tk-stat"><span>Prem (official)</span><b id="tk-prem">–</b></div>
+    <div class="tk-stat"><span>Synthetic mark</span><b id="tk-fair">–</b></div>
+    <div class="tk-stat"><span>Prem (synthetic)</span><b id="tk-prem-fair">–</b></div>
   </section>
 
   <section class="hm-card tk-arb" id="tk-arb" hidden>
@@ -87,30 +76,22 @@
     </div>
     <div class="tk-plot-wrap">
       <svg class="tk-plot" id="tk-plot" viewBox="0 0 360 230" preserveAspectRatio="none" aria-hidden="true"></svg>
-      <div class="tk-axis" id="tk-axis" hidden><span></span><span></span><span></span></div>
+      <div class="tk-axis" id="tk-axis" hidden></div>
+      <div class="tk-cursor" id="tk-cursor" hidden></div>
+      <div class="tk-tip" id="tk-tip" hidden></div>
       <p class="tk-nohist" id="tk-nohist" hidden>No price history yet</p>
     </div>
+    <div class="tk-xaxis" id="tk-xaxis" hidden><span></span><span></span><span></span></div>
   </section>
 
   <section class="tk-sec">
-    <div class="hm-card tk-pos" id="tk-pos" hidden>
+    <div class="hm-card tk-pos" id="tk-pos">
       <div class="tk-pos-head">
         <span class="tk-dot"></span>
-        <h2>Portfolio</h2>
-        <button class="tk-pos-share" type="button" aria-label="Share portfolio" aria-disabled="true" tabindex="-1">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4"/><path d="m15.4 6.5-6.8 4"/></svg>
-        </button>
+        <h2>Position</h2>
+        <span class="tk-pos-total" id="tk-pos-total">$0.00</span>
       </div>
-      <div class="tk-pos-body">
-        <div>
-          <div class="tk-pos-val" id="tk-pos-val">$0.00</div>
-          <div class="tk-pos-amt" id="tk-pos-amt"></div>
-        </div>
-        <div class="tk-pos-pnl" id="tk-pos-pnl">
-          <span id="tk-pos-delta"></span>
-          <small id="tk-pos-pct"></small>
-        </div>
-      </div>
+      <div class="tk-pos-list" id="tk-pos-list"></div>
     </div>
   </section>
 
@@ -124,17 +105,10 @@
       <span>Watch on Telegram</span>
     </a>
     {% endif %}
-    {% if token and token.url %}
-    <a class="tk-link" id="tk-url-link" href="{{ token.url }}" target="_blank" rel="noopener noreferrer">
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      <span>{{ token.url | replace('https://', '') | replace('http://', '') | trim('/') }}</span>
+    <a class="tk-link" id="tk-url-link" href="{{ ('https://pancakeswap.finance/swap?chain=bsc&outputCurrency=' ~ token.mint) if token else '#' }}" target="_blank" rel="noopener noreferrer"{% if not token %} hidden{% endif %}>
+      <img src="/static/img/pancake.svg" width="18" height="18" alt="">
+      <span>View on Pancake</span>
     </a>
-    {% elif not token %}
-    <a class="tk-link" id="tk-url-link" href="#" target="_blank" rel="noopener noreferrer" hidden>
-      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-      <span id="tk-url-text"></span>
-    </a>
-    {% endif %}
   </section>
 
   {% if not token %}
@@ -148,12 +122,9 @@
   <p class="tk-legal">Economic exposure only. Not shares, not for US persons, not advice. Swaps sign in your wallet. StreetTape does not custody funds.</p>
 </div>
 
-<div class="tk-bar only-buy" id="tk-bar">
+<div class="tk-bar" id="tk-bar">
   <div class="hm-col tk-bar-inner">
-    <button class="tk-act tk-act-send" id="tk-send" type="button" hidden>
-      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>Send
-    </button>
-    <button class="tk-act tk-act-sell" id="tk-sell" type="button" hidden>
+    <button class="tk-act tk-act-sell" id="tk-sell" type="button">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>Sell
     </button>
     <button class="tk-act tk-act-buy" id="tk-buy" type="button">
