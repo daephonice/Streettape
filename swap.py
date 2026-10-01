@@ -1,4 +1,4 @@
-"""Binance Web3 Trading API: quote + build swap (SWAP or RFQ) on BSC. Falls back to PancakeSwap deep link."""
+"""Binance Web3 Trading API: quote + build swap (SWAP or RFQ) on BSC. Fallbacks that return a signable tx: PancakeSwap, then OpenOcean. No route = no route (no links)."""
 from __future__ import annotations
 
 import time
@@ -25,7 +25,12 @@ BASE_URL = "https://web3.binance.com/build"
 CHAIN_ID = "56"  # BSC
 SLIPPAGE_PCT = "1"  # 1%
 
-PANCAKE = "https://pancakeswap.finance/swap"
+PANCAKE_API = "https://swap.pancakeswap.com"
+PANCAKE_API_KEY = os.getenv("PANCAKE_API_KEY", "")
+PANCAKE_NATIVE = "0x0000000000000000000000000000000000000000"
+OPENOCEAN_API = "https://open-api.openocean.finance/v3/bsc"
+OPENOCEAN_GAS_GWEI = "1"
+QUOTE_ONLY_ACCOUNT = "0x000000000000000000000000000000000000dEaD"  # price-only fallbacks, never signed
 
 
 UNSUPPORTED_MSG = "Swaps between this token and real-world assets aren't supported yet. Try using a different token."
@@ -48,12 +53,6 @@ def unsupported_pair(input_addr: str, output_addr: str) -> str | None:
     return None
 
 
-def pancake_link(input_addr: str, output_addr: str) -> str:
-    inn = "BNB" if (input_addr or "").lower() in (rwa.NATIVE.lower(), rwa.WBNB.lower()) else input_addr
-    out = "BNB" if (output_addr or "").lower() in (rwa.NATIVE.lower(), rwa.WBNB.lower()) else output_addr
-    return f"{PANCAKE}?chain=bsc&inputCurrency={inn}&outputCurrency={out}"
-
-
 def _price_of_mint(mint: str):
     mint_l = (mint or "").lower()
     data = prices.get_prices() or {}
@@ -66,29 +65,6 @@ def _price_of_mint(mint: str):
         px = (data.get("prices") or {}).get("BNB")
         return px["price"] if px else None
     return None
-
-
-def _fallback_quote(input_mint: str, output_mint: str, ui_amount: float, reason: str = "unspecified") -> dict:
-    devlog.log_call(what="quote fallback -> pancake", url=f"{BASE_URL}/api/v1/dex/aggregator/quote", status="n/a", ms=0,
-                    expected="Binance quote route", actual=f"fell back: {reason}")
-    in_px = _price_of_mint(input_mint)
-    out_px = _price_of_mint(output_mint)
-    out_ui = (ui_amount * in_px / out_px) if in_px and out_px and ui_amount > 0 else None
-    return {
-        "transaction": None,
-        "deepLink": pancake_link(input_mint, output_mint),
-        "uiOutAmount": out_ui,
-        "uiMinReceived": out_ui * 0.99 if out_ui else None,
-        "rate": (out_ui / ui_amount) if out_ui and ui_amount else None,
-        "priceImpactPct": None,
-        "gasless": False,
-        "routes": ["PancakeSwap"],
-        "transferFeeBps": 0,
-        "provider": "pancake",
-        "executionMode": "SWAP",
-        "sim": None,
-        "fallbackReason": reason,
-    }
 
 
 def _timestamp() -> str:
@@ -146,20 +122,16 @@ def _from_units(raw: str, decimals: int) -> float:
     return int(raw) / (10 ** decimals)
 
 
-async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None = None) -> dict:
-    blocked = unsupported_pair(input_mint, output_mint)
-    if blocked:
-        return {"unsupported": True, "error": blocked, "transaction": None, "deepLink": None,
-                "uiOutAmount": None, "uiMinReceived": None, "rate": None, "priceImpactPct": None,
-                "provider": None, "routes": [], "sim": None}
+async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None = None) -> dict:
+    """Raises on any failure; quote() decides the fallback."""
     if not API_KEY or not SECRET_KEY or ui_amount <= 0:
-        return _fallback_quote(input_mint, output_mint, ui_amount, "keys unset or amount<=0")
+        raise RuntimeError("keys unset or amount<=0")
 
     # Aggregator wants native BNB as the placeholder 0xEeee... address (already rwa.NATIVE).
     from_addr = input_mint
     to_addr = output_mint
 
-    try:
+    if True:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=15.0) as client:
             # Need decimals to convert ui_amount -> smallest unit. Ask a cheap quote with amount=1
             # unit first is wasteful; instead fetch decimals via the quote response itself using a
@@ -176,7 +148,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
             }
             routes = await _request(client, "GET", "/api/v1/dex/aggregator/quote", params=quote_params)
             if not routes:
-                return _fallback_quote(input_mint, output_mint, ui_amount, "quote returned no routes")
+                raise RuntimeError("quote returned no routes")
             best = next((r for r in routes if r.get("isBest")), routes[0])
             from_dec = int(best["fromToken"]["decimal"])
             if from_dec != 18:
@@ -184,7 +156,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 quote_params["amount"] = probe_amount
                 routes = await _request(client, "GET", "/api/v1/dex/aggregator/quote", params=quote_params)
                 if not routes:
-                    return _fallback_quote(input_mint, output_mint, ui_amount, "re-quote returned no routes")
+                    raise RuntimeError("re-quote returned no routes")
                 best = next((r for r in routes if r.get("isBest")), routes[0])
 
             to_dec = int(best["toToken"]["decimal"])
@@ -196,7 +168,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 # No connected wallet yet — price-only, can't build a tx without a sender.
                 return {
                     "transaction": None,
-                    "deepLink": pancake_link(input_mint, output_mint),
+                    "fees": _fees(best),
                     "uiOutAmount": out_ui,
                     "uiMinReceived": out_ui * 0.99 if out_ui else None,
                     "rate": (out_ui / ui_amount) if out_ui and ui_amount else None,
@@ -237,7 +209,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 "transferFeeBps": 0,
                 "provider": "binance_web3",
                 "executionMode": exec_mode,
-                "deepLink": pancake_link(input_mint, output_mint),
+                "fees": _fees(router_result),
             }
             devlog.log_call(
                 what=f"quote mode={exec_mode} {input_mint[:8]}->{output_mint[:8]}",
@@ -274,11 +246,181 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 result["transaction"] = built_tx
                 result["uiMinReceived"] = _from_units(tx.get("minReceiveAmount"), to_dec) if tx.get("minReceiveAmount") else None
                 result["sim"] = await simulate_transaction(built_tx, taker)
+                gp = built_tx.get("gasPrice"); g = built_tx.get("gas")
+                if gp and g and result["fees"]["gasBnb"] is None:
+                    result["fees"]["gasBnb"] = int(gp, 16) * int(g, 16) / 1e18
 
             return result
-    except Exception as e:
-        log.warning("binance web3 quote failed, falling back to pancake", exc_info=True)
-        return _fallback_quote(input_mint, output_mint, ui_amount, f"{type(e).__name__}: {str(e)[:300]}")
+
+
+def _num(v):
+    try:
+        return float(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _fees(d: dict | None) -> dict:
+    """Best-effort fee fields from a Binance route object. None when the API did not send them."""
+    d = d or {}
+    gas = _num(d.get("estimateGasFee"))
+    return {"gasBnb": (gas / 1e18) if gas and gas > 1e6 else gas, "tradeFeeUsd": _num(d.get("tradeFee"))}
+
+
+def _find(d, keys, depth=0):
+    if depth > 4 or not isinstance(d, (dict, list)):
+        return None
+    if isinstance(d, list):
+        for x in d:
+            r = _find(x, keys, depth + 1)
+            if r is not None:
+                return r
+        return None
+    for k in keys:
+        if d.get(k) not in (None, ""):
+            return d[k]
+    for v in d.values():
+        r = _find(v, keys, depth + 1)
+        if r is not None:
+            return r
+    return None
+
+
+def _int(v) -> int:
+    s = str(v or "0")
+    return int(s, 16) if s.startswith("0x") else int(float(s))
+
+
+def _tx(taker: str, to: str, data: str, value, gas=None) -> dict:
+    tx = {"from": taker, "to": to, "data": data, "value": hex(_int(value))}
+    if gas:
+        tx["gas"] = hex(_int(gas))
+    return tx
+
+
+def _shaped(provider: str, label: str, out_ui: float, ui_amount: float, min_ui, impact, tx, taker, gas_bnb) -> dict:
+    return {
+        "transaction": tx if taker else None,
+        "uiOutAmount": out_ui,
+        "uiMinReceived": min_ui,
+        "rate": (out_ui / ui_amount) if out_ui and ui_amount else None,
+        "priceImpactPct": impact,
+        "gasless": False,
+        "routes": [label],
+        "transferFeeBps": 0,
+        "provider": provider,
+        "executionMode": "SWAP",
+        "needsWallet": not taker,
+        "fees": {"gasBnb": gas_bnb, "tradeFeeUsd": None},
+        "sim": None,
+    }
+
+
+async def _get_json(client: httpx.AsyncClient, what: str, method: str, url: str, **kw) -> dict:
+    with devlog.timed() as t:
+        resp = await client.request(method, url, **kw)
+    try:
+        data = resp.json()
+    except Exception:
+        devlog.log_call(what=what, url=str(resp.url), status=resp.status_code, ms=t.ms,
+                        expected="JSON body", actual="non-JSON response", body=resp.text)
+        raise RuntimeError(f"non-JSON response ({resp.status_code}): {resp.text[:120]}")
+    ok = resp.status_code < 400
+    devlog.log_call(what=what, url=str(resp.url), status=resp.status_code, ms=t.ms,
+                    expected="200 with signable calldata", actual="ok" if ok else str(data)[:160],
+                    body=None if ok else str(data))
+    if not ok:
+        raise RuntimeError(f"HTTP {resp.status_code}: {str(data)[:160]}")
+    return data
+
+
+async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None, dec_in: int = 18) -> dict:
+    """PancakeSwap swap API. Only `best.agg` (pool route) is usable; `pcsx` is a permit order and is skipped."""
+    pn = lambda a: PANCAKE_NATIVE if a.lower() == rwa.NATIVE.lower() else a
+    acct = taker or QUOTE_ONLY_ACCOUNT
+    headers = {"x-api-key": PANCAKE_API_KEY} if PANCAKE_API_KEY else {}
+    async with httpx.AsyncClient(timeout=15.0, headers=headers) as client:
+        q = await _get_json(client, "Pancake GET /v1/quote", "GET", f"{PANCAKE_API}/v1/quote", params={
+            "chainId": CHAIN_ID, "tokenIn": pn(input_mint), "tokenOut": pn(output_mint),
+            "amount": _to_units(ui_amount, dec_in), "recipient": acct, "slippageTolerance": SLIPPAGE_PCT,
+        })
+        best = q.get("best") if isinstance(q, dict) else None
+        if not isinstance(best, dict) or not best.get("agg"):
+            raise RuntimeError("pancake: no agg route (pcsx-only or empty)")
+        out_raw = _find(best, ("amountOut", "outputAmount", "outAmount", "toAmount", "amountOutRaw"))
+        dec_out = int(_find(best, ("decimals",)) or 18)
+        out_ui = _from_units(str(_int(out_raw)), dec_out) if out_raw is not None else None
+        if not out_ui:
+            raise RuntimeError("pancake: quote had no out amount")
+        tx = None
+        if taker:
+            cd = await _get_json(client, "Pancake POST /v1/calldata", "POST", f"{PANCAKE_API}/v1/calldata", json=best)
+            cd = cd.get("data", cd) if isinstance(cd, dict) else {}
+            if not (cd.get("to") and cd.get("calldata")):
+                raise RuntimeError("pancake: calldata response missing to/calldata")
+            tx = _tx(taker, cd["to"], cd["calldata"], cd.get("value"))
+        return _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
+
+
+async def _openocean_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None) -> dict:
+    acct = taker or QUOTE_ONLY_ACCOUNT
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        r = await _get_json(client, "OpenOcean GET /v3/bsc/swap", "GET", f"{OPENOCEAN_API}/swap", params={
+            "inTokenAddress": input_mint, "outTokenAddress": output_mint, "amount": f"{ui_amount:.18f}".rstrip("0").rstrip("."),
+            "gasPrice": OPENOCEAN_GAS_GWEI, "slippage": SLIPPAGE_PCT, "account": acct,
+        })
+    d = r.get("data") if isinstance(r, dict) else None
+    if r.get("code") not in (200, None) or not isinstance(d, dict) or not d.get("to") or not d.get("data"):
+        raise RuntimeError(f"openocean: code={r.get('code')} {str(r.get('message') or r.get('error') or 'no route')[:100]}")
+    dec_out = int((d.get("outToken") or {}).get("decimals") or 18)
+    out_ui = _from_units(str(_int(d.get("outAmount"))), dec_out)
+    min_raw = d.get("minOutAmount")
+    min_ui = _from_units(str(_int(min_raw)), dec_out) if min_raw else None
+    imp = _num(str(d.get("price_impact") or "").replace("%", ""))
+    gas = _num(d.get("estimatedGas"))
+    gas_bnb = gas * float(OPENOCEAN_GAS_GWEI) * 1e-9 if gas else None
+    tx = _tx(taker, d["to"], d["data"], d.get("value"), d.get("estimatedGas")) if taker else None
+    return _shaped("openocean", "OpenOcean", out_ui, ui_amount, min_ui, abs(imp) / 100 if imp is not None else None, tx, taker, gas_bnb)
+
+
+def _no_route(reason: str, attempts: list) -> dict:
+    return {"transaction": None, "uiOutAmount": None, "uiMinReceived": None, "rate": None, "priceImpactPct": None,
+            "gasless": False, "routes": [], "transferFeeBps": 0, "provider": None, "executionMode": None,
+            "noRoute": True, "fallbackReason": reason, "attempts": attempts, "fees": None, "sim": None}
+
+
+ROUTE_LABELS = {"binance_web3": "Binance Web3", "pancake": "PancakeSwap", "openocean": "OpenOcean"}
+
+
+async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None = None) -> dict:
+    blocked = unsupported_pair(input_mint, output_mint)
+    if blocked:
+        return {"unsupported": True, "error": blocked, "transaction": None,
+                "uiOutAmount": None, "uiMinReceived": None, "rate": None, "priceImpactPct": None,
+                "provider": None, "routes": [], "sim": None}
+    if ui_amount <= 0:
+        return _no_route("amount<=0", [])
+    ondo = _is_ondo(input_mint) or _is_ondo(output_mint)
+    steps = [("binance_web3", lambda: _binance_quote(input_mint, output_mint, ui_amount, taker)),
+             ("pancake", lambda: _pancake_quote(input_mint, output_mint, ui_amount, taker))]
+    if not ondo:
+        steps.append(("openocean", lambda: _openocean_quote(input_mint, output_mint, ui_amount, taker)))
+    attempts: list = []
+    for name, fn in steps:
+        try:
+            res = await fn()
+            if not res.get("uiOutAmount"):
+                raise RuntimeError("empty quote")
+            res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if name == "binance_web3" and res.get("routes") else "")
+            res["attempts"] = attempts
+            if attempts:
+                res["fallbackReason"] = attempts[0]["error"]
+                res["fallbackFrom"] = ROUTE_LABELS[attempts[0]["provider"]]
+            return res
+        except Exception as e:
+            log.warning("%s quote failed", name, exc_info=True)
+            attempts.append({"provider": name, "error": f"{type(e).__name__}: {str(e)[:200]}"})
+    return _no_route("; ".join(f"{a['provider']}: {a['error']}" for a in attempts), attempts)
 
 
 _sim_parked_until = 0.0

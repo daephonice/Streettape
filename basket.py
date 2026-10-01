@@ -83,7 +83,8 @@ async def build(usd: float = DEFAULT_USD) -> dict:
             "provider": q.get("provider"),
             "executionMode": q.get("executionMode"),
             "priceImpactPct": q.get("priceImpactPct"),
-            "deepLink": q.get("deepLink"),
+            "routeLabel": q.get("routeLabel"),
+            "fallbackFrom": q.get("fallbackFrom"),
             "fallbackReason": q.get("fallbackReason"),
         })
         legs.append(leg)

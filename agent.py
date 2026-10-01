@@ -309,9 +309,9 @@ def best_arb(arbs: list[dict]) -> dict | None:
 
 
 def _arb_line(label: str, symbol: str, leg: dict, size_usd: float) -> str:
-    if leg.get("provider") == "binance_web3" and leg.get("uiOutAmount") is not None:
-        return f"{label} {symbol} · ${size_usd:.0f} · Trading API quote ~{leg['uiOutAmount']:.4f} out"
-    return f"{label} {symbol} · ${size_usd:.0f} · PancakeSwap: {leg.get('deepLink') or 'n/a'}"
+    if leg.get("uiOutAmount") is not None:
+        return f"{label} {symbol} · ${size_usd:.0f} · {leg.get('routeLabel') or leg.get('provider')} quote ~{leg['uiOutAmount']:.4f} out"
+    return f"{label} {symbol} · ${size_usd:.0f} · no route"
 
 
 def official_vs_fair_line(underlying: str) -> str:
@@ -397,10 +397,10 @@ async def _flatten_line(t: dict) -> str:
     if px <= 0:
         return f"SELL {t['symbol']} · {rwa.format_premium(t['premium'])} rich · price unavailable"
     leg = await swap.quote(t["mint"], rwa.USDT, 50.0 / px)
-    if leg.get("provider") == "binance_web3" and leg.get("uiOutAmount") is not None:
-        detail = f"Trading API quote ~{leg['uiOutAmount']:.4f} USDT out"
+    if leg.get("uiOutAmount") is not None:
+        detail = f"{leg.get('routeLabel') or leg.get('provider')} quote ~{leg['uiOutAmount']:.4f} USDT out"
     else:
-        detail = f"PancakeSwap: {leg.get('deepLink') or 'n/a'}"
+        detail = "no route"
     return f"SELL {t['symbol']} · {rwa.format_premium(t['premium'])} rich · ${50:.0f} · {detail}"
 
 
