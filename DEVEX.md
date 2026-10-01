@@ -75,7 +75,7 @@ Queried NVDAB (`0x02fca66c1d1afb4e2a7884261eb00f63598a7436`):
 ### Quotes: AMM works without a wallet. RFQ does not.
 
 - AMM / LiquidMesh, no `userWalletAddress`: price, `priceImpactPct`, `needsWallet: true`, `transaction: null`. Fine for a public board.
-- Ondo or xStocks, no wallet: `code=40001 userWalletAddress is required for RFQ (Ondo)` / `(xStock)`. HTTP 200. Fallback is a PancakeSwap link and a 5 bps cost floor. That floor is a guess, not a fill.
+- Ondo or xStocks, no wallet: `code=40001 userWalletAddress is required for RFQ (Ondo)` / `(xStock)`. HTTP 200. A 5 bps cost floor is used when impact is missing. That floor is a guess, not a fill. BNB against an xStock (`code=40370`) now falls through to Pancake `GET /v1/quote` plus `POST /v1/calldata`, signed on the site. No Pancake link.
 - Same pair with a taker builds a real tx (`from`, `to`, `data`, `value`, `gas`, `gasPrice`). Swap-build ~98 ms.
 
 After-hours `/api/agent/studio/tick` at $50 notionals: cross-wrapper gaps SPCX 3.5%, TSLA 3.1%, META 1.8%, NVDA 1.1%. Wrappers of the same name stop tracking each other off hours. That is the desk.
@@ -180,7 +180,7 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - Session: PRE-MARKET (chip; 09:26 ET / 14:26 WAT). Wallet pass ran again at CASH OPEN (~09:39 ET).
 - What we hit: `GET /api/agent/scan`; `GET /api/agent/arb/NVDA?size_usd=50`; `/t/TSLA#rotate` in a wallet dApp browser (Sell TSLAon, Buy TSLAB, Rotate $50, Flatten $10).
 - What came back (log, first of each): good quote, LiquidMesh, ~100 ms (NVDAB/TSLAB legs). RFQ without wallet, HTTP 200 `code=40001 userWalletAddress is required for RFQ (Ondo) quote` at 13:23:13 UTC, then fallback to Pancake link. 429 `code=42900 Rate limit exceeded` on NVDAon and SPCX legs in the same scan. `rwa/price` with `tokenAddress`, `tokenContractAddress` and `binanceChainId=56` still returned 200 + `code=40001 Parameter tokenContractAddresses is required` (plural) on all 3 calls, so the price-confirmation item stays open. No 404s. Scan best: TSLAon rich vs TSLAB, gross 1881 bps, net 1876 bps; page showed +1933 bps a minute later.
-- What we changed because of it: Sell TSLAon and Flatten did nothing. Server keys prices/assets by uppercase symbol (`TSLAON`); the page looked up `TSLAon`, missed, and the swap sheet returned silently. TSLAB is already uppercase, so Buy worked. Page now resolves the uppercase key, opens a Pancake link if the sheet can't open, and Rotate opens Sell first, Buy on close. Next: send `tokenContractAddresses` to `rwa/price`.
+- What we changed because of it: Sell TSLAon and Flatten did nothing. Server keys prices/assets by uppercase symbol (`TSLAON`); the page looked up `TSLAon`, missed, and the swap sheet returned silently. TSLAB is already uppercase, so Buy worked. Page now resolves the uppercase key, and Rotate opens Sell first, Buy on close. The Pancake link opened when the sheet could not. That link was removed later: a miss now returns a Pancake transaction or no route. Next: send `tokenContractAddresses` to `rwa/price`.
 
 ### 2026-09-30 — Fair (synthetic mark)
 
@@ -640,9 +640,8 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 
 - Session: PRE-MARKET (00:46 ET / 05:46 WAT / 04:46 UTC). Cash shut.
 - What we hit: the swap sheet in a wallet dApp browser, BNB to TSLAx (buy) then TSLAx to BNB (sell), taker set. Quote only.
-- What came back (log, first call): `GET /api/v1/dex/aggregator/quote`, HTTP 200, 776 ms, `code=40370 msg=xStock token only supports trading with: USDT, USDC.` at 04:46:08 UTC. The sell leg returned the same code, 95 ms, at 04:46:43 UTC. Both fell back to a Pancake link. This is a third error code on the same endpoint (Ondo is `40368`), and the HTTP status is 200 again.
-- Fallback checked by hand (06:05 WAT, PRE-MARKET, wallet dApp browser): the Pancake link for BNB to TSLAx did quote. 0.004363 BNB (~$3.36) showed 0.008619 TSLAx (~$3.08), about 8% lost, with Pancake's own "Price impact too high" warning and a note that TSLAB gave 91.58% better output. The implied TSLAx price was about $390 against a Yahoo print of $354.81. One quote, one token, PRE-MARKET only. Nothing was confirmed.
-- What we changed because of it: nothing. The swap sheet still offers BNB against xStocks and the quote falls back to Pancake. The MetaMask eligibility list we followed says BNB is swappable for xStocks, so the Binance aggregator and MetaMask disagree on this pair. A different handling of this pair is planned later.
+- What came back (log, first call): `GET /api/v1/dex/aggregator/quote`, HTTP 200, 776 ms, `code=40370 msg=xStock token only supports trading with: USDT, USDC.` at 04:46:08 UTC. The sell leg returned the same code, 95 ms, at 04:46:43 UTC. This is a third error code on the same endpoint (Ondo is `40368`), and the HTTP status is 200 again. At 04:46 the miss still fell through to a Pancake link. That link is gone.
+- What we changed because of it: Binance `40370` now falls through to Pancake `GET /v1/quote` plus `POST /v1/calldata`. The order is signed on the site. See the 07:07 UTC block below for the signable BNB to TSLAx transaction. Nothing signed or sent. The MetaMask eligibility list we followed says BNB is swappable for xStocks, so the Binance aggregator and MetaMask disagree on this pair.
 
 ### 2026-10-01 — Ondo pairs only with allowed stablecoins (`code=40368`)
 
