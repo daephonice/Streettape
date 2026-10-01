@@ -293,29 +293,29 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                     result["needsApproval"] = True
                 elif sim == "revert":
                     rfq_route = next((r for r in routes if r.get("executionMode") == "RFQ" and r.get("quoteId")), None)
-                    if not rfq_route:
-                        raise RuntimeError("SWAP eth_call reverted and no RFQ sibling")
-                    devlog.log_call(what="drop LiquidMesh", url=f"{BASE_URL}/api/v1/dex/aggregator/swap", status="revert", ms=0,
-                                    expected="signable SWAP", actual=f"eth_call reverted, using RFQ {rfq_route.get('quoteId')}")
-                    quote_id = rfq_route["quoteId"]
-                    swap_params["quoteId"] = quote_id
-                    swap_data = await _request(client, "GET", "/api/v1/dex/aggregator/swap", params=swap_params)
-                    router_result = (swap_data or {}).get("routerResult") or {}
-                    exec_mode = swap_data.get("executionMode", "RFQ")
-                    result["executionMode"] = exec_mode
-                    result["routes"] = [router_result.get("vendorName") or rfq_route.get("vendorName") or "PcsXRfq"]
-                    rfq = swap_data.get("rfq") or {}
-                    result["transaction"] = None
-                    result["typedDataToSign"] = rfq.get("typedDataToSign")
-                    result["rfqVendor"] = rfq.get("vendor")
-                    result["signingScheme"] = rfq.get("signingScheme", "EIP712")
-                    result["requestId"] = str(uuid.uuid4())
-                    result["quoteId"] = rfq.get("orderId") or quote_id
-                    result["uiMinReceived"] = out_ui
-                    result["sim"] = {"ok": None, "gas": None, "error": None, "note": "SWAP reverted; RFQ sibling"}
-                    if not result["typedDataToSign"]:
-                        raise RuntimeError("RFQ sibling had no typedDataToSign")
-                    return result
+                    if rfq_route:
+                        devlog.log_call(what="drop LiquidMesh", url=f"{BASE_URL}/api/v1/dex/aggregator/swap", status="revert", ms=0,
+                                        expected="signable SWAP", actual=f"eth_call reverted, using RFQ {rfq_route.get('quoteId')}")
+                        quote_id = rfq_route["quoteId"]
+                        swap_params["quoteId"] = quote_id
+                        swap_data = await _request(client, "GET", "/api/v1/dex/aggregator/swap", params=swap_params)
+                        router_result = (swap_data or {}).get("routerResult") or {}
+                        exec_mode = swap_data.get("executionMode", "RFQ")
+                        result["executionMode"] = exec_mode
+                        result["routes"] = [router_result.get("vendorName") or rfq_route.get("vendorName") or "PcsXRfq"]
+                        rfq = swap_data.get("rfq") or {}
+                        result["transaction"] = None
+                        result["typedDataToSign"] = rfq.get("typedDataToSign")
+                        result["rfqVendor"] = rfq.get("vendor")
+                        result["signingScheme"] = rfq.get("signingScheme", "EIP712")
+                        result["requestId"] = str(uuid.uuid4())
+                        result["quoteId"] = rfq.get("orderId") or quote_id
+                        result["uiMinReceived"] = out_ui
+                        result["sim"] = {"ok": None, "gas": None, "error": None, "note": "SWAP reverted; RFQ sibling"}
+                        if result.get("typedDataToSign"):
+                            return result
+                    result["sim"] = {"ok": False, "gas": None, "error": "Simulation reverted. You can still confirm or cancel in the wallet."}
+                    result["needsApproval"] = True
                 if tx.get("gas"):
                     built_tx["gas"] = hex(int(tx["gas"]))
                 if tx.get("gasPrice"):
@@ -460,11 +460,10 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                 raise RuntimeError("pancake: calldata response missing to/calldata")
             tx = _tx(taker, cd["to"], cd["calldata"], cd.get("value"))
             sim = await _eth_ok(tx, taker)
-            if sim == "revert":
-                raise RuntimeError("pancake calldata eth_call reverted")
         shaped = _shaped("pancake", "PancakeSwap", out_ui, ui_amount, out_ui * (1 - float(SLIPPAGE_PCT) / 100), None, tx, taker, None)
-        if taker and sim == "allowance":
+        if taker and sim in ("allowance", "revert"):
             shaped["needsApproval"] = True
+            shaped["sim"] = {"ok": False, "gas": None, "error": "Simulation reverted. You can still confirm or cancel in the wallet."}
         return shaped
 
 
