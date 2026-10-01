@@ -123,7 +123,7 @@
 
   function badgeEl() {
     const badge = h('span', 'hm-badge');
-    badge.innerHTML = '<img src="/static/img/bnb.svg" alt="" width="18" height="18">';
+    badge.innerHTML = '<img src="/static/img/logos/bnb.png" alt="" width="18" height="18">';
     return badge;
   }
 
@@ -264,7 +264,7 @@
     const wrap = h('span', 'hm-logo-wrap');
     wrap.style.width = wrap.style.height = size + 'px';
     const empty = () => h('span', 'hm-logo hm-logo-empty');
-    const src = g.wrappers.map((w) => w.image).find(Boolean);
+    const src = g.logo || g.wrappers.map((w) => w.image).find(Boolean);
     if (src) {
       const img = h('img', 'hm-logo');
       img.alt = '';

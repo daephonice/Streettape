@@ -21,7 +21,7 @@
   const ANIM_MS = 260;
   const DEBOUNCE_MS = 450;
   const PAY = ['BNB', 'USDC', 'USDT'];
-  const LOGO = { BNB: '/static/img/bnb.svg', USDC: '/static/img/usdc.svg', USDT: '/static/img/usdt.svg' };
+  const LOGO = { BNB: '/static/img/logos/bnb.png', USDC: '/static/img/logos/usdc.png', USDT: '/static/img/usdt.svg' };
   const DEC = { BNB: 18, USDC: 18, USDT: 18 };
   const QUICK = { BNB: [0.01, 0.05, 0.1], USDC: [10, 50, 100], USDT: [10, 50, 100] };
   const BNB_RESERVE = 0.0002;      // kept back for network fees / new token account

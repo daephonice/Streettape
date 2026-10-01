@@ -556,8 +556,15 @@
       els.aboutText.textContent = `${g.name} is a BNB Chain tokenized equity. Economic exposure only — no ownership, voting or other legal rights.`;
     }
     if (els.logo) {
-      const src = g.wrappers.map((w) => w.image).find(Boolean);
-      if (src && els.logo.tagName === 'IMG') els.logo.src = src;
+      const src = g.logo || g.wrappers.map((w) => w.image).find(Boolean);
+      if (src) {
+        if (els.logo.tagName === 'IMG') els.logo.src = src;
+        else {
+          const img = document.createElement('img');
+          img.className = els.logo.className; img.id = els.logo.id; img.alt = ''; img.src = src;
+          els.logo.replaceWith(img); els.logo = img;
+        }
+      }
     }
     const tmint = tradeW.mint || tradeW.address || '';
     if (els.urlLink && tmint) {
