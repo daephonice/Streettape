@@ -364,15 +364,17 @@ async def _pancake_quote(input_mint: str, output_mint: str, ui_amount: float, ta
 
 
 async def _openocean_quote(input_mint: str, output_mint: str, ui_amount: float, taker: str | None) -> dict:
-    acct = taker or QUOTE_ONLY_ACCOUNT
+    """/swap_quote builds the tx (needs the real taker); /quote is price-only. Plain /swap returned NETWORK_ERROR live."""
+    path = "swap_quote" if taker else "quote"
+    params = {"inTokenAddress": input_mint, "outTokenAddress": output_mint,
+              "amount": f"{ui_amount:.18f}".rstrip("0").rstrip("."), "gasPrice": OPENOCEAN_GAS_GWEI}
+    if taker:
+        params.update({"slippage": SLIPPAGE_PCT, "account": taker})
     async with httpx.AsyncClient(timeout=15.0, headers={"User-Agent": "Mozilla/5.0 (compatible; StreetTape/1.0)", "Accept": "application/json"}) as client:
-        r = await _get_json(client, "OpenOcean GET /v3/bsc/swap", "GET", f"{OPENOCEAN_API}/swap", params={
-            "inTokenAddress": input_mint, "outTokenAddress": output_mint, "amount": f"{ui_amount:.18f}".rstrip("0").rstrip("."),
-            "gasPrice": OPENOCEAN_GAS_GWEI, "slippage": SLIPPAGE_PCT, "account": acct,
-        })
+        r = await _get_json(client, f"OpenOcean GET /v3/bsc/{path}", "GET", f"{OPENOCEAN_API}/{path}", params=params)
     d = r.get("data") if isinstance(r, dict) else None
-    if r.get("code") not in (200, None) or not isinstance(d, dict) or not d.get("to") or not d.get("data"):
-        raise RuntimeError(f"openocean: code={r.get('code')} {str(r.get('message') or r.get('error') or 'no route')[:100]}")
+    if r.get("code") not in (200, None) or not isinstance(d, dict) or not d.get("outAmount") or (taker and not (d.get("to") and d.get("data"))):
+        raise RuntimeError(f"openocean: code={r.get('code')} {str(r.get('message') or r.get('error') or r.get('reason') or 'no route')[:100]}")
     dec_out = int((d.get("outToken") or {}).get("decimals") or 18)
     out_ui = _from_units(str(_int(d.get("outAmount"))), dec_out)
     min_raw = d.get("minOutAmount")

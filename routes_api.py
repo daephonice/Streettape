@@ -36,7 +36,14 @@ async def api_devcheck():
 
 @router.get("/_swapcheck")
 async def api_swapcheck(input: str = rwa.NATIVE, output: str = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
-                        amount: float = 0.005, taker: str | None = None):
+                        amount: float = 0.005, taker: str | None = None, only: str | None = None):
+    """`only=pancake|openocean` calls that adapter alone (diagnostics, skips Binance)."""
+    if only in ("pancake", "openocean"):
+        fn = swap_mod._pancake_quote if only == "pancake" else swap_mod._openocean_quote
+        try:
+            return await fn(input, output, amount, taker)
+        except Exception as e:
+            return {"provider": only, "error": f"{type(e).__name__}: {str(e)[:400]}"}
     return await swap_mod.quote(input, output, amount, taker)
 
 
