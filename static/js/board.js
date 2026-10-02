@@ -235,6 +235,19 @@
     }
   }
 
+  async function refreshDefensive() {
+    if (document.hidden) return;
+    const a = $('bd-def-link');
+    if (!a) return;
+    try {
+      const resp = await fetch('/api/agent/defensive?usd=50', { cache: 'no-store' });
+      if (!resp.ok) return;
+      a.hidden = !(await resp.json()).triggered;
+    } catch (err) {
+      console.warn('defensive refresh failed', err);
+    }
+  }
+
   // ---- Search --------------------------------------------------------------
   function applySearch(raw) {
     const q = (raw || '').trim().toLowerCase();
@@ -299,6 +312,8 @@
   refreshSession();
   refreshBoard();
   refreshDesk();
+  refreshDefensive();
+  setInterval(refreshDefensive, REFRESH_MS);
   setInterval(refreshBoard, REFRESH_MS);
   setInterval(refreshDesk, REFRESH_MS);
   setInterval(refreshSession, SESS_MS);
