@@ -741,3 +741,15 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Semis: HTTP 200. NVDAB (ratio 1.000778) and AMDB (ratio 1.0) filled with LiquidMesh USDT quotes. AVGO unfilled, reason `not in snapshot yet`. $33.33 filled, $16.67 unallocated.
   - Defensive: HTTP 200. KO, PG and JNJ all unfilled, `not in snapshot yet`. $0.00 filled, $50.00 unallocated.
 - What we changed because of it: nothing in the data path. A name that is not in the snapshot stays an unfilled leg and its weight is never given to the others. Not verified: whether these tickers are listed on another chain or under another platform; a filled AVGO, KO, PG or JNJ leg.
+
+### 2026-10-02 — Liquid universe, `rwa/tokens` listing read in full (`/api/_boardcheck`)
+
+- Session: CASH OPEN (10:45 ET / 14:45 UTC / 15:45 WAT).
+- What we hit: `GET /api/v1/dex/market/rwa/tokens`, parsed for the first time, then one Gecko `tokens/multi` probe over every addressed wrapper to pick the board.
+- What came back (first call):
+  - `rwa/tokens`: 488 rows, all `binanceChainId` "56", 448 underlyings. Row keys: `tokenContractAddress`, `underlyingTicker`, `platformId`, `tokenSymbol`, `tokenToShareRatio` (a string), `tokenPrice`, `referencePrice`, `volume24H`, `marketCap`, `statusInfo`. The listing carries no `tokenAddress`, `underlying` or `platform` key. Our parser read those three, so it dropped all 488 rows without an error, and the board stayed at the seven seeds. `_devcheck` was green the whole time, since it never calls the listing parser.
+  - First row (WOLFon, Ondo): `tokenPrice` and `referencePrice` both "36.1475", the same to every digit, as on `rwa/price`. `platformId` is `ondo`; bStocks come back as `bstock` (singular) and we use `bstocks`.
+  - Gecko probe, no 429: of 441 non-seed underlyings, 20 had a wrapper with a tape and at least $500 of liquidity. About 421 had no pool or one under $500. 13 were kept under the 20-name cap; 7 passed but did not fit (MUU, HIMX, LLY, REMX, PLTR, IBM, NTES).
+  - `/api/board` after: 20 underlyings, every one with a mark, no thin wrapper outside the seeds. Smallest kept tape is MSTRon at about $2,900; deepest is QQQB at about $7.6M.
+  - Corrects the 2026-10-02 baskets entry: AVGO, KO, PG and JNJ are in the listing. They were missing from the snapshot because of our parser. AVGO now has a tape (AVGOB, about $7,400) and sits on the board; KO, PG and JNJ are listed but have no tape of $500 or more.
+- What we changed because of it: the parser reads the real keys and keeps chain 56 only. The board is capped at 20 underlyings: seeds always kept, the rest ranked by best-wrapper liquidity, wrappers kept only with a non-thin Gecko tape. Not verified: a Buy on any new name, or whether the 421 "no tape" names have pools Gecko has not indexed.
