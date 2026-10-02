@@ -6,7 +6,7 @@
   const SESS_MS = 30000;
   const ORDER = ['xstocks', 'ondo', 'bstocks'];
   const SESS_CLASS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
-  const COPY_OPEN = 'Cash is open. Official mark is live, so tape and official should agree.';
+  const COPY_OPEN = 'Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.';
   const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
 
   const $ = (id) => document.getElementById(id);
@@ -164,12 +164,34 @@
     arbMap = {};
     arbs.forEach((a) => { if (a.viable) arbMap[a.underlying] = a; });
     const best = scan.best;
+    const cashOpen = !!(session && session.cashOpen);
     line.textContent = '';
+    if (cashOpen) {
+      const ls = scan.lastShut;
+      if (ls && ls.arb) {
+        const a = ls.arb;
+        line.className = 'bd-desk-line';
+        line.appendChild(el('b', '', 'Last cash-shut · ' + a.underlying + ' +' + bps(a.netBps) + ' net'));
+        line.appendChild(document.createTextNode(
+          ' · rich ' + a.richSymbol + ' → cheap ' + a.cheapSymbol +
+          ' · gross ' + bps(a.grossBps) + ' − cost ' + bps(a.costBps) +
+          ' · ' + ls.hoursSinceClose + 'h after NY close'));
+        btn.hidden = false;
+        btn.href = '/t/' + encodeURIComponent(a.underlying) + '#rotate';
+        btn.textContent = 'View rotate';
+      } else {
+        line.className = 'bd-desk-line dim';
+        line.textContent = 'Last cash-shut: none recorded yet. The desk records the first gap that clears cost after the NY close.';
+        btn.hidden = true;
+      }
+      renderBoard();
+      return;
+    }
     if (best) {
       line.className = 'bd-desk-line';
-      line.appendChild(el('b', 'pos', best.underlying + ' +' + bps(best.netBps) + ' net'));
+      line.appendChild(el('b', 'pos', 'Live · ' + best.underlying + ' +' + bps(best.netBps) + ' net'));
       line.appendChild(document.createTextNode(
-        ' · sell ' + best.richSymbol + ' → buy ' + best.cheapSymbol +
+        ' · rich ' + best.richSymbol + ' → cheap ' + best.cheapSymbol +
         ' · gross ' + bps(best.grossBps) + ' − cost ' + bps(best.costBps)));
       if (!(session && session.cashOpen) && best.gapVsFair !== null && best.gapVsFair !== undefined) {
         const pc = (v) => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
@@ -183,7 +205,7 @@
       line.className = 'bd-desk-line dim';
       const top = arbs[0];
       line.textContent = top
-        ? 'No viable rotation. Best gap ' + top.underlying + ' gross ' + bps(top.grossBps) + ' does not clear ~' + bps(top.costBps) + ' cost.'
+        ? 'Refused: ' + top.underlying + ' gross ' + bps(top.grossBps) + ' − cost ' + bps(top.costBps) + ' = ' + bps(top.netBps) + ' net.'
         : 'No viable rotation. No cross-wrapper gap above 1% right now.';
       btn.hidden = true;
     }
