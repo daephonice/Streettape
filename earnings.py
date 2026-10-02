@@ -19,7 +19,8 @@ HOSTS = ("https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com")
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-    "Accept": "application/json",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
 }
 
 _dates: dict[str, dict] = {}   # underlying -> {"ts": epoch|None, "checkedAt": iso}
@@ -32,7 +33,7 @@ async def _get_crumb(client: httpx.AsyncClient) -> str | None:
     global _crumb
     try:
         await client.get("https://fc.yahoo.com", timeout=5)
-        r = await client.get(f"{HOSTS[1]}/v1/test/getcrumb", timeout=5)
+        r = await client.get(f"{HOSTS[1]}/v1/test/getcrumb", headers={"Accept": "text/plain, */*"}, timeout=5)
         _crumb = r.text.strip() if r.status_code == 200 and r.text else None
         _diag["crumb"] = {"status": r.status_code, "ok": bool(_crumb), "body": r.text[:120] if not _crumb else "",
                           "cookies": list(client.cookies.keys())}
