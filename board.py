@@ -325,7 +325,44 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
 
 
 CATALOG_REFRESH_SECONDS = int(os.getenv("BOARD_CATALOG_REFRESH_SECONDS", "1800"))  # 30 min
+BOARD_MAX_UNDERLYINGS = int(os.getenv("BOARD_MAX_UNDERLYINGS", "20"))
 _last_catalog_sync = 0.0
+_board_live: dict = {}  # last good selection: underlying -> {live wrapper addrs}
+
+
+async def _select_board():
+    """After merge_dynamic: probe every addressed wrapper on Gecko, keep wrappers
+    with a non-thin tape, rank non-seed underlyings by best-wrapper liquidity,
+    cap at BOARD_MAX_UNDERLYINGS (seeds always kept), prune rwa.UNIVERSE.
+    On a Gecko 429 the previous selection is reused so the board never floods
+    or drops names because of one throttled probe."""
+    global _board_live, _last_catalog_sync
+    addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
+    async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
+        tapes = await _gecko_prices(client, addrs)
+    if _tape_stale:
+        _last_catalog_sync = time.monotonic() - CATALOG_REFRESH_SECONDS + 60  # retry in ~1 min
+        live = _board_live or {u: set() for u in rwa.SEEDS}
+        rwa.apply_board({u: live.get(u, set()) for u in live})
+        return
+    live, best = {}, {}
+    for u in rwa.UNIVERSE:
+        und = u["underlying"]
+        ok = set()
+        for w in u["wrappers"]:
+            a = (w.get("address") or "").lower()
+            t = tapes.get(a) or {}
+            liq = t.get("liquidity")
+            if a and t.get("price") and liq is not None and liq >= THIN_LIQUIDITY_USD:
+                ok.add(a)
+                best[und] = max(best.get(und, 0.0), liq)
+        live[und] = ok
+    seeds = [u for u in live if u in rwa.SEEDS]
+    others = sorted((u for u in live if u not in rwa.SEEDS and live[u]), key=lambda u: best[u], reverse=True)
+    keep = seeds + others[:max(0, BOARD_MAX_UNDERLYINGS - len(seeds))]
+    _board_live = {u: live[u] for u in keep}
+    log.info("board: universe %d -> %d underlyings (%d candidates with tape)", len(live), len(keep), len(others))
+    rwa.apply_board(_board_live)
 
 
 async def _sync_catalog():
@@ -341,6 +378,7 @@ async def _sync_catalog():
     discovered = await rwa_api.get_dynamic_universe()
     if discovered:
         rwa.merge_dynamic(discovered)
+        await _select_board()
 
 
 async def build_snapshot():

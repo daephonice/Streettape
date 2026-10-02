@@ -58,6 +58,24 @@ UNIVERSE = [
     ]},
 ]
 
+SEEDS = {u["underlying"]: {w["platform"] for w in u["wrappers"]} for u in UNIVERSE}  # frozen at import
+
+
+def apply_board(live: dict) -> None:
+    """Prune UNIVERSE in place to the board set. `live` maps underlying ->
+    set of lowercase wrapper addresses that have a usable tape. Underlyings not
+    in `live` are dropped; seeds are always kept (and keep their seed wrappers,
+    tape or not, so AAPLB still renders as \"no tape\")."""
+    UNIVERSE[:] = [
+        {**u, "wrappers": [
+            w for w in u["wrappers"]
+            if w["platform"] in SEEDS.get(u["underlying"], ())
+            or (w.get("address") or "").lower() in live[u["underlying"]]
+        ]}
+        for u in UNIVERSE if u["underlying"] in live
+    ]
+
+
 def wrappers():
     out = []
     for u in UNIVERSE:
