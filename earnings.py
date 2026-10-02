@@ -25,6 +25,7 @@ HEADERS = {
 _dates: dict[str, dict] = {}   # underlying -> {"ts": epoch|None, "checkedAt": iso}
 _task: asyncio.Task | None = None
 _crumb: str | None = None
+_diag: dict = {}   # last Yahoo outcome, exposed at /api/earnings?debug=1
 
 
 async def _get_crumb(client: httpx.AsyncClient) -> str | None:
@@ -33,8 +34,11 @@ async def _get_crumb(client: httpx.AsyncClient) -> str | None:
         await client.get("https://fc.yahoo.com", timeout=5)
         r = await client.get(f"{HOSTS[1]}/v1/test/getcrumb", timeout=5)
         _crumb = r.text.strip() if r.status_code == 200 and r.text else None
-    except Exception:
+        _diag["crumb"] = {"status": r.status_code, "ok": bool(_crumb), "body": r.text[:120] if not _crumb else "",
+                          "cookies": list(client.cookies.keys())}
+    except Exception as ex:
         _crumb = None
+        _diag["crumb"] = {"error": f"{type(ex).__name__}: {ex}"[:160]}
     return _crumb
 
 
@@ -47,8 +51,10 @@ async def _fetch_ts(client: httpx.AsyncClient, tkr: str) -> int | None:
                 params["crumb"] = _crumb
             try:
                 r = await client.get(f"{host}/v10/finance/quoteSummary/{tkr}", params=params, timeout=5)
-            except Exception:
+            except Exception as ex:
+                _diag[tkr] = {"host": host, "error": f"{type(ex).__name__}: {ex}"[:160]}
                 break
+            _diag[tkr] = {"host": host, "status": r.status_code, "body": r.text[:120] if r.status_code != 200 else ""}
             if r.status_code in (401, 403) and attempt == 0:
                 await _get_crumb(client)
                 continue
@@ -90,6 +96,10 @@ def info(underlying: str) -> dict:
         "inside24h": hours is not None and 0 <= hours <= WINDOW_HOURS,
         "checkedAt": row.get("checkedAt"),
     }
+
+
+def diag() -> dict:
+    return {"crumbSet": bool(_crumb), **_diag}
 
 
 def all_info() -> list[dict]:

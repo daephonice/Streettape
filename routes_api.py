@@ -234,12 +234,15 @@ async def api_agent_arb(underlying: str, size_usd: float = 50.0):
 
 
 @router.get("/earnings")
-async def api_earnings(underlying: str | None = None):
+async def api_earnings(underlying: str | None = None, debug: int = 0):
     """Yahoo calendar only. inside24h true only when a timestamp exists and is within 24h."""
     import earnings
     if underlying:
         return earnings.info(underlying)
-    return {"items": earnings.all_info()}
+    out = {"items": earnings.all_info()}
+    if debug:
+        out["diag"] = earnings.diag()
+    return out
 
 
 @router.get("/_impactprobe")
