@@ -21,7 +21,8 @@ import fair
 import devlog
 from logos import logo_for, group_logo
 from database import SessionLocal
-from models import PriceSnapshot
+from models import PriceSnapshot, SessionGap
+from datetime import datetime, timezone
 
 log = logging.getLogger("board")
 REFRESH_SECONDS = int(os.getenv("BOARD_REFRESH_SECONDS", "45"))
@@ -378,6 +379,8 @@ async def build_snapshot():
     tokens = _build_tokens(tapes, marks, official, fair_marks)
     snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
     _persist(tokens)
+    if not cash_open:
+        await asyncio.to_thread(record_session_gaps, tokens)
     return snap
 
 
@@ -417,6 +420,88 @@ def _persist(rows):
         db.rollback()
     finally:
         db.close()
+
+
+def _aware(dt):
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def record_session_gaps(tokens, now=None):
+    """While cash is shut: per underlying keep the wrapper with the largest
+    |premium| vs the last print, one row per (underlying, close). Skips thin
+    and unpriced rows. Never called while cash is open."""
+    now = now or datetime.now(timezone.utc)
+    sess = rwa.session_now(now)
+    if sess["cashOpen"]:
+        return
+    closed_at = fair._friday_close_cutoff(now)
+    ny_now, ny_close = now.astimezone(rwa.NY), closed_at.astimezone(rwa.NY)
+    label = "WEEKEND" if (sess["label"] == "WEEKEND" or (ny_close.weekday() == 4 and ny_now.weekday() == 0)) else "AFTER-HOURS"
+    best = {}
+    for t in tokens:
+        if not t.get("hasTape") or t.get("thin"):
+            continue
+        tape, mark, prem = t.get("tokenPrice"), t.get("markPrice"), t.get("premium")
+        if not tape or not mark or prem is None:
+            continue
+        cur = best.get(t["underlying"])
+        if cur is None or abs(prem) > abs(cur["premium"]):
+            best[t["underlying"]] = {"wrapper": t["symbol"], "tape": tape, "mark": mark, "premium": prem}
+    if not best:
+        return
+    db = SessionLocal()
+    try:
+        for und, b in best.items():
+            row = db.execute(
+                select(SessionGap).where(SessionGap.underlying == und, SessionGap.closed_at == closed_at)
+            ).scalar_one_or_none()
+            if row is None:
+                db.add(SessionGap(underlying=und, session_label=label, closed_at=closed_at,
+                                  print_price=b["mark"], wrapper=b["wrapper"], tape_price=b["tape"],
+                                  premium=b["premium"], seen_at=now))
+            elif abs(b["premium"]) > abs(row.premium):
+                row.session_label, row.print_price, row.wrapper = label, b["mark"], b["wrapper"]
+                row.tape_price, row.premium, row.seen_at = b["tape"], b["premium"], now
+        db.commit()
+    except Exception:
+        log.warning("board: session gap write failed", exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def last_sessions() -> list[dict]:
+    """Latest cash-shut row per underlying, widest gap first."""
+    db = SessionLocal()
+    try:
+        rows = db.execute(select(SessionGap).order_by(SessionGap.closed_at.desc(), SessionGap.seen_at.desc())).scalars().all()
+    except Exception:
+        log.warning("board: session gap read failed", exc_info=True)
+        return []
+    finally:
+        db.close()
+    seen, out = set(), []
+    for r in rows:
+        if r.underlying in seen:
+            continue
+        seen.add(r.underlying)
+        closed = _aware(r.closed_at).astimezone(rwa.NY)
+        at = _aware(r.seen_at).astimezone(rwa.NY)
+        out.append({
+            "underlying": r.underlying,
+            "sessionLabel": r.session_label,
+            "closedAt": _aware(r.closed_at).isoformat(),
+            "printPrice": r.print_price,
+            "wrapper": r.wrapper,
+            "tapePrice": r.tape_price,
+            "premium": r.premium,
+            "seenAt": _aware(r.seen_at).isoformat(),
+            "line": (f"{r.underlying} · {closed.strftime('%A')} print ${r.print_price:,.2f} · "
+                     f"{r.wrapper} ${r.tape_price:,.2f} · {r.premium * 100:+.1f}% · "
+                     f"{at.strftime('%A %H:%M')} ET"),
+        })
+    out.sort(key=lambda r: abs(r["premium"]), reverse=True)
+    return out
 
 
 async def _loop():

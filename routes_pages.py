@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 import prices
 import rwa
 import basket
+import board
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -41,6 +42,7 @@ def _board_context() -> dict:
         "session": session,
         "tape_stale": bool(snap.get("tapeStale")),
         "platform_order": PLATFORM_ORDER,
+        "last_session": board.last_sessions(),
     }
 
 

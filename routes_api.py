@@ -84,7 +84,11 @@ async def api_devex():
 
 @router.get("/board")
 async def get_board():
-    return rwa.get_cached_snapshot()
+    import asyncio
+    import board
+    snap = dict(rwa.get_cached_snapshot())
+    snap["lastSession"] = await asyncio.to_thread(board.last_sessions)
+    return snap
 
 
 @router.get("/basket/ai")

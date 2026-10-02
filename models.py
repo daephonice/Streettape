@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, BigInteger, JSON, Index, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, BigInteger, JSON, Index, Text, UniqueConstraint
 
 from database import Base
 
@@ -56,3 +56,23 @@ class NewsItem(Base):
     body = Column(Text, nullable=False)
     published_at = Column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class SessionGap(Base):
+    """Widest wrapper-vs-print gap seen while cash was shut, one row per
+    (underlying, close). Written only when session.cashOpen is false."""
+    __tablename__ = "session_gaps"
+
+    id = Column(Integer, primary_key=True)
+    underlying = Column(String, nullable=False, index=True)
+    session_label = Column(String, nullable=False)  # AFTER-HOURS | WEEKEND
+    closed_at = Column(DateTime(timezone=True), nullable=False)
+    print_price = Column(Float, nullable=False)
+    wrapper = Column(String, nullable=False)
+    tape_price = Column(Float, nullable=False)
+    premium = Column(Float, nullable=False)
+    seen_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("underlying", "closed_at", name="uq_session_gaps_und_closed"),
+    )
