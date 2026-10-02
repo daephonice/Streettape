@@ -11,7 +11,7 @@ Base URL: `https://streettape.up.railway.app` (override with `STREETTAPE_URL`).
 All prices, premiums, gaps, costs and quotes come from the API. Never estimate them. Quote, don't sign: trades are confirmed and signed in the user's own wallet.
 
 Tool: `python skills/streettape.py <command>` (stdlib only, prints JSON).
-Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market-order quote|swap`) when `baw` is installed and signed in; otherwise StreetTape's `/api/swap/order` builds the quote. Signing only with `quote ... --sign` after the user says yes; it then polls the order to FINISHED/FAILED.
+Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market-order quote|swap`) when `baw` is installed and signed in; otherwise StreetTape's `/api/swap/order` builds the quote. Signing only with `quote ... --sign` after the user says yes: it quotes, then signs via `baw` (no API fallback), polls to FINISHED/FAILED, and exits 1 unless FINISHED.
 
 | User says | Command | Endpoint |
 |---|---|---|

@@ -74,31 +74,52 @@ def baw_quote(input_mint, output_mint, amount):
             "slippage": d.get("slippage"), "needsWallet": False, "raw": d}
 
 
+def baw_sign(input_mint, output_mint, amount):
+    """One signed `baw market-order swap` after a quote. Never falls back: a failed sign is a failure."""
+    q = baw_quote(input_mint, output_mint, amount)
+    print(f"quote: {amount} in -> {q['uiOutAmount']} out, slippage {q['slippage']}. Confirm in the Binance app.",
+          file=sys.stderr)
+    t0 = time.time()
+    d = _baw("market-order", "swap", "--fromTokenQty", _qty(amount), "--fromToken", input_mint,
+             "--toToken", output_mint, "--binanceChainId", CHAIN)
+    submit = round(time.time() - t0, 1)
+    if not isinstance(d, dict) or not d.get("orderId"):
+        raise RuntimeError(f"swap returned no orderId: {str(d)[:300]}")
+    oid = d["orderId"]
+    o = {}
+    for _ in range(45):  # orderId is only "submitted"; poll to a terminal state (~90 s)
+        time.sleep(2)
+        rows = (_baw("market-order", "list", "--orderId", str(oid)) or {}).get("list") or []
+        o = rows[0] if rows else {}
+        if o.get("status") in ("FINISHED", "FAILED"):
+            break
+    return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid,
+            "status": o.get("status") or "PENDING", "txHash": _pick(o, "txHash", "txHashes", "hash"),
+            "submitSec": submit, "totalSec": round(time.time() - t0, 1),
+            "quote": {"uiOutAmount": q["uiOutAmount"], "slippage": q["slippage"]},
+            "swap": d, "order": o}
+
+
 def aw_swap(input_mint, output_mint, amount, taker=None, sign=False):
-    """Quote (default) or sign+submit (sign=True, only after user confirmed) via official `baw`.
-    Returns None when baw is missing or fails, so callers fall back to the StreetTape API."""
+    """Quote via `baw` (default). Returns None when baw is missing or fails, so callers fall back to the API."""
     if not BAW:
         return None
     try:
-        if not sign:
-            return baw_quote(input_mint, output_mint, amount)
-        d = _baw("market-order", "swap", "--fromTokenQty", _qty(amount), "--fromToken", input_mint,
-                 "--toToken", output_mint, "--binanceChainId", CHAIN)
-        oid = d["orderId"]
-        for _ in range(15):  # orderId is only "submitted"; poll to a terminal state
-            time.sleep(2)
-            o = _baw("market-order", "list", "--orderId", str(oid))["list"][0]
-            if o["status"] in ("FINISHED", "FAILED"):
-                return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid,
-                        "status": o["status"], "txHash": o.get("txHash")}
-        return {"provider": "binance_agentic_wallet", "signed": True, "orderId": oid, "status": "PENDING"}
+        return baw_quote(input_mint, output_mint, amount)
     except Exception as e:
         print(f"baw failed, using API: {e}", file=sys.stderr)
         return None
 
 
 def order(input_mint, output_mint, amount, taker=None, sign=False):
-    return aw_swap(input_mint, output_mint, amount, taker, sign) or call("/api/swap/order", body={
+    if sign:
+        if not BAW:
+            sys.exit(json.dumps({"error": "baw not on PATH: cannot sign"}))
+        try:
+            return baw_sign(input_mint, output_mint, amount)
+        except Exception as e:
+            sys.exit(json.dumps({"error": "baw sign failed", "detail": str(e)}))
+    return aw_swap(input_mint, output_mint, amount, taker) or call("/api/swap/order", body={
         "inputMint": input_mint, "outputMint": output_mint, "uiAmount": amount, "taker": taker})
 
 
@@ -134,7 +155,10 @@ def cmd_basket(a):
 
 
 def cmd_quote(a):
-    out(order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign))
+    res = order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign)
+    out(res, note=not a.sign)
+    if a.sign and res.get("status") != "FINISHED":
+        sys.exit(1)
 
 
 def cmd_verify(a):
