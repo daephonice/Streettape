@@ -98,6 +98,28 @@ def _last_cash_mark(db, underlying: str) -> float | None:
     return float(row[0]) if row else None
 
 
+def _index_move(db, qqq_symbol: str | None, now: datetime) -> tuple[float | None, datetime]:
+    """QQQ wrapper tape now vs its snapshot nearest the last Friday 16:00 ET close. (None, cutoff) if either is missing."""
+    cutoff = _friday_close_cutoff(now)
+    if not qqq_symbol:
+        return None, cutoff
+    qqq_now = _snapshot_near(db, qqq_symbol, now, window_hours=2)
+    qqq_then = _snapshot_near(db, qqq_symbol, cutoff)
+    return ((qqq_now / qqq_then - 1) if qqq_now and qqq_then else None), cutoff
+
+
+def qqq_move() -> dict:
+    """{"symbol", "move", "since"}: move is None when the tape has no snapshot on either side."""
+    now = datetime.now(timezone.utc)
+    sym = _qqq_wrapper_symbol()
+    db = SessionLocal()
+    try:
+        move, cutoff = _index_move(db, sym, now)
+    finally:
+        db.close()
+    return {"symbol": sym, "move": move, "since": cutoff.isoformat()}
+
+
 PAIR_WINDOW_SECONDS = 120
 MIN_PAIRS = 5
 MAX_STEP_MOVE = 0.05
@@ -208,10 +230,7 @@ def synthetic_marks(underlyings: list[str], cash_open: bool) -> dict[str, dict]:
     qqq_symbol = _qqq_wrapper_symbol()
     db = SessionLocal()
     try:
-        friday_close = _friday_close_cutoff(now)
-        qqq_now = _snapshot_near(db, qqq_symbol, now, window_hours=2) if qqq_symbol else None
-        qqq_then = _snapshot_near(db, qqq_symbol, friday_close) if qqq_symbol else None
-        index_move = (qqq_now / qqq_then - 1) if qqq_now and qqq_then else 0.0
+        index_move = _index_move(db, qqq_symbol, now)[0] or 0.0
 
         for und in underlyings:
             last_print = _last_cash_mark(db, und)

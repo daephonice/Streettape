@@ -17,6 +17,7 @@ import agent
 import market_stats
 import rwa_api
 import basket
+import defensive
 import devlog
 
 log = logging.getLogger("routes_api")
@@ -96,6 +97,13 @@ async def api_basket_ai(usd: float = basket.DEFAULT_USD):
     if not 1 <= usd <= 10000:
         raise HTTPException(status_code=400, detail="usd must be between 1 and 10000")
     return await basket.build(usd)
+
+
+@router.get("/agent/defensive")
+async def api_agent_defensive(usd: float = defensive.DEFAULT_USD):
+    if not 1 <= usd <= 10000:
+        raise HTTPException(status_code=400, detail="usd must be between 1 and 10000")
+    return await defensive.build(usd)
 
 
 @router.get("/session")
