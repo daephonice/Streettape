@@ -537,6 +537,13 @@ def identity_card() -> dict:
             {"name": "skill", "endpoint": f"{base}/api/agent/scan"},
         ],
         "x402Support": False,
+        "studioRuntime": {
+            "deployed": False,
+            "scheduler": "BNB Agent Studio (bag CLI) has no scheduler that calls an external URL, so the 60s scan loop runs on Railway.",
+            "tick": f"{base}/api/agent/studio/tick (X-Studio-Token required; proposal-only, never signs). In Studio it is a manual or testnet call.",
+            "x402": "No paid endpoint, so x402Support stays false.",
+            "signing": "none: the user signs in their own wallet",
+        },
         "active": True,
         "supportedTrust": ["reputation"],
     }
