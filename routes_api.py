@@ -1,6 +1,7 @@
 import hmac
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -231,6 +232,25 @@ async def api_agent_arb(underlying: str, size_usd: float = 50.0):
         return {"underlying": underlying.upper(), "hit": None}
     priced = await agent.net_arb_quote(hits[0], size_usd)
     return {"underlying": underlying.upper(), "hit": priced}
+
+
+@router.get("/agent/earnings/{underlying}")
+async def api_agent_earnings(underlying: str, hours: float = 24.0):
+    """Flag from stored news only (no earnings calendar): true if the underlying's newest
+    headline is inside `hours` and mentions earnings."""
+    u = underlying.upper()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(0.0, hours))
+    items = [n for n in news.get_news() if (n.get("underlying") or "").upper() == u]
+    hit = None
+    for n in items:
+        at = datetime.fromisoformat(n["publishedAt"])
+        at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
+        if at >= cutoff and "earnings" in (n.get("body") or "").lower():
+            hit = n
+            break
+    return {"underlying": u, "windowHours": hours, "earningsInWindow": hit is not None,
+            "basis": "news headline keyword", "newsItems": len(items),
+            "headline": hit["body"] if hit else None, "publishedAt": hit["publishedAt"] if hit else None}
 
 
 @router.get("/_impactprobe")
