@@ -95,15 +95,17 @@ async def build(usd: float = DEFAULT_USD) -> dict:
         elif pick.get("platform") == "ondo":
             buy["reason"] = "no route quoted (Ondo RFQ needs a connected wallet for a firm quote)"
 
-    # viable: every leg that was quoted found a route, and at least one sell + the buy did.
+    # viable: every leg (a no-tape name has no route) and the buy found a route.
     quoted = [l for l in sell_legs if "tape" in l] + ([buy] if "tape" in buy else [])
-    viable = bool(quoted_usd > 0 and buy["filled"] and all(l["filled"] for l in quoted))
+    viable = bool(quoted_usd > 0 and buy["filled"] and all(l["filled"] for l in sell_legs))
+    labels = lambda ls: [l["routeLabel"] for l in ls if l.get("routeLabel")]
+    route_label = {"sell": labels(sell_legs), "buy": buy.get("routeLabel")}
     impacts = [abs(float(l["priceImpactPct"])) for l in quoted if l.get("priceImpactPct") not in (None, "")]
     payload = {**base, "triggered": True, "viable": viable, "session": snap.get("session"),
                "fetchedAt": snap.get("fetchedAt"), "tapeStale": bool(snap.get("tapeStale")), "from": "AI basket",
                "sell": {"legs": sell_legs, "legUsd": slot, "quotedUsd": quoted_usd,
                         "unfilledUsd": slot * sum(1 for l in sell_legs if not l["filled"])},
-               "buy": buy, "priceImpactPct": max(impacts) if impacts else None,
+               "buy": buy, "priceImpactPct": max(impacts) if impacts else None, "routeLabel": route_label,
                "note": "Quotes only, a rotation not an arb. Nothing is signed until you confirm each leg in your own wallet."}
     _cache[usd] = (time.monotonic(), payload)
     return payload
