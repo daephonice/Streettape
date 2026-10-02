@@ -215,6 +215,8 @@ async def api_agent_scan(threshold: float | None = None, underlying: str | None 
     report = agent.scan_gaps(threshold)
     arbs = await agent.desk_arbs(underlying)
     report["arbs"] = arbs
+    if not underlying:
+        report["book"] = await agent.desk_book()
     report["best"] = agent.best_arb(arbs)
     agent.record_shut(arbs, report.get("session"))
     report["lastShut"] = agent.last_shut or None

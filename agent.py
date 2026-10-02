@@ -293,17 +293,67 @@ _desk_cache: dict = {}
 DESK_TTL = 30.0
 
 
-async def desk_arbs(underlying: str | None = None, limit: int = 5) -> list[dict]:
-    """Net-of-cost arb quotes for the desk, cached DESK_TTL seconds (quotes are a
-    network round-trip per leg). Shared by /api/agent/scan and the board hero."""
+async def _all_arbs(underlying: str | None = None) -> list[dict]:
+    """Net-of-cost $50 quotes for every underlying with 2+ ratio-backed tapes
+    (raw gap > 0), widest gap first. One quote set feeds both `desk_arbs` and
+    `desk_book`. Cached DESK_TTL seconds."""
     import time
     key = (underlying or "").upper()
     hit = _desk_cache.get(key)
     if hit and time.monotonic() - hit[0] < DESK_TTL:
         return hit[1]
-    arbs = [await net_arb_quote(h) for h in check_cross_arb(underlying)[:limit]]
+    sem = asyncio.Semaphore(4)
+
+    async def one(h):
+        async with sem:
+            try:
+                return await net_arb_quote(h)
+            except Exception:
+                log.warning("agent: arb quote failed %s", h.get("underlying"), exc_info=True)
+                return None
+
+    hits = check_cross_arb(underlying, threshold=0.0)
+    arbs = [a for a in await asyncio.gather(*(one(h) for h in hits)) if a]
     _desk_cache[key] = (time.monotonic(), arbs)
     return arbs
+
+
+async def desk_arbs(underlying: str | None = None, limit: int = 5) -> list[dict]:
+    """Arbs whose raw gap clears ARB_THRESHOLD, net-of-cost quoted. Shared by
+    /api/agent/scan and the studio tick."""
+    arbs = await _all_arbs(underlying)
+    return [a for a in arbs if a["gap"] > ARB_THRESHOLD][:limit]
+
+
+def _leg_routed(leg: dict | None) -> bool:
+    return bool(leg) and not leg.get("noRoute") and not leg.get("unsupported") and bool(leg.get("uiOutAmount"))
+
+
+async def desk_book() -> list[dict]:
+    """The weekend book: one row per underlying, share-normalized gap, Clears
+    (both legs quoted, viable) first, then Refused (cost eats the gap, or a leg
+    has no route). Names with <2 live ratio-backed non-thin tapes never enter."""
+    rows = []
+    for a in await _all_arbs():
+        sell_ok, buy_ok = _leg_routed(a.get("sellLeg")), _leg_routed(a.get("buyLeg"))
+        clears = bool(a["viable"] and sell_ok and buy_ok)
+        if clears:
+            reason = None
+        elif not sell_ok:
+            reason = f"no route {a['richSymbol']}"
+        elif not buy_ok:
+            reason = f"no route {a['cheapSymbol']}"
+        else:
+            reason = "cost eats gap"
+        rows.append({
+            "underlying": a["underlying"], "state": "clears" if clears else "refused", "reason": reason,
+            "richSymbol": a["richSymbol"], "cheapSymbol": a["cheapSymbol"],
+            "richSharePrice": a["richSharePrice"], "cheapSharePrice": a["cheapSharePrice"],
+            "gapBps": a["grossBps"], "costBps": a["costBps"] if sell_ok and buy_ok else None,
+            "netBps": a["netBps"] if sell_ok and buy_ok else None, "sizeUsd": a["sizeUsd"],
+        })
+    rows.sort(key=lambda r: (r["state"] != "clears", -r["gapBps"]))
+    return rows
 
 
 last_shut: dict = {}
