@@ -4,7 +4,7 @@ Tape = GeckoTerminal. Mark = Yahoo last cash print. Both free, no key.
 UNIVERSE below is the seed catalog (hand-maintained, always present even with
 no RWA Data key). merge_dynamic() folds in whatever RWA Data's rwa/tokens +
 rwa/search actually list — new underlyings, new wrappers on known underlyings,
-and a real `address` for a seed row that had none (e.g. AAPLB). It never
+and a real `address` for a seed row that had none. It never
 invents a contract: a wrapper with no address from either source stays
 address: None and callers must treat that as "no tape, no Buy" — see
 board.py's hasTape / "— no tape" handling.
@@ -34,7 +34,7 @@ UNIVERSE = [
     {"underlying":"AAPL","yahoo":"AAPL","name":"Apple","wrappers":[
         {"symbol":"AAPLx","platform":"xstocks","address":"0x9d275685dC284C8eB1C79f6ABA7a63Dc75ec890a","multiplier":None},
         {"symbol":"AAPLon","platform":"ondo","address":"0x390a684EF9cADE28A7AD0DFa61AB1Eb3842618c4","multiplier":None},
-        {"symbol":"AAPLB","platform":"bstocks","address":None,"multiplier":1.0},
+        {"symbol":"AAPLB","platform":"bstocks","address":"0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a","multiplier":1.0},
     ]},
     {"underlying":"META","yahoo":"META","name":"Meta","wrappers":[
         {"symbol":"METAx","platform":"xstocks","address":"0x96702be57Cd9777f835117a809C7124fe4ec989A","multiplier":None},

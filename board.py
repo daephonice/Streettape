@@ -269,7 +269,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             thin = True  # stale pool price, whether it came from RWA Data or Gecko (METAx: RWA Data tokenPrice was the dead pool)
         if thin:
             prem = prem_fair = None  # a stale thin-pool price is not a real gap
-        # No contract for this wrapper (e.g. AAPLB pre-launch): never a Buy,
+        # No contract for this wrapper (wrapper without a contract): never a Buy,
         # never a Trade link. hasTape is the single flag templates/JS gate on.
         tokens.append({
             "symbol": w["symbol"],

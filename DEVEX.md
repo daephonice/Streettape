@@ -115,7 +115,7 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 ### Multiplier and missing contracts
 
 - Seed: bStocks `multiplier: 1.0`, xStocks/Ondo `None`. Arb divides only when the value is truthy. `normalized` is true if *either* wrapper has a multiplier, so NVDAB vs NVDAon reports normalized even though one side was raw.
-- AAPLB seed address is `None`. `merge_dynamic()` fills it only if RWA Data lists a contract. Until then: no tape, no Buy, not in an arb. We do not invent an address.
+- AAPLB seed address is `0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a` (BSC), taken from Binance's eligible-bStock token list, not from RWA Data discovery (RWA Data never returned one, so `merge_dynamic()` would not have filled it). `multiplier` stays 1.0 and no price is hardcoded. If Gecko has a pool the row gets tape and can enter the arb; if not it stays "no tape" like any wrapper without a pool.
 
 ---
 
