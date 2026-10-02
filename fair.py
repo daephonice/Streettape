@@ -27,7 +27,7 @@ import logging
 import math
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 import rwa
 from database import SessionLocal
@@ -100,6 +100,7 @@ def _last_cash_mark(db, underlying: str) -> float | None:
 
 PAIR_WINDOW_SECONDS = 120
 MIN_PAIRS = 5
+MAX_STEP_MOVE = 0.05
 
 
 def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> tuple[float | None, int]:
@@ -124,8 +125,19 @@ def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> tuple[float | 
             out.append((t, float(p)))
         return out
 
-    und_wrapper = next((w["symbol"] for w in rwa.wrappers() if w["underlying"] == underlying), None)
-    if not und_wrapper:
+    cands = [w["symbol"] for w in rwa.wrappers() if w["underlying"] == underlying]
+    if not cands:
+        return None, 0
+    # Use the wrapper with the liveliest tape: some wrappers (e.g. the x ones)
+    # sit on a single flat price, which regresses to a fake beta of 0.
+    cnt = dict(db.execute(
+        select(PriceSnapshot.symbol, func.count(func.distinct(PriceSnapshot.token_price)))
+        .where(PriceSnapshot.symbol.in_(cands), PriceSnapshot.platform != "cash",
+               PriceSnapshot.fetched_at >= since, PriceSnapshot.token_price > 0)
+        .group_by(PriceSnapshot.symbol)
+    ).all())
+    und_wrapper = max(cands, key=lambda c: cnt.get(c, 0))
+    if cnt.get(und_wrapper, 0) < 3:
         return None, 0
     xs = _series(qqq_symbol)
     ys = _series(und_wrapper)
@@ -153,6 +165,8 @@ def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> tuple[float | 
     num = den = 0.0
     for (_, x0, y0), (_, x1, y1) in zip(pairs, pairs[1:]):
         dx, dy = math.log(x1 / x0), math.log(y1 / y0)
+        if abs(dx) > MAX_STEP_MOVE or abs(dy) > MAX_STEP_MOVE:
+            continue  # bad print / stale-pool jump, not a market move
         num += dx * dy
         den += dx * dx
     if den <= 1e-12:
