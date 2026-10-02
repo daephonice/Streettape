@@ -196,21 +196,34 @@ async def get_official_snapshot(addresses: list[str]) -> dict | None:
     return out or None
 
 
+_PLATFORM_ALIAS = {"bstock": "bstocks", "xstock": "xstocks", "ondo": "ondo"}
+_listing_report: dict = {"called": False}
+
+
 def _row_from_listing(item: dict) -> dict | None:
     """Normalize one rwa/tokens or rwa/search item to rwa.merge_dynamic()'s
-    shape. Skips anything without a real on-chain address."""
-    addr = item.get("tokenAddress") or item.get("address")
-    und = item.get("underlying") or item.get("underlyingSymbol")
-    platform = item.get("platform") or item.get("issuer")
+    shape. Accepts both the listing-style keys and the underlying-profile
+    style keys (tokenContractAddress / underlyingTicker / platformId). BNB
+    Chain only. Skips anything without a real on-chain address."""
+    if not isinstance(item, dict):
+        return None
+    chain = item.get("binanceChainId")
+    if chain is not None and str(chain) != "56":
+        return None
+    addr = item.get("tokenContractAddress") or item.get("tokenAddress") or item.get("address")
+    und = item.get("underlyingTicker") or item.get("underlying") or item.get("underlyingSymbol")
+    platform = item.get("platformId") or item.get("platform") or item.get("issuer")
     if not addr or not und or not platform:
         return None
+    platform = _PLATFORM_ALIAS.get(str(platform).lower(), str(platform).lower())
+    name = item.get("underlyingFullName") or item.get("underlyingName") or item.get("name")
     return {
         "underlying": str(und).upper(),
-        "name": item.get("underlyingName") or item.get("name"),
-        "yahoo": item.get("yahooTicker") or (str(und).upper() if item.get("assetType") != "index" else None),
-        "platform": str(platform).lower(),
+        "name": name,
+        "yahoo": item.get("yahooTicker") or (str(und).upper() if item.get("assetType") not in ("index", 2) else None),
+        "platform": platform,
         "address": addr,
-        "symbol": item.get("symbol"),
+        "symbol": item.get("tokenSymbol") or item.get("symbol"),
         "multiplier": item.get("multiplier"),
     }
 
@@ -218,17 +231,26 @@ def _row_from_listing(item: dict) -> dict | None:
 async def get_dynamic_universe() -> list[dict] | None:
     """rwa/tokens rows normalized for rwa.merge_dynamic(). None if RWA Data
     is unset/parked/the call fails — caller keeps the static seed as-is."""
+    global _listing_report
     if not available():
+        _listing_report = {"called": False, "why": "unavailable"}
         return None
     try:
         async with httpx.AsyncClient(base_url=BASE_URL, timeout=8.0) as client:
             rows = await tokens(client)
-    except Exception:
+    except Exception as e:
         log.info("rwa_api: tokens listing failed", exc_info=True)
+        _listing_report = {"called": True, "error": str(e)[:200]}
         return None
-    if not rows:
-        return None
+    if isinstance(rows, dict):
+        rows = next((v for v in rows.values() if isinstance(v, list)), [])
+    rows = rows or []
     out = [r for r in (_row_from_listing(item) for item in rows) if r]
+    _listing_report = {
+        "called": True, "rawType": type(rows).__name__, "rawRows": len(rows), "normalized": len(out),
+        "sampleKeys": sorted(rows[0].keys()) if rows and isinstance(rows[0], dict) else None,
+        "sample": rows[0] if rows else None,
+    }
     return out or None
 
 

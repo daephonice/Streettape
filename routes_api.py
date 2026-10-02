@@ -38,7 +38,7 @@ async def api_devcheck():
 @router.get("/_boardcheck")
 async def api_boardcheck():
     import board
-    return board._board_report
+    return {**board._board_report, "listing": rwa_api._listing_report}
 
 
 @router.get("/_swapcheck")
