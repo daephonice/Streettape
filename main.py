@@ -18,6 +18,7 @@ import routes_api
 import board
 import prices
 import news
+import earnings
 import telegram_bot
 import agent
 import rwa_api
@@ -51,6 +52,7 @@ async def _start_background_tasks():
     board.start_board_refresh_task()
     prices.start_price_task()
     news.start_news_task()
+    earnings.start_earnings_task()
     telegram_bot.start_telegram_bot_task()
     agent.start_agent_task()
     asyncio.create_task(rwa_api.devcheck())

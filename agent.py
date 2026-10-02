@@ -112,12 +112,16 @@ async def fire_due_alerts():
             )
             if cheap and cheap.get("url"):
                 cta = f"\nCheaper wrapper: {cheap['symbol']} {rwa.format_premium(cheap['premium'])} — {cheap['url']}"
+        import earnings
+        e = earnings.info(underlying)
+        earn = (f"\n⚠ {underlying} reports in {e['hoursUntil']:.0f}h — desk proposes selling into USDT before the print"
+                if e["inside24h"] else "")
         text = (
             f"StreetTape alert · {report['session'].get('label')}\n"
             f"<b>{hit['symbol']}</b> {rwa.format_premium(hit['premium'])} vs mark\n"
             f"Tape ${hit['tokenPrice']:.2f} · Mark ${hit['markPrice']:.2f}\n"
             f"{telegram_bot.WEB_PUBLIC_URL}/t/{underlying}"
-            f"{cta}"
+            f"{cta}{earn}"
         )
         try:
             await telegram_bot.send_alert(w.chat_id, text)

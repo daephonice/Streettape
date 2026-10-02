@@ -195,6 +195,14 @@ def session_now(now=None):
 
 _snapshot_cache = {"fetchedAt": None, "session": None, "tokens": [], "groups": []}
 
+def _earnings_snapshot():
+    try:
+        import earnings
+        return {e["underlying"]: {"earningsDate": e["earningsDate"], "hoursUntil": e["hoursUntil"],
+                                  "inside24h": e["inside24h"]} for e in earnings.all_info()}
+    except Exception:
+        return {}
+
 def get_cached_snapshot():
     return _snapshot_cache
 
@@ -206,5 +214,6 @@ def set_cached_snapshot(tokens, groups=None, tape_stale=False):
         "tokens": tokens,
         "groups": groups or [],
         "tapeStale": tape_stale,
+        "earnings": _earnings_snapshot(),
     }
     return _snapshot_cache

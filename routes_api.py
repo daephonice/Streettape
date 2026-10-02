@@ -1,7 +1,6 @@
 import hmac
 import logging
 import time
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -234,23 +233,13 @@ async def api_agent_arb(underlying: str, size_usd: float = 50.0):
     return {"underlying": underlying.upper(), "hit": priced}
 
 
-@router.get("/agent/earnings/{underlying}")
-async def api_agent_earnings(underlying: str, hours: float = 24.0):
-    """Flag from stored news only (no earnings calendar): true if the underlying's newest
-    headline is inside `hours` and mentions earnings."""
-    u = underlying.upper()
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=max(0.0, hours))
-    items = [n for n in news.get_news() if (n.get("underlying") or "").upper() == u]
-    hit = None
-    for n in items:
-        at = datetime.fromisoformat(n["publishedAt"])
-        at = at if at.tzinfo else at.replace(tzinfo=timezone.utc)
-        if at >= cutoff and "earnings" in (n.get("body") or "").lower():
-            hit = n
-            break
-    return {"underlying": u, "windowHours": hours, "earningsInWindow": hit is not None,
-            "basis": "news headline keyword", "newsItems": len(items),
-            "headline": hit["body"] if hit else None, "publishedAt": hit["publishedAt"] if hit else None}
+@router.get("/earnings")
+async def api_earnings(underlying: str | None = None):
+    """Yahoo calendar only. inside24h true only when a timestamp exists and is within 24h."""
+    import earnings
+    if underlying:
+        return earnings.info(underlying)
+    return {"items": earnings.all_info()}
 
 
 @router.get("/_impactprobe")
@@ -260,14 +249,21 @@ async def api_impact_probe(taker: str, pair: str = "TSLAB", big_usd: float = 500
 
 
 @router.get("/agent/flatten/{underlying}")
-async def api_agent_flatten(underlying: str, size_usd: float = 10.0):
+async def api_agent_flatten(underlying: str, size_usd: float = 10.0, force: bool = False):
     """Richest-wrapper sell quote for the token page's 'Flatten $N' button.
     Reuses agent.flatten_candidates' >2% threshold; None if nothing qualifies."""
     import swap as swap_mod
     hits = agent.flatten_candidates(underlying)
-    if not hits:
+    if hits:
+        t = max(hits, key=lambda h: h["premium"])
+    elif force:  # earnings stand-down: sell the deepest wrapper regardless of premium
+        pool = [x for x in (rwa.get_cached_snapshot().get("tokens") or [])
+                if (x.get("underlying") or "").upper() == underlying.upper() and x.get("hasTape") and not x.get("thin")]
+        t = max(pool, key=lambda x: x.get("liquidityUsd") or 0, default=None)
+    else:
+        t = None
+    if not t:
         return {"underlying": underlying.upper(), "hit": None}
-    t = max(hits, key=lambda h: h["premium"])
     px = t.get("tokenPrice") or 0
     if px <= 0:
         return {"underlying": underlying.upper(), "hit": None}
@@ -276,7 +272,7 @@ async def api_agent_flatten(underlying: str, size_usd: float = 10.0):
         "underlying": underlying.upper(),
         "hit": {
             "symbol": t["symbol"],
-            "premium": t["premium"],
+            "premium": t.get("premium"),
             "tokenPrice": t["tokenPrice"],
             "sizeUsd": size_usd,
             "sellLeg": leg,
