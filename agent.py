@@ -539,8 +539,8 @@ def identity_card() -> dict:
         "x402Support": False,
         "studioRuntime": {
             "deployed": False,
-            "scheduler": "BNB Agent Studio (bag CLI) has no scheduler that calls an external URL, so the 60s scan loop runs on Railway.",
-            "tick": f"{base}/api/agent/studio/tick (X-Studio-Token required; proposal-only, never signs). In Studio it is a manual or testnet call.",
+            "scheduler": "Not run on Studio (bag not installed). In the Studio docs we read (overview, quickstart, CLI reference, architecture) we found no scheduler that calls an external URL; that absence was not tested. The 60s scan loop runs on Railway.",
+            "tick": f"{base}/api/agent/studio/tick (X-Studio-Token required; proposal-only, never signs). Not called from Studio.",
             "x402": "No paid endpoint, so x402Support stays false.",
             "signing": "none: the user signs in their own wallet",
         },

@@ -21,5 +21,5 @@ Official skill: `npx skills add https://github.com/binance/binance-skills-hub/tr
 
 ## BNB Agent Studio / ERC-8004
 
-- `GET /api/agent/studio/tick` returns the same scan as the internal 60s loop (header `X-Studio-Token: $AGENT_STUDIO_TOKEN`). Proposal-only. Optional `arb_threshold` (default 0.01). BNB Agent Studio has no external-URL scheduler and was not deployed; the studio tick is a manual or testnet call. The same statement is in `/agent-registration.json` under `studioRuntime`.
+- `GET /api/agent/studio/tick` returns the same scan as the internal 60s loop (header `X-Studio-Token: $AGENT_STUDIO_TOKEN`). Proposal-only. Optional `arb_threshold` (default 0.01). We did not run Studio (`bag` is not installed). In the Studio docs we read (overview, quickstart, CLI reference, architecture), we found no scheduler that calls an external URL. That absence was not tested. Studio was not deployed. The same statement is in `/agent-registration.json` under `studioRuntime`.
 - Identity file: `/agent-registration.json`. Register on the ERC-8004 Identity Registry with `register("<WEB_PUBLIC_URL>/agent-registration.json")`, then set `ERC8004_IDENTITY_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, `ERC8004_AGENT_ID=360062`, `ERC8004_CHAIN_ID=56`. The card then carries a `registrations` block. `x402Support` stays false: there is no paid endpoint.
