@@ -730,3 +730,14 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - AMDB and METAB: `binance_web3`, LiquidMesh, `priceImpactPct` 0.0 and -0.0. METAB `tokenToShareRatio` 1.000548. QQQB buy: ratio 1.000725, `priceImpactPct` 5.03512e-05 (fraction), $33.31 in, 0.04437 out. These three returned 200 on the first call.
   - Result: NVDAx unfilled ($16.67), quoted $33.31 of $50, `viable:false`. Its weight was not given to AMD or META. Latency 3.4 s for the triggered call, 2.3 s untriggered.
 - What we changed because of it: `viable` is now false when any leg is unfilled, including a no-tape name (before, only quoted legs counted). Nothing changed for the RFQ error: the leg stays unfilled and the reason is returned. Not tried: a taker address on the NVDAx sell, or picking the cheapest non-RFQ wrapper when the cheapest one is an xStock.
+
+### 2026-10-02 — Semis and defensive baskets, names missing from the snapshot (`/api/basket/semis`, `/api/basket/defensive`)
+
+- Session: PRE-MARKET (09:27 ET / 13:27 UTC / 14:27 WAT).
+- What we hit: `GET /api/_devcheck`, `GET /api/board`, `GET /api/basket/semis?usd=50`, `GET /api/basket/defensive?usd=50`, then `/basket/semis` and `/basket/defensive` in a phone browser.
+- What came back (first call of each):
+  - `_devcheck`: HTTP 200, all four RWA Data endpoints ok (`platforms` 2 items, `search` 1, `underlying_profile`, `underlying_market`). The key works. The `rwa/tokens` listing call logged HTTP 200 in 540 ms at 13:16:45 UTC.
+  - `/api/board`: 7 underlyings. AVGO, KO, PG and JNJ were not among them, although the listing call was ok and `merge_dynamic` had run. So the RWA Data listing, as read here, carries none of the four on BNB Chain. The log records status and latency only, not the listing body, so this is inferred from the snapshot, not read from the response.
+  - Semis: HTTP 200. NVDAB (ratio 1.000778) and AMDB (ratio 1.0) filled with LiquidMesh USDT quotes. AVGO unfilled, reason `not in snapshot yet`. $33.33 filled, $16.67 unallocated.
+  - Defensive: HTTP 200. KO, PG and JNJ all unfilled, `not in snapshot yet`. $0.00 filled, $50.00 unallocated.
+- What we changed because of it: nothing in the data path. A name that is not in the snapshot stays an unfilled leg and its weight is never given to the others. Not verified: whether these tickers are listed on another chain or under another platform; a filled AVGO, KO, PG or JNJ leg.
