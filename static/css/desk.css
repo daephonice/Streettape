@@ -342,7 +342,8 @@ a.hm-action-btn { cursor: pointer; }
 .bd-hero .sess-sub { font-size: 12px; text-align: center; }
 .bd-hero .sess-wrap { align-items: center; }
 .bd-hero-copy { margin: 14px 0 0; font-size: 15px; line-height: 1.45; color: var(--hm-text); max-width: 520px; margin-left: auto; margin-right: auto; }
-.bd-hero-stale { margin: 8px 0 0; font-size: 12px; color: var(--hm-star, #eaaa08); }
+.bd-hero-stale { display: inline-block; margin-top: 6px; padding: 1px 8px; border-radius: 10px; font-size: 11px; color: var(--hm-star, #eaaa08); border: 1px solid currentColor; }
+.bd-hero-stale[hidden] { display: none; }
 
 .bd-legend { margin: 4px 0 14px; font-size: 12px; color: var(--hm-muted); text-align: center; }
 .bd-legend b { color: var(--hm-text); font-weight: 600; }
@@ -373,7 +374,6 @@ a.hm-action-btn { cursor: pointer; }
 .bd-px b { font-size: 14px; font-weight: 600; color: var(--hm-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bd-px-src { font-size: 9px; color: var(--hm-muted); }
 .bd-px-fair b { color: var(--hm-star, #eaaa08); }
-.bd-fair-in { margin: 8px 0 0; font-size: 11px; color: var(--hm-muted); font-variant-numeric: tabular-nums; }
 .bd-thin { font-size: 11px; font-weight: 600; padding: 1px 8px; white-space: nowrap; border-radius: 999px; color: var(--hm-muted); background: rgba(255,255,255,.06); }
 .bd-src-binance { color: var(--hm-star, #eaaa08); }
 .bd-badges { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 2px; }
@@ -885,12 +885,22 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 /* Dead rail: no contract for this wrapper — never looks like a live Buy */
 .mkt-trade-btn-disabled { opacity: 0.45; pointer-events: none; cursor: default; text-align: center; }
 
-.bd-desk { margin: 14px auto 0; max-width: 560px; padding: 12px 14px; border-radius: 16px; background: var(--hm-card); display: flex; flex-direction: column; gap: 8px; align-items: center; }
-.bd-desk-line { margin: 0; font-size: 14px; line-height: 1.4; color: var(--hm-text); font-variant-numeric: tabular-nums; }
-.bd-desk-line.dim { color: var(--hm-muted); }
-.bd-desk-line b.pos { color: var(--hm-pos); }
-.bd-desk-btn { display: inline-flex; align-items: center; height: 38px; padding: 0 18px; border-radius: 19px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; }
-.bd-desk-btn[hidden] { display: none; }
+.bd-book { margin: 14px 0 0; padding: 12px 14px; }
+.bd-book[hidden] { display: none; }
+.bd-book-title { margin: 0 0 8px; font-size: 16px; font-weight: 700; color: var(--hm-text); }
+.bd-book-title small { font-size: 12px; font-weight: 500; color: var(--hm-muted); margin-left: 6px; }
+.bd-book-empty { margin: 0; font-size: 13px; color: var(--hm-muted); }
+.bd-book-empty[hidden] { display: none; }
+.bd-bk-row { padding: 10px 0; border-top: 1px solid var(--hm-border, rgba(127,127,127,.2)); display: flex; flex-direction: column; gap: 4px; font-variant-numeric: tabular-nums; }
+.bd-bk-row:first-child { border-top: 0; }
+.bd-bk-head { display: flex; justify-content: space-between; align-items: center; }
+.bd-bk-name { font-weight: 700; font-size: 15px; color: var(--hm-text); text-decoration: none; }
+.bd-bk-state { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.is-clears .bd-bk-state { color: var(--hm-pos); }
+.is-refused .bd-bk-state { color: var(--hm-muted); }
+.bd-bk-legs, .bd-bk-line { margin: 0; font-size: 13px; line-height: 1.4; color: var(--hm-text); overflow-wrap: anywhere; }
+.bd-bk-line.dim { color: var(--hm-muted); }
+.bd-bk-btn { align-self: flex-start; display: inline-flex; align-items: center; height: 34px; padding: 0 16px; margin-top: 4px; border-radius: 17px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; }
 
 .bd-basket { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 12px; }
 .bd-basket-row { display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
