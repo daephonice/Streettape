@@ -115,7 +115,7 @@ Agent Studio full deploy was not built. The special is for a self-funding seller
 ### Multiplier and missing contracts
 
 - Seed: bStocks `multiplier: 1.0`, xStocks/Ondo `None`. Arb divides only when the value is truthy. `normalized` is true if *either* wrapper has a multiplier, so NVDAB vs NVDAon reports normalized even though one side was raw.
-- AAPLB seed address is `0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a` (BSC), taken from Binance's eligible-bStock token list, not from RWA Data discovery (RWA Data never returned one, so `merge_dynamic()` would not have filled it). `multiplier` stays 1.0 and no price is hardcoded. If Gecko has a pool the row gets tape and can enter the arb; if not it stays "no tape" like any wrapper without a pool.
+- AAPLB seed address is `0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a` (BSC), taken from Binance's eligible-bStock token list, not from RWA Data discovery (RWA Data never returned one, so `merge_dynamic()` would not have filled it). `multiplier` stays 1.0 and no price is hardcoded. Gecko has a pool for it: tape, a price and $1.37M liquidity on 2026-10-02 (see Runtime log), so the row can enter the arb. A wrapper with no pool would still show "no tape".
 
 ---
 
@@ -195,6 +195,13 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `GET /api/_pricepass` (one paced pass, 0.3 s apart, no retries, 20 addresses); `GET /api/board`; the `/` board page on a phone browser.
 - What came back (log, first of each): `rwa/price` with `tokenAddress`, `tokenContractAddress`, `tokenContractAddresses` and `binanceChainId=56`: HTTP 200, `ok` (07:17:28 UTC, NVDAx, 100 ms). First 429 `code=42900 Rate limit exceeded` at 07:17:29 UTC on the Ondo NVDA address in the startup burst; the retry returned 200 the next second. The paced pass: 0 marks of 20. First failure, NVDAx `0xc845b2894dBddd03858fd2D643B4eF725fE0849d`: 200 with no `underlyingPrice`. The row held only `binanceChainId`, `tokenContractAddress`, `platformId: null`, `tokenPrice` 229.4663, `referencePrice` 229.4663 and `tokenPriceUpdatedAt`. `referencePrice` equals `tokenPrice` to every digit, so it is the onchain tape, not an issuer mark, and it was not used. No first success exists. `/api/board`: `markSource` is `yahoo` on all 20 tokens (0 `binance`); Official showed `$738.79` on META, `$227.21` on NVDA and `$149.24` on SPCX, all Yahoo prints. The page printed "Yahoo fallback" under Official on every wrapper.
 - What we changed because of it: `markSource` is `binance` only for a positive `underlyingPrice`, otherwise `yahoo` (or `last-print`), and the source prints under Official on the row and in `/api/board`. The endpoint returned no mark for this address set in PRE-MARKET, so Yahoo stays and no Yahoo number is labeled official. The park after three hard failures is unchanged; nothing retries in a loop. Not tested: CASH OPEN. An issuer mark may only appear during the cash session, so that pass is still open.
+
+### 2026-10-02 — AAPLB seeded from the eligible-token list
+
+- Session: PRE-MARKET (03:24 ET / 07:24 UTC / 08:24 WAT).
+- What we hit: `GET /api/board` after setting the AAPLB seed address to `0x431a3bee82e2ca41e49895cbece5bb0f76a89b7a` (BSC), taken from Binance's eligible-bStock list. RWA Data never returned an address for AAPLB, so `merge_dynamic()` had nothing to fill.
+- What came back (board row, 07:24:15 UTC): `hasTape: true`, `tokenPrice` 331.17 against a Yahoo mark of 330.32 (+0.26%), GeckoTerminal liquidity $1,373,875, `tokenToShareRatio` 1.000604, seed `multiplier` 1.0. Before this change the row was "no tape" and had no Buy. AAPLB is now the deepest Apple wrapper: AAPLon showed $12,983 and AAPLx $417 (thin) in the same read. The Gecko call itself is not in `/api/_devex` (only Binance and Yahoo calls are logged), so there is no Gecko status or latency for it.
+- What we changed because of it: the seed address, nothing else. No price is hardcoded. The ratio is 0.06% off the seed `1.0`, the same pattern as the other bStocks (NVDAB 1.000778, METAB 1.000548, QQQB 1.000725), and the arb math uses the live ratio, not the seed.
 
 ## 2026-09-29T13:18:04+00:00 — rwa official /api/v1/dex/market/rwa/platforms
 - URL: `https://web3.binance.com/build/api/v1/dex/market/rwa/platforms`
