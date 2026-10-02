@@ -1,4 +1,4 @@
-"""AI basket: equal weight NVDA / AMD / META via the cheapest wrapper that has a tape and a share ratio.
+"""Thematic baskets (ai, semis, defensive): equal weight via the cheapest wrapper that has a tape and a share ratio.
 Built from the cached snapshot + one swap.quote(USDT, mint, usd/3) per filled leg. Quote only, never signs."""
 from __future__ import annotations
 
@@ -8,11 +8,16 @@ import time
 import rwa
 import swap
 
-THEME = "ai"
-NAMES = ("NVDA", "AMD", "META")
+THEMES = {
+    "ai": ("AI", ("NVDA", "AMD", "META")),
+    "semis": ("Semis", ("NVDA", "AMD", "AVGO")),
+    "defensive": ("Defensive", ("KO", "PG", "JNJ")),
+}
+THEME = "ai"  # default theme; defensive.py's rotation sells this one
+NAMES = THEMES[THEME][1]
 DEFAULT_USD = 50.0
 _TTL = 30.0
-_cache: dict = {}  # usd -> (monotonic ts, payload)
+_cache: dict = {}  # (theme, usd) -> (monotonic ts, payload)
 
 
 def _cheapest(group: dict | None) -> dict | None:
@@ -30,8 +35,10 @@ def _cheapest(group: dict | None) -> dict | None:
     return {**best, "_perShare": best_px}
 
 
-async def build(usd: float = DEFAULT_USD) -> dict:
-    hit = _cache.get(usd)
+async def build(theme: str = THEME, usd: float = DEFAULT_USD) -> dict:
+    label, NAMES = THEMES[theme]
+    key = (theme, usd)
+    hit = _cache.get(key)
     if hit and time.monotonic() - hit[0] < _TTL:
         return hit[1]
 
@@ -96,7 +103,9 @@ async def build(usd: float = DEFAULT_USD) -> dict:
 
     n_filled = sum(1 for l in legs if l["filled"])
     payload = {
-        "theme": THEME,
+        "theme": theme,
+        "label": label,
+        "names": list(NAMES),
         "sizeUsd": usd,
         "legUsd": slot,
         "from": "USDT",
@@ -109,5 +118,5 @@ async def build(usd: float = DEFAULT_USD) -> dict:
         "note": "Quotes only. Nothing is signed until you confirm each leg in your own wallet.",
     }
     if n_filled:
-        _cache[usd] = (time.monotonic(), payload)
+        _cache[key] = (time.monotonic(), payload)
     return payload

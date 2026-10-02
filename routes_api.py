@@ -92,11 +92,25 @@ async def get_board():
     return snap
 
 
-@router.get("/basket/ai")
-async def api_basket_ai(usd: float = basket.DEFAULT_USD):
+async def _basket(theme: str, usd: float):
     if not 1 <= usd <= 10000:
         raise HTTPException(status_code=400, detail="usd must be between 1 and 10000")
-    return await basket.build(usd)
+    return await basket.build(theme, usd)
+
+
+@router.get("/basket/ai")
+async def api_basket_ai(usd: float = basket.DEFAULT_USD):
+    return await _basket("ai", usd)
+
+
+@router.get("/basket/semis")
+async def api_basket_semis(usd: float = basket.DEFAULT_USD):
+    return await _basket("semis", usd)
+
+
+@router.get("/basket/defensive")
+async def api_basket_defensive(usd: float = basket.DEFAULT_USD):
+    return await _basket("defensive", usd)
 
 
 @router.get("/agent/defensive")

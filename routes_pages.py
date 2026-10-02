@@ -53,7 +53,17 @@ async def board_page(request: Request):
 
 @router.get("/basket/ai", response_class=HTMLResponse)
 async def basket_ai_page(request: Request):
-    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build()})
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("ai")})
+
+
+@router.get("/basket/semis", response_class=HTMLResponse)
+async def basket_semis_page(request: Request):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("semis")})
+
+
+@router.get("/basket/defensive", response_class=HTMLResponse)
+async def basket_defensive_page(request: Request):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("defensive")})
 
 
 @router.get("/board")
