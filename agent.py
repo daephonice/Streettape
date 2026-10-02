@@ -302,6 +302,41 @@ async def desk_arbs(underlying: str | None = None, limit: int = 5) -> list[dict]
     return arbs
 
 
+last_shut: dict = {}
+
+
+def _last_ny_close(now: datetime) -> datetime:
+    ny = now.astimezone(rwa.NY)
+    c = ny.replace(hour=16, minute=0, second=0, microsecond=0)
+    if ny < c:
+        c -= timedelta(days=1)
+    while c.weekday() >= 5:
+        c -= timedelta(days=1)
+    return c
+
+
+def record_shut(arbs: list[dict], session: dict | None) -> None:
+    """Remember the best gap that cleared cost while cash was shut. Within one
+    close, never replace it with a worse net; a new close replaces the old one."""
+    global last_shut
+    if not session or session.get("cashOpen"):
+        return
+    best = best_arb(arbs)
+    if not best:
+        return
+    now = datetime.now(timezone.utc)
+    close = _last_ny_close(now)
+    if last_shut and last_shut.get("closeAt") == close.isoformat() and best["netBps"] <= last_shut["arb"]["netBps"]:
+        return
+    last_shut = {
+        "arb": {k: v for k, v in best.items() if k not in ("sellLeg", "buyLeg")},
+        "label": session.get("label"),
+        "fetchedAt": now.isoformat(),
+        "closeAt": close.isoformat(),
+        "hoursSinceClose": round((now - close).total_seconds() / 3600, 1),
+    }
+
+
 def best_arb(arbs: list[dict]) -> dict | None:
     """Biggest gross share-normalized gap that is still positive after cost."""
     viable = [a for a in arbs if a.get("viable")]
@@ -523,6 +558,7 @@ async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = 
         if q["new"]:
             _studio_seen[key] = now
         arbs.append(q)
+    record_shut(arbs, session)
     alerts = []
     if not session.get("cashOpen"):
         for h in gaps["hits"]:
