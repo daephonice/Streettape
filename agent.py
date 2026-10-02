@@ -285,7 +285,7 @@ async def net_arb_quote(hit: dict, size_usd: float | None = None) -> dict:
         "grossBps": gap_bps,
         "costBps": cost_bps,
         "netBps": net_bps,
-        "viable": net_bps > 0,
+        "viable": net_bps > 0 and _leg_routed(sell_leg) and _leg_routed(buy_leg),
     }
 
 
