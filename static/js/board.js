@@ -140,6 +140,16 @@
     applySearch(searchEl ? searchEl.value : '');
   }
 
+  function renderLast() {
+    const box = $('bd-last'), rows = $('bd-last-rows'), empty = $('bd-last-empty');
+    if (!box || !rows || !empty) return;
+    const list = (lastSnap && lastSnap.lastSession) || [];
+    box.hidden = !(session && session.cashOpen);
+    rows.textContent = '';
+    list.forEach((r) => rows.appendChild(el('p', 'bd-last-row', r.line)));
+    empty.hidden = list.length > 0;
+  }
+
   async function refreshBoard() {
     if (document.hidden) return;
     try {
@@ -150,6 +160,7 @@
       const stale = $('bd-hero-stale');
       if (stale) stale.hidden = !lastSnap.tapeStale;
       renderBoard();
+      renderLast();
     } catch (err) {
       console.warn('board refresh failed', err);
     }
@@ -266,6 +277,7 @@
     if (copy) copy.textContent = s.cashOpen ? COPY_OPEN : COPY_SHUT;
     tickSub();
     // Cash open/shut flips which columns exist (Fair), so redraw from the cached snapshot.
+    renderLast();
     if (rerender !== false && prevOpen !== null && prevOpen !== !!s.cashOpen) renderBoard();
   }
   async function refreshSession() {
