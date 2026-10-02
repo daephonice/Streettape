@@ -719,3 +719,14 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - Session: PRE-MARKET (03:07 ET / 07:07 UTC). Cash shut. One pair, one size, minutes apart.
 - What came back: Pancake calldata path returned 0.007860 TSLAx. OpenOcean `swap_quote` (browser) returned 0.008630 TSLAx, about 9.8% more for the same BNB. OpenOcean's own price for TSLAx was $356.70, near the Yahoo print of $354.81. Pancake's rate of 1.965 TSLAx per BNB at BNB near $771 implies about $392 per TSLAx, near the $390 seen on 2026-10-01 at 06:05 WAT.
 - What we changed because of it: nothing. The Pancake fallback is live and OpenOcean is not reachable from the server, so the cheaper route is not available to users yet. This agrees with the MetaMask eligibility list: BNB to TSLAx is tradable on Pancake and OpenOcean, just not through Binance's aggregator (`40370`).
+
+### 2026-10-02 — Defensive rotation, xStock sell leg has no route (`/api/agent/defensive`)
+
+- Session: PRE-MARKET (08:42 ET / 12:42 UTC / 13:42 WAT). QQQB +1.12% since Fri close. `AGENT_THRESHOLD` was lowered to 0.005 for the test, because the default 1.5% was not crossed (+1.19%, `triggered:false`, no quotes).
+- What we hit: `GET /api/agent/defensive?usd=50` twice. Three USDT sell quotes at $16.67 each (NVDAx, AMDB, METAB), then one USDT to QQQB buy quote for the dollars the sells quoted.
+- What came back (log, first call):
+  - NVDAx to USDT, `GET /aggregator/quote`, 12:42:52 UTC, HTTP 200, 161 ms, `code=40001 userWalletAddress is required for RFQ (xStock) quote`. The cheapest NVDA wrapper per share was an xStock this time (NVDAx, ratio 1.0, tape 227.99), not NVDAB, so the sell side hit RFQ. The basket buy side picked NVDAB on 2026-09-30.
+  - Fallback on the same leg: Pancake `GET /v1/quote` returned HTTP 200 `ok` in 684 ms, yet our code reported `pancake: no agg route and no pcsx permit`, so the 200 carried no usable route for the sell. OpenOcean `GET /v3/bsc/quote` returned 403 plain text in 69 ms. Until now the 403 was only seen on `swap_quote`, so `/quote` is blocked from the server too.
+  - AMDB and METAB: `binance_web3`, LiquidMesh, `priceImpactPct` 0.0 and -0.0. METAB `tokenToShareRatio` 1.000548. QQQB buy: ratio 1.000725, `priceImpactPct` 5.03512e-05 (fraction), $33.31 in, 0.04437 out. These three returned 200 on the first call.
+  - Result: NVDAx unfilled ($16.67), quoted $33.31 of $50, `viable:false`. Its weight was not given to AMD or META. Latency 3.4 s for the triggered call, 2.3 s untriggered.
+- What we changed because of it: `viable` is now false when any leg is unfilled, including a no-tape name (before, only quoted legs counted). Nothing changed for the RFQ error: the leg stays unfilled and the reason is returned. Not tried: a taker address on the NVDAx sell, or picking the cheapest non-RFQ wrapper when the cheapest one is an xStock.
