@@ -587,6 +587,7 @@
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
       if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); }
+      loadEarnings();
       if (/^#swap/.test(location.hash) && !loadGroup.opened && state.address) {
         loadGroup.opened = true;
         const q = new URLSearchParams(location.hash.split('?')[1] || '');  // basket: #swap?pay=USDT&amt=16.67
@@ -691,6 +692,33 @@
       arbEls.flattenBtn.hidden = true;
     }
   }
+
+  // ---- Earnings stand-down: Yahoo calendar flag only; nothing shown without a date ----
+  const earnEls = { card: $('tk-earn'), inEl: $('tk-earn-in'), line: $('tk-earn-line'), btn: $('tk-earn-flatten') };
+  async function loadEarnings() {
+    if (!earnEls.card || !UNDERLYING) return;
+    try {
+      const e = await getJSON(`/api/earnings?underlying=${encodeURIComponent(UNDERLYING)}`);
+      if (!e.inside24h) { earnEls.card.hidden = true; return; }
+      earnEls.card.hidden = false;
+      earnEls.inEl.textContent = `in ${Math.max(1, Math.round(e.hoursUntil))}h`;
+      earnEls.line.textContent = `${UNDERLYING} reports ${new Date(e.earningsDate).toLocaleString()}. Sell the wrapper into USDT before the print; check again after.`;
+    } catch (err) {
+      earnEls.card.hidden = true;
+    }
+  }
+  if (earnEls.btn) earnEls.btn.addEventListener('click', async () => {
+    earnEls.btn.disabled = true;
+    try {
+      const d = await getJSON(`/api/agent/flatten/${encodeURIComponent(UNDERLYING)}?size_usd=${QUICK_SIZE_USD}&force=true`);
+      if (!d.hit) { earnEls.btn.textContent = 'No route'; return; }
+      openSwap('sell', d.hit.symbol);
+    } catch (err) {
+      earnEls.btn.textContent = 'Flatten failed';
+    } finally {
+      earnEls.btn.disabled = false;
+    }
+  });
 
   // ---- News (this underlying only) -----------------------------------------
   function fmtAgo(iso) {
@@ -882,6 +910,7 @@
   setInterval(tickBalances, BALANCE_MS);
   setInterval(loadChart, CHART_MS);
   setInterval(loadNews, 60000);
+  setInterval(loadEarnings, 60000);
   if (IS_GROUP) {
     setInterval(loadArb, 30000);
     setInterval(refreshFlattenVisibility, 30000);
