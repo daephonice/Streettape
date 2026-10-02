@@ -154,6 +154,18 @@ def cmd_basket(a):
                   for l in b.get("legs") or []]})
 
 
+def cmd_defensive(a):
+    d = call("/api/agent/defensive", {"usd": a.usd})
+    if not d.get("triggered"):
+        return out({"triggered": False, "qqqMove": d.get("qqqMove"), "threshold": d.get("threshold"),
+                    "reason": d.get("reason")})
+    sell = d.get("sell") or {}
+    out({"triggered": True, "qqqMove": d.get("qqqMove"), "threshold": d.get("threshold"), "viable": d.get("viable"),
+         "priceImpactPct": d.get("priceImpactPct"), "session": d.get("session"),
+         "sell": {"quotedUsd": sell.get("quotedUsd"), "unfilledUsd": sell.get("unfilledUsd"), "legs": sell.get("legs")},
+         "buy": d.get("buy")})
+
+
 def cmd_quote(a):
     res = order(a.input_mint, a.output_mint, a.amount, a.taker, a.sign)
     out(res, note=not a.sign)
@@ -287,6 +299,8 @@ GRAMMAR = [
      lambda m: cmd_rotate_if(m[1].upper(), float(m[2]) * 100)),
     (r"buy the ai basket for \$?" + _N, "buy the AI basket for $50",
      lambda m: cmd_basket(argparse.Namespace(usd=float(m[1])))),
+    (r"rotate into defensives when volatility spikes", "rotate into defensives when volatility spikes",
+     lambda m: cmd_defensive(argparse.Namespace(usd=50.0))),
     (r"stand down " + _T + r" into usdt if earnings are inside " + _N + r"h", "stand down NVDA into USDT if earnings are inside 24h",
      lambda m: cmd_stand_down(m[1].upper(), float(m[2]))),
 ]
@@ -322,6 +336,7 @@ def main():
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
     f.add_argument("--taker"); f.add_argument("--pct", type=float, help="min premium as fraction, default 0.02"); f.set_defaults(f=cmd_flatten)
     bk = s.add_parser("basket"); bk.add_argument("--usd", type=float, default=50.0); bk.set_defaults(f=cmd_basket)
+    df = s.add_parser("defensive"); df.add_argument("--usd", type=float, default=50.0); df.set_defaults(f=cmd_defensive)
     r = s.add_parser("rotate"); r.add_argument("underlying"); r.set_defaults(f=cmd_rotate)
     al = s.add_parser("alerts"); al.add_argument("--threshold", type=float); al.set_defaults(f=cmd_alerts)
     sy = s.add_parser("say"); sy.add_argument("sentence", nargs="+"); sy.set_defaults(f=cmd_say)

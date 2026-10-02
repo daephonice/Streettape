@@ -20,6 +20,7 @@ Quote/sign goes through the official `binance-agentic-wallet` skill (`baw market
 | "rotate into cheapest NVDA" | `rotate NVDA` | `GET /api/agent/scan?underlying=NVDA` |
 | "alert only cash-shut" | `alerts [--threshold 0.015]` | `GET /api/agent/scan` |
 | "AI basket" | `basket [--usd 50]` | `GET /api/basket/ai` |
+| "rotate into defensives" | `defensive [--usd 50]` | `GET /api/agent/defensive` |
 | closed grammar, exact sentences only (below) | `say "<sentence>"` | dispatches to the rows above |
 | "verify the quote" (same pair, `baw` vs API, never signs) | `verify <inputMint> <outputMint> <uiAmount> [--taker 0x..] [--tol 50]` | `baw market-order quote` + `POST /api/swap/order` |
 | raw quote | `quote <inputMint> <outputMint> <uiAmount> [--taker 0x..] [--sign]` | `POST /api/swap/order` |
@@ -35,6 +36,7 @@ No model call, no free-text fallback. Anything else exits 1 with `{"error":"unre
 | `flatten anything richer than 2% while cash is shut` | `GET /api/agent/scan?threshold=0.02`; sell quotes only for hits above 2% and only if `cashOpen` is false |
 | `rotate NVDA if net gap clears 1%` | `GET /api/agent/arb/NVDA`; legs printed only if `viable` and `netBps` >= 100 |
 | `buy the AI basket for $50` | `GET /api/basket/ai?usd=50` |
+| `rotate into defensives when volatility spikes` | `GET /api/agent/defensive?usd=50` |
 | `stand down NVDA into USDT if earnings are inside 24h` | `GET /api/earnings?underlying=NVDA`; sell quotes only if `hoursUntil` is between 0 and the stated hours (Yahoo calendar date; no date means no stand-down, never inferred from headlines) |
 
 ## Rules
@@ -44,5 +46,6 @@ No model call, no free-text fallback. Anything else exits 1 with `{"error":"unre
 - **rotate**: sell the rich wrapper, buy the cheap one. Print `viable`, `netBps`, both legs and both ratios. If `viable` is false, say costs eat the gap and do not push the trade. If there is no arb, say so.
 - **alerts**: only alert when `session.cashOpen` is false. When cash is open, output nothing.
 - **basket**: equal-weight NVDA/AMD/META, USD split three ways, one USDT buy quote per name into the cheapest wrapper with a tape and a share ratio. Show `symbol`, `platform`, `contract`, `ratio`, `amountUsd`, `outAmount` per leg. A name with no tape is `unfilled`: say so and show its weight as unfilled, never reassign it to the other two. Only this one theme exists.
+- **defensive**: QQQ wrapper move since Friday 16:00 ET vs 1.5% (`AGENT_THRESHOLD`, either direction). Under it: `triggered:false`, no quotes. Over it: sell quotes for each AI-basket leg (usd/3, same wrapper as `basket`) into USDT, then one QQQ buy quote for the dollars those sells quoted. A name with no tape is unfilled and its weight is never reassigned. `viable` is false if any quoted leg has no route. A rotation, not an arb: show `priceImpactPct` and `routeLabel`, never net the move against impact.
 - Cooldown: don't repeat an alert for the same symbol within 60 minutes.
 - Every command ends with: not auto-executed, confirm and sign in your own wallet. (`alerts` prints nothing while cash is open.)
