@@ -264,9 +264,10 @@ def cmd_rotate_if(u, min_bps):
 
 
 def cmd_stand_down(u, hours, usd=50.0):
-    """Sell quotes into USDT only if the earnings endpoint flags the window."""
-    e = call(f"/api/agent/earnings/{urllib.parse.quote(u)}", {"hours": hours})
-    if not e.get("earningsInWindow"):
+    """Sell quotes into USDT only if Yahoo's earnings calendar has a date inside `hours`."""
+    e = call("/api/earnings", {"underlying": u})
+    h = e.get("hoursUntil")
+    if h is None or not (0 <= h <= hours):
         return out({"underlying": u, "standDown": False, "earnings": e})
     out({"underlying": u, "standDown": True, "earnings": e, "sell": _sell_legs(_board_wrappers(underlying=u), usd)})
 

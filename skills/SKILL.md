@@ -35,7 +35,7 @@ No model call, no free-text fallback. Anything else exits 1 with `{"error":"unre
 | `flatten anything richer than 2% while cash is shut` | `GET /api/agent/scan?threshold=0.02`; sell quotes only for hits above 2% and only if `cashOpen` is false |
 | `rotate NVDA if net gap clears 1%` | `GET /api/agent/arb/NVDA`; legs printed only if `viable` and `netBps` >= 100 |
 | `buy the AI basket for $50` | `GET /api/basket/ai?usd=50` |
-| `stand down NVDA into USDT if earnings are inside 24h` | `GET /api/agent/earnings/NVDA?hours=24`; sell quotes only if `earningsInWindow` (news-headline flag, not a calendar) |
+| `stand down NVDA into USDT if earnings are inside 24h` | `GET /api/earnings?underlying=NVDA`; sell quotes only if `hoursUntil` is between 0 and the stated hours (Yahoo calendar date; no date means no stand-down, never inferred from headlines) |
 
 ## Rules
 - **verify**: prints both quotes (`baw` and API) with `uiOutAmount`, `route`, `priceImpactPct`, `deltaBps` and a verdict. Exit 1 unless `SAME ORDER`. If `baw` fails the verdict says so; never report a verified quote without a live `baw` result.
