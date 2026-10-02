@@ -960,3 +960,10 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 .swp-stk-opt small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; opacity: 0.8; }
 .swp-stk-opt.active { background: var(--hm-ctrl-on, #45474b); color: var(--hm-text, #fafafa); }
 .swp-stk-opt:disabled { opacity: 0.35; cursor: default; }
+
+.bd-last { margin: 14px 0 0; padding: 12px 14px; }
+.bd-last[hidden] { display: none; }
+.bd-last-title { margin: 0 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--hm-muted); }
+.bd-last-row { margin: 0 0 4px; font-size: 13px; line-height: 1.4; color: var(--hm-text); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.bd-last-empty { margin: 0; font-size: 13px; color: var(--hm-muted); }
+.bd-last-empty[hidden] { display: none; }
