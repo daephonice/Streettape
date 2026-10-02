@@ -1,5 +1,5 @@
 /* Gap desk (/). Three wrapper columns per underlying: Tape / Official / Fair,
- * plus a dominant session state. Data: /api/board (groups + session), /api/session, /api/agent/scan (desk line + rotate).
+ * plus a dominant session state. Data: /api/board (groups + session), /api/session, /api/agent/scan (weekend book + rotate).
  * Fair only shows while cash is shut, mirroring agent.official_vs_fair_line(). */
 (function () {
   const REFRESH_MS = 45000;
@@ -14,7 +14,7 @@
   const searchEl = $('bd-search');
   let lastSnap = null;
   let session = null;
-  let arbMap = {};   // underlying -> viable net arb (from /api/agent/scan)
+  let arbMap = {};   // underlying -> Clears book row (from /api/agent/scan)
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -117,15 +117,6 @@
     cols.style.setProperty('--n', String(ws.length || 1));
     ws.forEach((t) => cols.appendChild(buildWrapper(g, t, cashOpen)));
     art.appendChild(cols);
-    const fw = ws.find((t) => !cashOpen && !g.noYahoo && g.markPrice && t.fairPrice);
-    if (fw) {
-      const pc = (v) => ((v || 0) * 100 >= 0 ? '+' : '') + ((v || 0) * 100).toFixed(2) + '%';
-      const nw = Math.round((g.newsShock || 0) * 100);
-      art.appendChild(el('p', 'bd-fair-in', g.betaStatus === 'estimated'
-        ? 'Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β ' + g.beta.toFixed(2) +
-          ' · QQQ ' + pc(g.indexMove) + ' since Fri close · news ' + (nw >= 0 ? '+' : '') + nw + '%'
-        : 'Fair = last print. Beta not estimated (' + (g.betaPairs || 0) + ' pairs).' + (nw ? ' News ' + (nw > 0 ? '+' : '') + nw + '%.' : '')));
-    }
     return art;
   }
 
@@ -168,70 +159,51 @@
     }
   }
 
-  // ---- Desk line (same payload as GET /api/agent/scan) ---------------------
+  // ---- Weekend book (same payload as GET /api/agent/scan) ------------------
   const bps = (v) => Math.round(v) + ' bps';
-  function renderDesk(scan) {
-    const line = $('bd-desk-line'), btn = $('bd-desk-btn');
-    if (!line || !btn) return;
-    const arbs = scan.arbs || [];
-    arbMap = {};
-    arbs.forEach((a) => { if (a.viable) arbMap[a.underlying] = a; });
-    const best = scan.best;
-    const cashOpen = !!(session && session.cashOpen);
-    line.textContent = '';
-    if (cashOpen) {
-      const ls = scan.lastShut;
-      if (ls && ls.arb) {
-        const a = ls.arb;
-        line.className = 'bd-desk-line';
-        line.appendChild(el('b', '', 'Last cash-shut · ' + a.underlying + ' +' + bps(a.netBps) + ' net'));
-        line.appendChild(document.createTextNode(
-          ' · rich ' + a.richSymbol + ' → cheap ' + a.cheapSymbol +
-          ' · gross ' + bps(a.grossBps) + ' − cost ' + bps(a.costBps) +
-          ' · ' + ls.hoursSinceClose + 'h after NY close'));
-        btn.hidden = false;
-        btn.href = '/t/' + encodeURIComponent(a.underlying) + '#rotate';
-        btn.textContent = 'View rotate';
-      } else {
-        line.className = 'bd-desk-line dim';
-        line.textContent = 'Last cash-shut: none recorded yet. The desk records the first gap that clears cost after the NY close.';
-        btn.hidden = true;
-      }
-      renderBoard();
-      return;
-    }
-    if (best) {
-      line.className = 'bd-desk-line';
-      line.appendChild(el('b', 'pos', 'Live · ' + best.underlying + ' +' + bps(best.netBps) + ' net'));
-      line.appendChild(document.createTextNode(
-        ' · rich ' + best.richSymbol + ' → cheap ' + best.cheapSymbol +
-        ' · gross ' + bps(best.grossBps) + ' − cost ' + bps(best.costBps)));
-      if (!(session && session.cashOpen) && best.gapVsFair !== null && best.gapVsFair !== undefined) {
-        const pc = (v) => (v > 0 ? '+' : '') + (v * 100).toFixed(1) + '%';
-        line.appendChild(document.createTextNode(
-          ' · ' + best.richSymbol + ' vs official ' + pc(best.gapVsOfficial) + ' · vs fair ' + pc(best.gapVsFair)));
-      }
-      btn.hidden = false;
-      btn.href = '/t/' + encodeURIComponent(best.underlying) + '#rotate';
-      btn.textContent = 'Rotate $' + Math.round(best.sizeUsd || 50);
+  function bookRow(r) {
+    const clears = r.state === 'clears';
+    const row = el('div', 'bd-bk-row ' + (clears ? 'is-clears' : 'is-refused'));
+    const head = el('div', 'bd-bk-head');
+    const t = el('a', 'bd-bk-name', r.underlying);
+    t.href = '/t/' + encodeURIComponent(r.underlying);
+    head.appendChild(t);
+    head.appendChild(el('span', 'bd-bk-state', clears ? 'Clears' : 'Refused'));
+    row.appendChild(head);
+    row.appendChild(el('p', 'bd-bk-legs',
+      'Sell ' + r.richSymbol + ' ' + money(r.richSharePrice) + ' → buy ' + r.cheapSymbol + ' ' + money(r.cheapSharePrice) + ' per share'));
+    if (clears) {
+      row.appendChild(el('p', 'bd-bk-line', 'gap ' + bps(r.gapBps) + ' · cost ' + bps(r.costBps) + ' · net +' + bps(r.netBps) + ' at $' + Math.round(r.sizeUsd || 50)));
+      const a = el('a', 'bd-bk-btn', 'Rotate $' + Math.round(r.sizeUsd || 50));
+      a.href = '/t/' + encodeURIComponent(r.underlying) + '#rotate';
+      row.appendChild(a);
     } else {
-      line.className = 'bd-desk-line dim';
-      const top = arbs[0];
-      line.textContent = top
-        ? 'Refused: ' + top.underlying + ' gross ' + bps(top.grossBps) + ' − cost ' + bps(top.costBps) + ' = ' + bps(top.netBps) + ' net.'
-        : 'No viable rotation. No cross-wrapper gap above 1% right now.';
-      btn.hidden = true;
+      row.appendChild(el('p', 'bd-bk-line dim', 'gap ' + bps(r.gapBps) + ' · ' +
+        (r.costBps === null || r.costBps === undefined ? r.reason : 'cost ' + bps(r.costBps)) + ' · refused'));
+    }
+    return row;
+  }
+  function renderBook(scan) {
+    const rows = scan.book || [];
+    arbMap = {};
+    rows.forEach((r) => { if (r.state === 'clears') arbMap[r.underlying] = r; });
+    const box = $('bd-book-rows'), empty = $('bd-book-empty');
+    if (box && empty) {
+      box.textContent = '';
+      rows.forEach((r) => box.appendChild(bookRow(r)));
+      empty.textContent = 'No name has two live ratio-backed wrapper tapes right now.';
+      empty.hidden = rows.length > 0;
     }
     renderBoard();
   }
-  async function refreshDesk() {
+  async function refreshBook() {
     if (document.hidden) return;
     try {
       const resp = await fetch('/api/agent/scan', { cache: 'no-store' });
       if (!resp.ok) return;
-      renderDesk(await resp.json());
+      renderBook(await resp.json());
     } catch (err) {
-      console.warn('desk refresh failed', err);
+      console.warn('book refresh failed', err);
     }
   }
 
@@ -292,6 +264,7 @@
     if (copy) copy.textContent = s.cashOpen ? COPY_OPEN : COPY_SHUT;
     tickSub();
     // Cash open/shut flips which columns exist (Fair), so redraw from the cached snapshot.
+    const bk = $('bd-book'); if (bk) bk.hidden = !!s.cashOpen;
     renderLast();
     if (rerender !== false && prevOpen !== null && prevOpen !== !!s.cashOpen) renderBoard();
   }
@@ -311,11 +284,11 @@
   if (hero0) session = { cashOpen: hero0.dataset.cashOpen === '1', label: ($('sess-label') || {}).textContent || '' };
   refreshSession();
   refreshBoard();
-  refreshDesk();
+  refreshBook();
   refreshDefensive();
   setInterval(refreshDefensive, REFRESH_MS);
   setInterval(refreshBoard, REFRESH_MS);
-  setInterval(refreshDesk, REFRESH_MS);
+  setInterval(refreshBook, REFRESH_MS);
   setInterval(refreshSession, SESS_MS);
   setInterval(tickSub, 60000);
 })();
