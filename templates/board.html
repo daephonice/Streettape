@@ -29,6 +29,11 @@
 {% block content %}
 {% set cash_open = session.cashOpen %}
 <div class="bd-col" id="bd-root">
+  <section class="hm-card bd-last" id="bd-last" {% if not cash_open %}hidden{% endif %}>
+    <h2 class="bd-last-title">Last closed session</h2>
+    <div id="bd-last-rows">{% for r in last_session %}<p class="bd-last-row">{{ r.line }}</p>{% endfor %}</div>
+    <p class="bd-last-empty" id="bd-last-empty" {% if last_session %}hidden{% endif %}>No cash-shut print stored yet. First one lands at 21:00 WAT.</p>
+  </section>
   <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
     <span class="sess-wrap">
       <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
