@@ -90,7 +90,11 @@
         {% endfor %}
       </div>
       {% if not cash_open and not g.noYahoo and g.markPrice and g.fairPrice %}
-      <p class="bd-fair-in">Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β {{ '%.2f'|format(g.beta or 0) }} · QQQ {{ '%+.2f%%'|format((g.indexMove or 0) * 100) }} since Fri close · news {{ '%+.0f%%'|format((g.newsShock or 0) * 100) }}</p>
+      {% if g.betaStatus == 'estimated' %}
+      <p class="bd-fair-in">Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β {{ '%.2f'|format(g.beta) }} · QQQ {{ '%+.2f%%'|format((g.indexMove or 0) * 100) }} since Fri close · news {{ '%+.0f%%'|format((g.newsShock or 0) * 100) }}</p>
+      {% else %}
+      <p class="bd-fair-in">Fair = last print. Beta not estimated ({{ g.betaPairs or 0 }} pairs).{% if g.newsShock %} News {{ '%+.0f%%'|format(g.newsShock * 100) }}.{% endif %}</p>
+      {% endif %}
       {% endif %}
     </article>
     {% endfor %}
