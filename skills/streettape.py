@@ -225,29 +225,80 @@ def cmd_alerts(a):
          "threshold": report.get("threshold"), "hits": report.get("hits")})
 
 
+def _board_wrappers(underlying=None, symbols=None):
+    toks = call("/api/board").get("tokens") or []
+    return [t for t in toks if t.get("mint") and t.get("tokenPrice")
+            and (underlying is None or (t.get("underlying") or "").upper() == underlying)
+            and (symbols is None or t.get("symbol") in symbols)]
+
+
+def _sell_legs(tokens, usd=50.0):
+    return [{"symbol": t["symbol"], "premium": t.get("premium"), "sizeUsd": usd,
+             "quote": order(t["mint"], USDT, usd / t["tokenPrice"])} for t in tokens]
+
+
+def cmd_flatten_shut(pct, usd=50.0):
+    """Sell quotes only for wrappers richer than pct, and only while cash is shut."""
+    rep = call("/api/agent/scan", {"threshold": pct})
+    sess = rep.get("session") or {}
+    if sess.get("cashOpen"):
+        return out({"session": sess, "flatten": [], "message": "cash is open, nothing quoted"})
+    rich = {h["symbol"] for h in rep.get("hits") or [] if (h.get("premium") or 0) > pct}
+    toks = sorted(_board_wrappers(symbols=rich), key=lambda t: t["premium"], reverse=True) if rich else []
+    out({"session": sess, "threshold": pct, "flatten": _sell_legs(toks, usd)})
+
+
+def cmd_rotate_if(u, min_bps):
+    """Print the legs only if viable and netBps >= min_bps."""
+    r = call(f"/api/agent/arb/{urllib.parse.quote(u)}")
+    x = r.get("hit")
+    if not x:
+        return out({"underlying": u, "rotate": None, "message": "no arb"})
+    net = x.get("netBps")
+    if not x.get("viable") or net is None or net < min_bps:
+        return out({"underlying": u, "rotate": None, "viable": x.get("viable"), "netBps": net,
+                    "minBps": min_bps, "message": "net gap below the bar, not pushing this trade"})
+    out({"underlying": u, "viable": True, "netBps": net, "minBps": min_bps,
+         "sell": {"symbol": x.get("richSymbol"), "ratio": x.get("richRatio"), "leg": x.get("sellLeg")},
+         "buy": {"symbol": x.get("cheapSymbol"), "ratio": x.get("cheapRatio"), "leg": x.get("buyLeg")}})
+
+
+def cmd_stand_down(u, hours, usd=50.0):
+    """Sell quotes into USDT only if the earnings endpoint flags the window."""
+    e = call(f"/api/agent/earnings/{urllib.parse.quote(u)}", {"hours": hours})
+    if not e.get("earningsInWindow"):
+        return out({"underlying": u, "standDown": False, "earnings": e})
+    out({"underlying": u, "standDown": True, "earnings": e, "sell": _sell_legs(_board_wrappers(underlying=u), usd)})
+
+
+_T = r"\$?([a-z][a-z0-9.]{0,9})"
+_N = r"(\d+(?:\.\d+)?)"
+GRAMMAR = [
+    (r"(?:what(?:'s| is) )?rich (?:vs|versus) friday", "what's rich vs Friday",
+     lambda m: cmd_board(argparse.Namespace(min=0.0))),
+    (r"rotate into cheapest " + _T, "rotate into cheapest NVDA",
+     lambda m: cmd_rotate(argparse.Namespace(underlying=m[1].upper()))),
+    (r"alert only while cash is shut", "alert only while cash is shut",
+     lambda m: cmd_alerts(argparse.Namespace(threshold=None))),
+    (r"flatten anything richer than " + _N + r"% while cash is shut", "flatten anything richer than 2% while cash is shut",
+     lambda m: cmd_flatten_shut(float(m[1]) / 100)),
+    (r"rotate " + _T + r" if net gap clears " + _N + r"%", "rotate NVDA if net gap clears 1%",
+     lambda m: cmd_rotate_if(m[1].upper(), float(m[2]) * 100)),
+    (r"buy the ai basket for \$?" + _N, "buy the AI basket for $50",
+     lambda m: cmd_basket(argparse.Namespace(usd=float(m[1])))),
+    (r"stand down " + _T + r" into usdt if earnings are inside " + _N + r"h", "stand down NVDA into USDT if earnings are inside 24h",
+     lambda m: cmd_stand_down(m[1].upper(), float(m[2]))),
+]
+
+
 def say(sentence):
-    """Phrase entry: four sentences, four commands. No model call; the parser is the feature."""
-    t = re.sub(r"\s+", " ", sentence.lower()).strip()
-    if "rotate" in t:
-        m = re.search(r"(?:cheapest|into|rotate)\s+\$?([a-z][a-z0-9.]{0,9})\b", t)
-        skip = {"into", "cheapest", "rotate", "the", "a"}
-        words = [w.strip("$.,!?") for w in t.split()]
-        tick = next((w for w in reversed(words) if w and w not in skip and w != "rotate"), None)
-        tick = m.group(1) if m and m.group(1) not in skip else tick
-        if not tick:
-            sys.exit(json.dumps({"error": "rotate into which ticker?"}))
-        return cmd_rotate(argparse.Namespace(underlying=tick))
-    if "basket" in t:
-        return cmd_basket(argparse.Namespace(usd=50.0))
-    if "flatten" in t:
-        m = re.search(r"(\d+(?:\.\d+)?)\s*%", t)
-        return cmd_flatten(argparse.Namespace(usd=50.0, taker=None, pct=float(m.group(1)) / 100 if m else None))
-    if "alert" in t and re.search(r"cash.*(shut|closed)|(shut|closed).*cash", t):
-        return cmd_alerts(argparse.Namespace(threshold=None))
-    if "rich" in t or "friday" in t:
-        return cmd_board(argparse.Namespace(min=0.0))
-    sys.exit(json.dumps({"error": "unrecognized", "try": [
-        "what's rich vs Friday", "rotate into cheapest NVDA", "flatten anything 2% rich", "alert only when cash is shut", "AI basket"]}))
+    """Closed grammar: exact sentences only, no model call, no free-text fallback."""
+    t = re.sub(r"\s+", " ", sentence.lower()).strip().rstrip(".!?")
+    for pat, _, fn in GRAMMAR:
+        m = re.fullmatch(pat, t)
+        if m:
+            return fn(m)
+    sys.exit(json.dumps({"error": "unrecognized", "accepted": [ex for _, ex, _ in GRAMMAR]}))
 
 
 def cmd_say(a):
