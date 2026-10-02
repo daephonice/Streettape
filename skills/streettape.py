@@ -161,7 +161,7 @@ def cmd_defensive(a):
                     "reason": d.get("reason")})
     sell = d.get("sell") or {}
     out({"triggered": True, "qqqMove": d.get("qqqMove"), "threshold": d.get("threshold"), "viable": d.get("viable"),
-         "priceImpactPct": d.get("priceImpactPct"), "session": d.get("session"),
+         "priceImpactPct": d.get("priceImpactPct"), "routeLabel": d.get("routeLabel"), "session": d.get("session"),
          "sell": {"quotedUsd": sell.get("quotedUsd"), "unfilledUsd": sell.get("unfilledUsd"), "legs": sell.get("legs")},
          "buy": d.get("buy")})
 
