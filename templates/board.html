@@ -29,23 +29,24 @@
 {% block content %}
 {% set cash_open = session.cashOpen %}
 <div class="bd-col" id="bd-root">
-  <section class="hm-card bd-last" id="bd-last" {% if not cash_open %}hidden{% endif %}>
-    <h2 class="bd-last-title">Last closed session</h2>
-    <div id="bd-last-rows">{% for r in last_session %}<p class="bd-last-row">{{ r.line }}</p>{% endfor %}</div>
-    <p class="bd-last-empty" id="bd-last-empty" {% if last_session %}hidden{% endif %}>No cash-shut print stored yet. First one lands at 21:00 WAT.</p>
-  </section>
   <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
     <span class="sess-wrap">
       <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
       <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
+      <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
     </span>
     <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.{% else %}Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.{% endif %}</p>
-    <div class="bd-desk" id="bd-desk">
-      <p class="bd-desk-line dim" id="bd-desk-line">Scanning wrappers for a gap that clears cost…</p>
-      <a class="bd-desk-btn" id="bd-desk-btn" href="/" hidden>Rotate $50</a>
-    </div>
     <div class="bd-basket"><div class="bd-basket-row"><span class="bd-basket-pill">AI BASKET</span><a class="bd-basket-link" href="/basket/ai">Click to view</a><span class="bd-basket-pill">SEMIS</span><a class="bd-basket-link" href="/basket/semis">View</a><span class="bd-basket-pill">DEFENSIVE</span><a class="bd-basket-link" href="/basket/defensive">View</a><a class="bd-basket-link" id="bd-def-link" href="/api/agent/defensive?usd=50" hidden>Defensive rotation</a></div><p class="bd-basket-sub">AI: NVDA AMD META · Semis: NVDA AMD AVGO · Defensive: KO PG JNJ, $50 equal weight</p></div>
-    <p class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited). Showing last good read.</p>
+  </section>
+  <section class="hm-card bd-book" id="bd-book" {% if cash_open %}hidden{% endif %}>
+    <h2 class="bd-book-title">Weekend book <small>same share across wrappers · net of cost at $50</small></h2>
+    <div id="bd-book-rows"></div>
+    <p class="bd-book-empty" id="bd-book-empty">Reading the book…</p>
+  </section>
+  <section class="hm-card bd-last" id="bd-last" {% if not cash_open %}hidden{% endif %}>
+    <h2 class="bd-last-title">Last closed session</h2>
+    <div id="bd-last-rows">{% for r in last_session %}<p class="bd-last-row">{{ r.line }}</p>{% endfor %}</div>
+    <p class="bd-last-empty" id="bd-last-empty" {% if last_session %}hidden{% endif %}>No cash-shut print stored yet. First one lands at 21:00 WAT.</p>
   </section>
 
   <p class="bd-legend"><b>Tape</b> onchain price · <b>Official</b> issuer mark · <b>Fair</b> synthetic mark (cash shut, not an issuer mark, not the onchain tape)</p>
@@ -89,13 +90,6 @@
         </div>
         {% endfor %}
       </div>
-      {% if not cash_open and not g.noYahoo and g.markPrice and g.fairPrice %}
-      {% if g.betaStatus == 'estimated' %}
-      <p class="bd-fair-in">Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β {{ '%.2f'|format(g.beta) }} · QQQ {{ '%+.2f%%'|format((g.indexMove or 0) * 100) }} since Fri close · news {{ '%+.0f%%'|format((g.newsShock or 0) * 100) }}</p>
-      {% else %}
-      <p class="bd-fair-in">Fair = last print. Beta not estimated ({{ g.betaPairs or 0 }} pairs).{% if g.newsShock %} News {{ '%+.0f%%'|format(g.newsShock * 100) }}.{% endif %}</p>
-      {% endif %}
-      {% endif %}
     </article>
     {% endfor %}
   </div>
