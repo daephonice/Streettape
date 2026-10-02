@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}StreetTape — AI basket{% endblock %}
+{% block title %}StreetTape — {{ b.label }} basket{% endblock %}
 {% block body_class %}hm bd{% endblock %}
 
 {% block header %}
@@ -19,7 +19,7 @@
 <div class="bd-col">
   <section class="bd-hero">
     <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(b.session.label, 'sess-we') }}"><span class="sess-dot"></span><span>{{ b.session.label }}</span></span>
-    <p class="bd-hero-copy">AI basket: NVDA, AMD, META. ${{ '%.2f'|format(b.sizeUsd) }} equal weight, ${{ '%.2f'|format(b.legUsd) }} per name, quoted as buys from USDT into the cheapest wrapper with a tape and a share ratio.</p>
+    <p class="bd-hero-copy">{{ b.label }} basket: {{ b.names|join(', ') }}. ${{ '%.2f'|format(b.sizeUsd) }} equal weight, ${{ '%.2f'|format(b.legUsd) }} per name, quoted as buys from USDT into the cheapest wrapper with a tape and a share ratio.</p>
     {% if b.tapeStale %}<p class="bd-hero-stale">Tape delayed (rate limited). Showing last good read.</p>{% endif %}
   </section>
 
