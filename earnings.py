@@ -14,7 +14,7 @@ import rwa
 
 log = logging.getLogger("earnings")
 REFRESH_SECONDS = int(os.getenv("EARNINGS_REFRESH_SECONDS", "3600"))
-WINDOW_HOURS = 24.0
+WINDOW_HOURS = float(os.getenv("EARNINGS_WINDOW_HOURS", "24"))
 HOSTS = ("https://query2.finance.yahoo.com", "https://query1.finance.yahoo.com")
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
