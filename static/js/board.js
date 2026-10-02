@@ -120,9 +120,11 @@
     const fw = ws.find((t) => !cashOpen && !g.noYahoo && g.markPrice && t.fairPrice);
     if (fw) {
       const pc = (v) => ((v || 0) * 100 >= 0 ? '+' : '') + ((v || 0) * 100).toFixed(2) + '%';
-      art.appendChild(el('p', 'bd-fair-in',
-        'Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β ' + (g.beta || 0).toFixed(2) +
-        ' · QQQ ' + pc(g.indexMove) + ' since Fri close · news ' + (((g.newsShock || 0) * 100) >= 0 ? '+' : '') + Math.round((g.newsShock || 0) * 100) + '%'));
+      const nw = Math.round((g.newsShock || 0) * 100);
+      art.appendChild(el('p', 'bd-fair-in', g.betaStatus === 'estimated'
+        ? 'Fair (synthetic) = last print × (1 + β × QQQ move) × (1 + news) · β ' + g.beta.toFixed(2) +
+          ' · QQQ ' + pc(g.indexMove) + ' since Fri close · news ' + (nw >= 0 ? '+' : '') + nw + '%'
+        : 'Fair = last print. Beta not estimated (' + (g.betaPairs || 0) + ' pairs).' + (nw ? ' News ' + (nw > 0 ? '+' : '') + nw + '%.' : '')));
     }
     return art;
   }
