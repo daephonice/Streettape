@@ -7,10 +7,10 @@ fair = last_official_print
 last_official_print: latest PriceSnapshot(platform="cash") mark for the
 underlying (falls back to whatever markPrice board.py has live).
 beta: sensitivity of this underlying's own tape to the QQQ wrapper's tape,
-estimated from price_snapshots while cash was open (regression through
-origin on log-returns between consecutive snapshot rows), capped to
-+-BETA_CAP. No history yet -> beta 0 (fair collapses to last print x news
-shock only).
+estimated from price_snapshots while cash was open: each name print is paired
+with the nearest QQQ print inside 2 minutes, regression through origin on
+log-returns between consecutive pairs, capped to +-BETA_CAP. Under 5 pairs ->
+betaStatus "unestimated", beta None (fair = last print x news shock only).
 move: QQQB (fallback QQQx/QQQon) tape now vs its snapshot nearest last
 Friday 16:00 ET close.
 news_shock: +-NEWS_SHOCK_CAP only if the underlying's latest news item is
@@ -22,6 +22,7 @@ of this module is a stand-in for when there is no live cash print.
 """
 from __future__ import annotations
 
+import bisect
 import logging
 import math
 from datetime import datetime, timedelta, timezone
@@ -97,10 +98,16 @@ def _last_cash_mark(db, underlying: str) -> float | None:
     return float(row[0]) if row else None
 
 
-def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> float:
-    """Beta of `underlying`'s tape to QQQ wrapper's tape, from consecutive
-    snapshot pairs while cash was open. Regression through the origin on
-    log-returns: beta = sum(x*y) / sum(x*x). 0 with too little data."""
+PAIR_WINDOW_SECONDS = 120
+MIN_PAIRS = 5
+
+
+def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> tuple[float | None, int]:
+    """(beta, n_pairs). Each name print is paired with the QQQ print nearest
+    in time inside PAIR_WINDOW_SECONDS; only cash-open pairs count. Regression
+    through the origin on log-returns between consecutive pairs:
+    beta = sum(x*y) / sum(x*x), capped to +-BETA_CAP. Fewer than MIN_PAIRS
+    pairs -> (None, n): not estimated. Empty denominator -> (0.0, n)."""
     since = now - timedelta(hours=BETA_LOOKBACK_HOURS)
 
     def _series(sym):
@@ -110,32 +117,47 @@ def _beta(db, underlying: str, qqq_symbol: str, now: datetime) -> float:
                    PriceSnapshot.fetched_at >= since, PriceSnapshot.token_price > 0)
             .order_by(PriceSnapshot.fetched_at.asc())
         ).all()
-        return [(t, p) for p, t in rows]
+        out = []
+        for p, t in rows:
+            if t.tzinfo is None:
+                t = t.replace(tzinfo=timezone.utc)
+            out.append((t, float(p)))
+        return out
 
     und_wrapper = next((w["symbol"] for w in rwa.wrappers() if w["underlying"] == underlying), None)
     if not und_wrapper:
-        return 0.0
-    xs = dict(_series(qqq_symbol))
-    ys = dict(_series(und_wrapper))
-    common = sorted(set(xs) & set(ys))
-    if len(common) < 5:
-        return 0.0
+        return None, 0
+    xs = _series(qqq_symbol)
+    ys = _series(und_wrapper)
+    if not xs or not ys:
+        return None, 0
 
-    def _open(ts) -> bool:
-        return rwa.session_now(ts)["cashOpen"]
+    xt = [t for t, _ in xs]
+    pairs = []  # (t, qqq_price, name_price)
+    used = set()
+    for t, y in ys:
+        i = bisect.bisect_left(xt, t)
+        cands = [j for j in (i - 1, i) if 0 <= j < len(xs)]
+        j = min(cands, key=lambda k: abs((xt[k] - t).total_seconds()))
+        if abs((xt[j] - t).total_seconds()) > PAIR_WINDOW_SECONDS or j in used:
+            continue
+        if not rwa.session_now(t)["cashOpen"]:
+            continue
+        used.add(j)
+        pairs.append((t, xs[j][1], y))
+
+    n = len(pairs)
+    if n < MIN_PAIRS:
+        return None, n
 
     num = den = 0.0
-    prev_t = None
-    for t in common:
-        if prev_t is not None and _open(t) and _open(prev_t):
-            dx = math.log(xs[t] / xs[prev_t]) if xs[prev_t] > 0 else 0.0
-            dy = math.log(ys[t] / ys[prev_t]) if ys[prev_t] > 0 else 0.0
-            num += dx * dy
-            den += dx * dx
-        prev_t = t
+    for (_, x0, y0), (_, x1, y1) in zip(pairs, pairs[1:]):
+        dx, dy = math.log(x1 / x0), math.log(y1 / y0)
+        num += dx * dy
+        den += dx * dx
     if den <= 1e-12:
-        return 0.0
-    return max(-BETA_CAP, min(BETA_CAP, num / den))
+        return 0.0, n
+    return max(-BETA_CAP, min(BETA_CAP, num / den)), n
 
 
 def _news_shock(underlying: str) -> float:
@@ -164,7 +186,7 @@ def _news_shock(underlying: str) -> float:
 
 
 def synthetic_marks(underlyings: list[str], cash_open: bool) -> dict[str, dict]:
-    """{underlying: {"fairPrice", "beta", "indexMove", "newsShock"}}. Empty
+    """{underlying: {"fairPrice", "beta", "betaPairs", "betaStatus", "indexMove", "newsShock"}}. Empty
     dict for anything with no last official print to anchor on. When
     cash_open, fairPrice mirrors the last official print (no adjustment)."""
     out: dict[str, dict] = {}
@@ -182,12 +204,16 @@ def synthetic_marks(underlyings: list[str], cash_open: bool) -> dict[str, dict]:
             if not last_print:
                 continue
             if cash_open:
-                out[und] = {"fairPrice": last_print, "lastPrint": last_print, "beta": 0.0, "indexMove": 0.0, "newsShock": 0.0}
+                out[und] = {"fairPrice": last_print, "lastPrint": last_print, "beta": None, "betaPairs": None,
+                            "betaStatus": "cash-open", "indexMove": None, "newsShock": None}
                 continue
-            beta = _beta(db, und, qqq_symbol, now) if qqq_symbol else 0.0
+            beta, pairs = _beta(db, und, qqq_symbol, now) if qqq_symbol else (None, 0)
             shock = _news_shock(und)
-            fair = last_print * (1 + beta * index_move) * (1 + shock)
-            out[und] = {"fairPrice": fair, "lastPrint": last_print, "beta": beta, "indexMove": index_move, "newsShock": shock}
+            status = "estimated" if beta is not None else "unestimated"
+            move = index_move if beta is not None else 0.0
+            fair = last_print * (1 + (beta or 0.0) * move) * (1 + shock)
+            out[und] = {"fairPrice": fair, "lastPrint": last_print, "beta": beta, "betaPairs": pairs,
+                        "betaStatus": status, "indexMove": move, "newsShock": shock}
     except Exception:
         log.warning("fair: synthetic_marks failed", exc_info=True)
     finally:

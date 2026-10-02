@@ -223,6 +223,8 @@ def _group(tokens):
             "absPremium": max((abs(r["premium"] or 0) for r in rows), default=0),
             "fairPrice": rows[0].get("fairPrice"),
             "beta": rows[0].get("fairBeta"),
+            "betaStatus": rows[0].get("fairBetaStatus"),
+            "betaPairs": rows[0].get("fairBetaPairs"),
             "indexMove": rows[0].get("fairIndexMove"),
             "newsShock": rows[0].get("fairNewsShock"),
             "premiumToOfficial": (
@@ -295,6 +297,8 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "markSource": "binance" if off_mark is not None else (("last-print" if last_print_used else "yahoo") if mark else None),
             "fairPrice": fair_price,
             "fairBeta": fm.get("beta") if fair_price else None,
+            "fairBetaStatus": fm.get("betaStatus") if fair_price else None,
+            "fairBetaPairs": fm.get("betaPairs") if fair_price else None,
             "fairIndexMove": fm.get("indexMove") if fair_price else None,
             "fairNewsShock": fm.get("newsShock") if fair_price else None,
             "premiumToOfficial": prem if has_addr else None,

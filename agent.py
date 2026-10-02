@@ -359,8 +359,11 @@ def official_vs_fair_line(underlying: str) -> str:
     out = f"Official ${g['markPrice']:.2f}"
     if g.get("fairPrice") and not session.get("cashOpen"):
         out += f" · Fair ${g['fairPrice']:.2f} synthetic ({session.get('label')})"
-        out += (f"\nFair inputs: β {g.get('beta') or 0:.2f} · QQQ {(g.get('indexMove') or 0) * 100:+.2f}% since Fri close"
-                f" · news {(g.get('newsShock') or 0) * 100:+.0f}%")
+        if g.get("betaStatus") == "estimated":
+            out += (f"\nFair inputs: β {g['beta']:.2f} · QQQ {(g.get('indexMove') or 0) * 100:+.2f}% since Fri close"
+                    f" · news {(g.get('newsShock') or 0) * 100:+.0f}%")
+        else:
+            out += f"\nFair = last print. Beta not estimated ({g.get('betaPairs') or 0} pairs)."
     return out + "\n"
 
 
