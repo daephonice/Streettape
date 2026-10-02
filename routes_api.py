@@ -35,6 +35,12 @@ async def api_devcheck():
     return await rwa_api.devcheck()
 
 
+@router.get("/_boardcheck")
+async def api_boardcheck():
+    import board
+    return board._board_report
+
+
 @router.get("/_swapcheck")
 async def api_swapcheck(input: str = rwa.NATIVE, output: str = "0x02fca66c1d1afb4e2a7884261eb00f63598a7436",
                         amount: float = 0.005, taker: str | None = None, only: str | None = None):

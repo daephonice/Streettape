@@ -327,6 +327,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
 CATALOG_REFRESH_SECONDS = int(os.getenv("BOARD_CATALOG_REFRESH_SECONDS", "1800"))  # 30 min
 BOARD_MAX_UNDERLYINGS = int(os.getenv("BOARD_MAX_UNDERLYINGS", "20"))
 _last_catalog_sync = 0.0
+_board_report: dict = {"ran": False}
 _board_live: dict = {}  # last good selection: underlying -> {live wrapper addrs}
 
 
@@ -336,10 +337,12 @@ async def _select_board():
     cap at BOARD_MAX_UNDERLYINGS (seeds always kept), prune rwa.UNIVERSE.
     On a Gecko 429 the previous selection is reused so the board never floods
     or drops names because of one throttled probe."""
-    global _board_live, _last_catalog_sync
+    global _board_live, _last_catalog_sync, _board_report
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
         tapes = await _gecko_prices(client, addrs)
+    _board_report = {"ran": True, "at": datetime.now(timezone.utc).isoformat(), "rateLimited": bool(_tape_stale),
+                     "candidates": sorted({w["underlying"] for w in rwa.wrappers()} - set(rwa.SEEDS))}
     if _tape_stale:
         _last_catalog_sync = time.monotonic() - CATALOG_REFRESH_SECONDS + 60  # retry in ~1 min
         live = _board_live or {u: set() for u in rwa.SEEDS}
@@ -361,6 +364,8 @@ async def _select_board():
     others = sorted((u for u in live if u not in rwa.SEEDS and live[u]), key=lambda u: best[u], reverse=True)
     keep = seeds + others[:max(0, BOARD_MAX_UNDERLYINGS - len(seeds))]
     _board_live = {u: live[u] for u in keep}
+    _board_report.update({"before": len(live), "kept": keep,
+                          "dropped": {u: ("no tape" if not live[u] else "over cap") for u in live if u not in keep}})
     log.info("board: universe %d -> %d underlyings (%d candidates with tape)", len(live), len(keep), len(others))
     rwa.apply_board(_board_live)
 
