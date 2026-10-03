@@ -232,7 +232,8 @@ async def impact_probe(taker: str, pair: str = "TSLAB", small_usd: float = 50.0,
         q = await swap.quote(rwa.NATIVE, mint, amt, taker)
         runs.append({"usd": usd, "bnbIn": amt, "mode": q.get("executionMode"), "provider": q.get("provider"),
                      "rawPriceImpactPct": q.get("priceImpactPct"), "uiOutAmount": q.get("uiOutAmount"),
-                     "rate": q.get("rate"), "routes": q.get("routes")})
+                     "rate": q.get("rate"), "routes": q.get("routes"),
+                     "error": q.get("error") or q.get("reason") or q.get("fallbackReason")})
     a, b = runs
     out = {"pair": f"BNB->{pair}", "runs": runs, "verdict": "inconclusive"}
     if not all(r["provider"] == "binance_web3" and r["mode"] == "SWAP" and r["rate"] and r["rawPriceImpactPct"] is not None for r in runs):
