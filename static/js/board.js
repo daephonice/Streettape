@@ -9,6 +9,7 @@
   const COPY_OPEN = 'Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.';
   const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
 
+  const USDT = '0x55d398326f99059fF775485246999027B3197955';
   const $ = (id) => document.getElementById(id);
   const groupsEl = $('bd-groups');
   const searchEl = $('bd-search');
@@ -207,18 +208,119 @@
     }
   }
 
-  async function refreshDefensive() {
-    if (document.hidden) return;
-    const a = $('bd-def-link');
-    if (!a) return;
-    try {
-      const resp = await fetch('/api/agent/defensive?usd=50', { cache: 'no-store' });
-      if (!resp.ok) return;
-      a.hidden = !(await resp.json()).triggered;
-    } catch (err) {
-      console.warn('defensive refresh failed', err);
-    }
+  // ---- Command chips (closed grammar; each chip is one existing endpoint, the panel prints the result) ----
+  const out = $('bd-cmd-out');
+  const chips = document.querySelectorAll('.bd-chip');
+  const pct = (v) => (v === null || v === undefined || !isFinite(v) ? '—' : (v > 0 ? '+' : '') + (v * 100).toFixed(2) + '%');
+  const num = (v, d) => (v === null || v === undefined || !isFinite(v) ? '—' : Number(v).toFixed(d));
+  const NOTE = 'Not auto-executed. Confirm and sign in your own wallet.';
+
+  function line(text, cls) { return el('p', 'bd-o-line' + (cls ? ' ' + cls : ''), text); }
+  function show(title, nodes, sessLabel) {
+    out.textContent = '';
+    const h = el('div', 'bd-o-head');
+    h.appendChild(el('b', null, title));
+    if (sessLabel) h.appendChild(el('span', 'bd-o-sess', sessLabel));
+    out.appendChild(h);
+    nodes.forEach((n) => out.appendChild(n));
+    out.appendChild(el('p', 'bd-o-note', NOTE));
+    out.hidden = false;
   }
+  async function getJSON(url, opts) {
+    const r = await fetch(url, Object.assign({ cache: 'no-store' }, opts || {}));
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }
+  function legLine(label, l) {
+    if (!l) return line(label + ' —', 'dim');
+    if (l.noRoute || l.uiOutAmount == null) return line(label + ' no route', 'dim');
+    return line(label + ' out ' + num(l.uiOutAmount, 4) + ' · ' + (l.routeLabel || l.provider || '') + ' · impact ' + (l.priceImpactPct == null ? '—' : l.priceImpactPct));
+  }
+
+  async function cmdRich() {
+    const snap = await getJSON('/api/board');
+    const toks = (snap.tokens || []).filter((t) => t.hasTape && t.premium != null)
+      .sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium)).slice(0, 12);
+    const tbl = el('div', 'bd-o-tbl');
+    const hd = el('div', 'bd-o-row bd-o-th');
+    ['symbol', 'tape', 'official', 'fair', 'premium'].forEach((c) => hd.appendChild(el('span', null, c)));
+    tbl.appendChild(hd);
+    toks.forEach((t) => {
+      const r = el('div', 'bd-o-row');
+      r.appendChild(el('span', null, t.symbol));
+      r.appendChild(el('span', null, money(t.tokenPrice)));
+      r.appendChild(el('span', null, money(t.markPrice)));
+      r.appendChild(el('span', null, money(t.fairPrice)));
+      r.appendChild(el('span', 'bd-o-p ' + tone(t.premium), fmtPremium(t.premium)));
+      tbl.appendChild(r);
+    });
+    show("what's rich vs Friday", toks.length ? [tbl] : [line('No tape yet.', 'dim')], (snap.session || {}).label);
+  }
+
+  async function cmdRotate() {
+    const rep = await getJSON('/api/agent/scan?underlying=NVDA');
+    const a = rep.best || (rep.arbs || [])[0];
+    const sess = (rep.session || {}).label;
+    if (!a) return show('rotate into cheapest NVDA', [line('No arb: fewer than two live ratio-backed NVDA wrappers.', 'dim')], sess);
+    const n = [
+      line('Sell ' + a.richSymbol + ' → buy ' + a.cheapSymbol + ' · $' + Math.round(a.sizeUsd || 50)),
+      line('viable ' + a.viable + ' · netBps ' + num(a.netBps, 1) + ' · gross ' + num(a.grossBps, 1) + ' · cost ' + num(a.costBps, 1), a.viable ? '' : 'dim'),
+      line(a.richSymbol + ' ratio ' + num(a.richRatio, 6) + ' · ' + a.cheapSymbol + ' ratio ' + num(a.cheapRatio, 6)),
+    ];
+    if (!a.viable) n.push(line('Costs eat the gap.', 'bd-o-warn'));
+    show('rotate into cheapest NVDA', n, sess);
+  }
+
+  async function cmdDefensive() {
+    const d = await getJSON('/api/agent/defensive?usd=50');
+    const n = [line(d.qqqSymbol + ' ' + pct(d.qqqMove) + ' since ' + (d.since || 'Friday 16:00 ET') + ' · threshold ' + (d.threshold * 100).toFixed(1) + '%')];
+    if (!d.triggered) {
+      n.push(line('triggered false · no quotes.', 'dim'));
+    } else {
+      n.push(line('triggered true · viable ' + d.viable));
+      ((d.sell || {}).legs || []).forEach((l) => n.push(l.filled ? legLine('Sell ' + l.symbol + ' (' + l.underlying + ')', l) : line('Sell ' + l.underlying + ' unfilled: ' + (l.reason || 'no route'), 'dim')));
+      const b = d.buy || {};
+      n.push(b.filled ? legLine('Buy ' + (b.symbol || d.qqqSymbol), b) : line('Buy ' + (b.underlying || 'QQQ') + ' unfilled: ' + (b.reason || 'no route'), 'dim'));
+      if ((d.sell || {}).unfilledUsd) n.push(line('Unfilled weight $' + num(d.sell.unfilledUsd, 2) + ' not reassigned.', 'dim'));
+    }
+    show('rotate into defensives when volatility spikes', n, (d.session || {}).label);
+  }
+
+  async function cmdFlatten() {
+    const T = 0.02;
+    const rep = await getJSON('/api/agent/scan?threshold=' + T);
+    const sess = rep.session || {};
+    if (sess.cashOpen) return show('flatten anything richer than 2% while cash is shut', [line('Cash is open.', 'dim')], sess.label);
+    const rich = (rep.hits || []).filter((h) => (h.premium || 0) > T).sort((a, b) => b.premium - a.premium);
+    if (!rich.length) return show('flatten anything richer than 2% while cash is shut', [line('Nothing richer than 2%.', 'dim')], sess.label);
+    const snap = lastSnap || await getJSON('/api/board');
+    const bySym = {};
+    (snap.tokens || []).forEach((t) => { bySym[t.symbol] = t; });
+    const n = [];
+    for (const h of rich) {
+      const t = bySym[h.symbol];
+      if (!t || !t.mint || !t.tokenPrice) { n.push(line('Sell ' + h.symbol + ' ' + fmtPremium(h.premium) + ' · no quote', 'dim')); continue; }
+      try {
+        const q = await getJSON('/api/swap/order', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ inputMint: t.mint, outputMint: USDT, uiAmount: 50 / t.tokenPrice }),
+        });
+        n.push(legLine('Sell ' + h.symbol + ' ' + fmtPremium(h.premium) + ' $50', q));
+      } catch (e) {
+        n.push(line('Sell ' + h.symbol + ' ' + fmtPremium(h.premium) + ' · quote failed (' + e.message + ')', 'dim'));
+      }
+    }
+    show('flatten anything richer than 2% while cash is shut', n, sess.label);
+  }
+
+  const CMDS = { rich: cmdRich, rotate: cmdRotate, defensive: cmdDefensive, flatten: cmdFlatten };
+  chips.forEach((c) => c.addEventListener('click', async () => {
+    chips.forEach((x) => x.classList.toggle('is-on', x === c));
+    out.hidden = false;
+    out.textContent = '';
+    out.appendChild(line('Running…', 'dim'));
+    try { await CMDS[c.dataset.cmd](); } catch (e) { out.textContent = ''; out.appendChild(line('Request failed: ' + e.message, 'bd-o-warn')); }
+  }));
 
   // ---- Search --------------------------------------------------------------
   function applySearch(raw) {
@@ -285,8 +387,6 @@
   refreshSession();
   refreshBoard();
   refreshBook();
-  refreshDefensive();
-  setInterval(refreshDefensive, REFRESH_MS);
   setInterval(refreshBoard, REFRESH_MS);
   setInterval(refreshBook, REFRESH_MS);
   setInterval(refreshSession, SESS_MS);
