@@ -574,6 +574,30 @@ def _public_url() -> str:
     return u if u.startswith("http") else (f"https://{u}" if u else "")
 
 
+def _studio_runtime(base: str) -> dict:
+    """Honest Studio status, driven by env so it flips without a code edit.
+    STUDIO_DEPLOYED=1 + STUDIO_JOB_ID => deployed. STUDIO_BAG_ERROR => failed run (command + error)."""
+    deployed = os.getenv("STUDIO_DEPLOYED", "").strip() in ("1", "true", "yes")
+    job = os.getenv("STUDIO_JOB_ID", "").strip()
+    err = os.getenv("STUDIO_BAG_ERROR", "").strip()
+    tick = f"{base}/api/agent/studio/tick"
+    if deployed and job:
+        sched = {"jobId": job, "url": tick, "everySeconds": 60, "header": "X-Studio-Token", "price": "0"}
+        note = "Scheduled on Studio: calls the tick every 60s. Free face, price 0: no B402 charge, no escrow."
+    else:
+        deployed = False
+        sched = None
+        note = ("Studio deploy failed. " + err) if err else "Studio job not created yet."
+    return {
+        "deployed": deployed,
+        "scheduler": sched if sched else note,
+        "note": note,
+        "tick": f"{tick} (X-Studio-Token required; proposal-only, never signs)",
+        "x402": "Free face (price 0). No paid endpoint, so x402Support stays false.",
+        "signing": "none: the user signs in their own wallet",
+    }
+
+
 def identity_card() -> dict:
     """ERC-8004 registration file. Host it at /agent-registration.json and pass
     that URL to the Identity Registry's register(agentURI)."""
@@ -590,13 +614,7 @@ def identity_card() -> dict:
             {"name": "skill", "endpoint": f"{base}/api/agent/scan"},
         ],
         "x402Support": False,
-        "studioRuntime": {
-            "deployed": False,
-            "scheduler": "Not run on Studio (bag not installed). In the Studio docs we read (overview, quickstart, CLI reference, architecture) we found no scheduler that calls an external URL; that absence was not tested. The 60s scan loop runs on Railway.",
-            "tick": f"{base}/api/agent/studio/tick (X-Studio-Token required; proposal-only, never signs). Not called from Studio.",
-            "x402": "No paid endpoint, so x402Support stays false.",
-            "signing": "none: the user signs in their own wallet",
-        },
+        "studioRuntime": _studio_runtime(base),
         "active": True,
         "supportedTrust": ["reputation"],
     }
