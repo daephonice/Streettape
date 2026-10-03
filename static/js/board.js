@@ -15,6 +15,7 @@
   const searchEl = $('bd-search');
   let lastSnap = null;
   let session = null;
+  let bookNames = []; // underlyings in Weekend Book order
   let arbMap = {};   // underlying -> Clears book row (from /api/agent/scan)
 
   function el(tag, cls, text) {
@@ -187,6 +188,7 @@
   function renderBook(scan) {
     const rows = scan.book || [];
     arbMap = {};
+    bookNames = rows.map((r) => r.underlying);
     rows.forEach((r) => { if (r.state === 'clears') arbMap[r.underlying] = r; });
     const box = $('bd-book-rows'), empty = $('bd-book-empty');
     if (box && empty) {
@@ -257,18 +259,40 @@
     show("what's rich vs Friday", toks.length ? [tbl] : [line('No tape yet.', 'dim')], (snap.session || {}).label);
   }
 
+  // Rotate chip: one sentence, `rotate into cheapest {TICKER}`. First paint NVDA; each later tap advances the ticker.
+  let rotTicker = 'NVDA';
+  let rotRan = false;
+  function rotCycle() {
+    if (bookNames.length) return bookNames;
+    return ((lastSnap && lastSnap.groups) || [])
+      .filter((g) => (g.wrappers || []).filter((w) => w.hasTape && !w.thin).length >= 2)
+      .map((g) => g.underlying);
+  }
+  function rotAdvance() {
+    const list = rotCycle();
+    if (!list.length) return;
+    const i = list.indexOf(rotTicker);
+    rotTicker = list[(i + 1) % list.length];
+    const t = $('bd-rot-t');
+    if (t) t.textContent = rotTicker;
+  }
+
   async function cmdRotate() {
-    const rep = await getJSON('/api/agent/scan?underlying=NVDA');
+    if (rotRan) rotAdvance();
+    rotRan = true;
+    const u = rotTicker;
+    const title = 'rotate into cheapest ' + u;
+    const rep = await getJSON('/api/agent/scan?underlying=' + encodeURIComponent(u));
     const a = rep.best || (rep.arbs || [])[0];
     const sess = (rep.session || {}).label;
-    if (!a) return show('rotate into cheapest NVDA', [line('No arb: fewer than two live ratio-backed NVDA wrappers.', 'dim')], sess);
+    if (!a) return show(title, [line('No arb: fewer than two live ratio-backed ' + u + ' wrappers.', 'dim')], sess);
     const n = [
       line('Sell ' + a.richSymbol + ' → buy ' + a.cheapSymbol + ' · $' + Math.round(a.sizeUsd || 50)),
       line('viable ' + a.viable + ' · netBps ' + num(a.netBps, 1) + ' · gross ' + num(a.grossBps, 1) + ' · cost ' + num(a.costBps, 1), a.viable ? '' : 'dim'),
       line(a.richSymbol + ' ratio ' + num(a.richRatio, 6) + ' · ' + a.cheapSymbol + ' ratio ' + num(a.cheapRatio, 6)),
     ];
     if (!a.viable) n.push(line('Costs eat the gap.', 'bd-o-warn'));
-    show('rotate into cheapest NVDA', n, sess);
+    show(title, n, sess);
   }
 
   async function cmdDefensive() {
