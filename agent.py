@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 
 import rwa
+import earnings
 from database import SessionLocal
 from models import Watch, utcnow
 
@@ -629,8 +630,11 @@ def identity_card() -> dict:
     return card
 
 
+_ROTATE_KEYS = ("underlying", "richSymbol", "cheapSymbol", "gap", "netBps", "costBps", "viable", "normalized")
+
+
 async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = None,
-                      arb_threshold: float | None = None) -> dict:
+                      arb_threshold: float | None = None, underlying: str | None = None) -> dict:
     """One scheduled scan: cross-wrapper arbs (net of cost), >2% flatten
     candidates, and cash-shut premium alerts. `new` marks symbols not proposed
     in the last COOLDOWN, so the scheduler can notify only on fresh ones."""
@@ -661,12 +665,28 @@ async def studio_tick(size_usd: float = ARB_USD_SIZE, threshold: float | None = 
          "sizeUsd": size_usd, "deepLink": t.get("url")}
         for t in sorted(flatten_candidates(), key=lambda t: t["premium"], reverse=True)
     ]
+    # The three sold answers. Read-only copies of fields above; the Studio agent repeats them, never computes.
+    und = (underlying or "").strip().upper() or None
+    rotate = None
+    if und:
+        named = await desk_arbs(und, limit=1)
+        rotate = {k: named[0].get(k) for k in _ROTATE_KEYS} if named else {"underlying": und, "viable": False,
+                                                                           "reason": "no two live wrappers"}
+    answers = {
+        "richVsFriday": [{"symbol": h["symbol"], "underlying": h["underlying"], "premium": h["premium"],
+                          "tokenPrice": h["tokenPrice"], "markPrice": h["markPrice"]}
+                         for h in gaps["hits"] if h["premium"] > 0][:5],
+        "rotate": rotate,
+        "earnings": {"underlying": und, **earnings.info(und)} if und else None,
+        "earningsInside24h": [e["underlying"] for e in earnings.all_info() if e["inside24h"]],
+    }
     return {
         "agent": "streettape-desk",
         "mode": "proposal-only",
         "arbThreshold": ARB_THRESHOLD if arb_threshold is None else arb_threshold,
         "at": now.isoformat(),
         "session": session,
+        "answers": answers,
         "arbs": arbs,
         "alerts": alerts,
         "flatten": flatten,

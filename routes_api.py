@@ -239,6 +239,7 @@ async def api_agent_scan(threshold: float | None = None, underlying: str | None 
 @router.get("/agent/studio/tick")
 async def api_agent_studio_tick(request: Request, size_usd: float = 50.0, threshold: float | None = None,
                                 arb_threshold: float | None = None, k: str | None = None,
+                                underlying: str | None = None,
                                 x_studio_token: str | None = Header(default=None)):
     """Scheduled-job entrypoint for BNB Agent Studio (call every 60s). Proposal-only: never signs."""
     ok = (not agent.STUDIO_TOKEN
@@ -249,7 +250,7 @@ async def api_agent_studio_tick(request: Request, size_usd: float = 50.0, thresh
                         expected="200 + mode proposal-only", actual="bad or missing X-Studio-Token / k")
         raise HTTPException(status_code=401, detail="bad token")
     t0 = time.monotonic()
-    out = await agent.studio_tick(size_usd, threshold, arb_threshold)
+    out = await agent.studio_tick(size_usd, threshold, arb_threshold, underlying)
     ms = (time.monotonic() - t0) * 1000
     arbs = out.get("arbs") or []
     top = arbs[0] if arbs else {}
