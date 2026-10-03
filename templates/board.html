@@ -36,7 +36,14 @@
       <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
     </span>
     <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.{% else %}Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.{% endif %}</p>
-    <div class="bd-basket"><div class="bd-basket-row"><span class="bd-basket-pill">AI BASKET</span><a class="bd-basket-link" href="/basket/ai">Click to view</a><span class="bd-basket-pill">SEMIS</span><a class="bd-basket-link" href="/basket/semis">View</a><span class="bd-basket-pill">DEFENSIVE</span><a class="bd-basket-link" href="/basket/defensive">View</a><a class="bd-basket-link" id="bd-def-link" href="/api/agent/defensive?usd=50" hidden>Defensive rotation</a></div><p class="bd-basket-sub">AI: NVDA AMD META · Semis: NVDA AMD AVGO · Defensive: KO PG JNJ, $50 equal weight</p></div>
+    <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
+      <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
+      <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest NVDA</button>
+      <button type="button" class="bd-chip" data-cmd="defensive">rotate into defensives when volatility spikes</button>
+      <button type="button" class="bd-chip" data-cmd="flatten">flatten anything richer than 2% while cash is shut</button>
+    </div>
+    <div class="bd-cmd-out" id="bd-cmd-out" aria-live="polite" hidden></div>
+    <div class="bd-basket"><div class="bd-basket-row"><span class="bd-basket-pill">AI</span><a class="bd-basket-link" href="/basket/ai">View</a><span class="bd-basket-pill">SEMIS</span><a class="bd-basket-link" href="/basket/semis">View</a><span class="bd-basket-pill">DEFENSIVE</span><a class="bd-basket-link" href="/basket/defensive">View</a></div><p class="bd-basket-sub">AI: NVDA AMD META · Semis: NVDA AMD AVGO · Defensive: KO PG JNJ · equal weight · cheapest wrapper · unfilled weight not reassigned</p></div>
   </section>
   <section class="hm-card bd-book" id="bd-book" {% if cash_open %}hidden{% endif %}>
     <h2 class="bd-book-title">Weekend book <small>same share across wrappers · net of cost at $50</small></h2>
