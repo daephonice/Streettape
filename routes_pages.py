@@ -50,12 +50,12 @@ def _board_context() -> dict:
 
 @router.get("/", response_class=HTMLResponse)
 async def board_page(request: Request):
-    return templates.TemplateResponse(request, "board.html", _board_context())
+    return templates.TemplateResponse(request, "board.html", {**_board_context(), "nav": "board"})
 
 
 @router.get("/session", response_class=HTMLResponse)
 async def session_page(request: Request):
-    return templates.TemplateResponse(request, "session.html", {})
+    return templates.TemplateResponse(request, "session.html", {"nav": "session"})
 
 
 @router.get("/basket/ai", response_class=HTMLResponse)
@@ -80,7 +80,7 @@ async def board_redirect():
 
 @router.get("/wallet", response_class=HTMLResponse)
 async def wallet_page(request: Request):
-    return templates.TemplateResponse(request, "home.html", {})
+    return templates.TemplateResponse(request, "home.html", {"nav": "wallet"})
 
 
 @router.get("/stocks")
@@ -90,7 +90,7 @@ async def stocks_page():
 
 @router.get("/swap", response_class=HTMLResponse)
 async def swap_page(request: Request):
-    return templates.TemplateResponse(request, "swap.html", {})
+    return templates.TemplateResponse(request, "swap.html", {"nav": "swap"})
 
 
 @router.get("/t/{symbol}", response_class=HTMLResponse)
