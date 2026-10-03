@@ -6,7 +6,10 @@
   const SESS_MS = 30000;
   const ORDER = ['xstocks', 'ondo', 'bstocks'];
   const SESS_CLASS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
-  const COPY_OPEN = 'Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.';
+  const copyOpen = () => {
+    const w = lastSnap && lastSnap.bookWidest;
+    return 'Cash is open, so tape and official agree. ' + (w ? 'Widest gap while cash was shut: ' + w.line + '. ' : 'No shut-session tape stored yet. ');
+  };
   const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
 
   const USDT = '0x55d398326f99059fF775485246999027B3197955';
@@ -396,7 +399,10 @@
     if (label) label.textContent = s.label;
     if (chip) chip.className = 'sess-chip ' + (SESS_CLASS[s.label] || 'sess-we');
     if (hero) hero.dataset.cashOpen = s.cashOpen ? '1' : '0';
-    if (copy) copy.textContent = s.cashOpen ? COPY_OPEN : COPY_SHUT;
+    if (copy) {
+      copy.textContent = s.cashOpen ? copyOpen() : COPY_SHUT;
+      if (s.cashOpen) { const a = el('a', null, 'Session book'); a.href = '/session'; copy.appendChild(a); }
+    }
     tickSub();
     // Cash open/shut flips which columns exist (Fair), so redraw from the cached snapshot.
     const bk = $('bd-book'); if (bk) bk.hidden = !!s.cashOpen;
