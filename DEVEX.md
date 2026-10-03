@@ -830,3 +830,22 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Cold start: the first card request took 6.9 s, 5.4 s and 5.8 s (after ~3 h idle). Logs: "No logs yet — the runtime boots on the FIRST invoke". Status stayed `running`.
   - Idle: no tick lines between 04:56:39 and 05:12:24, and none after ~3 h. The loop does not run unattended. Two wakes, same shape: serving 04:51:39, last tick 04:56:39; serving 08:20:36, last tick 08:25:37 (still the last line at 08:35:37). The runtime stays up about 5 minutes after the last invoke, then stops. The limit is read from log timing only, not from any platform setting.
 - What we changed because of it: added a second tick-only credential (`AGENT_TICK_KEY`, query param `k`, tick endpoint only) and baked it into the uploaded bundle, because the header token cannot reach the job. The key is readable by the operator; the endpoint is proposal-only and never signs. `studioRuntime.deployed` stays false (not a scheduled job). Not verified: any platform-side scheduler or keep-warm setting.
+
+### 2026-10-03 — Weekend book: Ondo sells at $50 carry 14 to 19% Pancake impact (`/api/agent/scan`, `/api/agent/arb/{TSM,TSLA,META}`)
+
+- Session: WEEKEND (Sat 06:05 ET / 10:05 UTC / 11:05 WAT). No taker, USDT to wrapper, $50.
+- What we hit: `GET /api/agent/scan` (the `book` array), then `GET /api/agent/arb/{TSM,TSLA,META}?size_usd=50`.
+- What came back (first call of each outcome):
+  - Book: 3 Clears (AAPL net +5.5 bps, NVDA +9.4, QQQ +0.65), 5 Refused (SPCX and META `no route`, TSM, TSLA and AMD `cost eats gap`), `best: null`. QQQ read gap 13 bps, net +5 at 08:54 UTC and gap 10.6 bps, net +0.65 at 10:05 UTC. A clear is thin and does not hold for an hour.
+  - TSM and TSLA sell legs: Binance `40001 userWalletAddress is required for RFQ (Ondo) quote` (HTTP 200, 178 ms, 08:53:49 UTC), then Pancake `GET /v1/quote` HTTP 200, 728 to 835 ms. Pancake `priceImpactPct` 0.1926 (TSM) and 0.1484 (TSLA), `priceImpactTooHigh: true`. $50 in gave $40.37 and $42.59 out. The field and the quote agree here, as a fraction: `costBps` 1926 and 1489, AMD 901 in the book. The Binance LiquidMesh buy legs on the same pairs read impact 0.0 and 0.00055.
+  - META sell leg (METAon): Binance Ondo `40001`, then Pancake `no agg route and no pcsx permit`. `noRoute: true`, buy leg quoted at the 5 bps floor.
+  - SPCX: SPCXon 159.105 against official 158.96 (gap 0.09%), SPCXx tape 149.07, so 673 bps gross and -6.2% to the mark. The cheap leg has no route (Binance xStock `40001`, Pancake `no agg route`, OpenOcean 403, all logged before). On 2026-10-01 the same pair was 45.9 bps and viable.
+  - Ratios: TSMon 1.009321, TSMB 1.002110. Ondo ratios earlier in this file were 1.0017 to 1.0041. Raw TSMon token price 477.35 against 472.94 per share once normalized. CBRSB listed `rich` at 176.67 against a 166.43 mark (+6.2%).
+- What we changed because of it: nothing. The Refused rows are right as shown. Not verified: whether the 14 to 19% Pancake impact is the real fill cost or a thin-pool quote artifact; with a taker Binance may quote an Ondo sell directly, and that was not run.
+
+### 2026-10-03 — Studio tick latency from a phone (`/api/agent/studio/tick`)
+
+- Session: WEEKEND (Sat, 10:20 UTC).
+- What we hit: `GET /api/agent/studio/tick?arb_threshold=0.002&k=<tick key>` twice from Termux, against the deployed app (not the managed runtime).
+- What came back: HTTP 200 both times, 5.10 s then 3.97 s total from the phone. Body: `agent streettape-desk`, `mode proposal-only`, session WEEKEND, an SPCX arb row (SPCXon 159.105, SPCXx 149.069). Earlier runs were 1.9 to 2.3 s. The server-side tick line was not in the `/api/_devex` download taken before these calls, so the split between network and fan-out is not known. `bag status` was not run.
+- What we changed because of it: nothing.
