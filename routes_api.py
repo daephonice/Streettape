@@ -256,7 +256,7 @@ async def api_agent_identity():
 @router.get("/agent/arb/{underlying}")
 async def api_agent_arb(underlying: str, size_usd: float = 50.0):
     """Single-underlying rotate quote for the token page's 'Rotate $N' button."""
-    hits = agent.check_cross_arb(underlying)
+    hits = agent.check_cross_arb(underlying, threshold=0.0)
     if not hits:
         return {"underlying": underlying.upper(), "hit": None}
     priced = await agent.net_arb_quote(hits[0], size_usd)
