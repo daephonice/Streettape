@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@1,400&family=Geist:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/desk.css?v={{ static_v('css/desk.css') }}">
 </head>
-<body class="{% block body_class %}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}{% if nav %} has-nav{% endif %}">
   {% block header %}{% endblock %}
 
   <main>
@@ -17,6 +17,8 @@
   </main>
 
   {% block footer %}{% endblock %}
+
+  {% if nav %}{% include "_nav.html" %}{% endif %}
 
   <script src="/static/js/wallet.js?v={{ static_v('js/wallet.js') }}"></script>
   {% block scripts %}{% endblock %}
