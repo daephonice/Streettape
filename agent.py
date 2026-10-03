@@ -590,7 +590,7 @@ def _studio_runtime(base: str) -> dict:
     else:
         deployed = False
         sched = None
-        note = ("Studio deploy failed. " + err) if err else "Studio job not created yet."
+        note = err if err else "Studio job not created yet."
     return {
         "deployed": deployed,
         "scheduler": sched if sched else note,

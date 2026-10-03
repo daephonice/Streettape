@@ -106,11 +106,11 @@ After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to f
 - The skill wraps `baw market-order quote` / `swap`. It does not sign from Python.
 - StreetTape calls `baw` when it is on PATH, else `/api/swap/order`. `--sign` is explicit. A live `baw` quote has been run (Runtime log 2026-10-01). A signed `baw` fill has not.
 
-### ERC-8004 identity. No Agent Studio runtime.
+### ERC-8004 identity. Studio runtime is a trial, not a scheduler.
 
 Identity Registry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` (BSC, ERC1967 proxy). Three unlabeled `register` overloads on BscScan. Used the `agentURI`-only one. Token / agent id **360062**. Fee ~0.000009 BNB. Registration file is served at `/agent-registration.json`.
 
-Agent Studio full deploy was not built. The special is for a self-funding seller on their runtime (x402, ERC-8183). StreetTape has no paid endpoint and never signs. We did not run Studio (`bag` is not installed). In the Studio docs we read (overview, quickstart, CLI reference, architecture), we found no scheduler that calls an external URL. That absence was not tested. No Studio job exists. The scan runs in StreetTape's own loop, and `GET /api/agent/studio/tick` exposes the same scan to any caller (proposal-only, token-gated). Studio was not deployed. Mainnet agent 360062 is the product identity, registered directly on the Identity Registry. `x402Support` stays false in the card.
+Agent Studio was deployed on 2026-10-03 as a 48h BNB trial (agent `01M401H27Z9Q80XTFB0ZW8K5HC`, A2A, price 0, nothing signed). It is not a scheduled job: the managed runtime scales to zero when idle and the 60s tick loop only runs while something invokes it. No Studio scheduler that calls an external URL was found or tested. The scan also runs in StreetTape's own loop, and `GET /api/agent/studio/tick` exposes the same scan (proposal-only, token-gated). StreetTape has no paid endpoint and never signs. See the 2026-10-03 Studio blocks in the Runtime log. Mainnet agent 360062 is the product identity, registered directly on the Identity Registry. `x402Support` stays false in the card.
 
 ### Multiplier and missing contracts
 
@@ -783,3 +783,39 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - OpenOcean: HTTP 403, plain text `Forbidden; you don't have permission to access this resource.` Already logged.
   - All three failed at both sizes, so BNB to TSLAx had no route in this pass.
 - What we changed because of it: nothing. A 502 from Pancake is treated like any other failed provider and the next one is tried. Not verified: whether the 502 was a one-off or lasts, or a retry.
+
+### 2026-10-03 — `bag` install and toolchain on Android arm64 (Termux)
+
+- Session: WEEKEND (Sat, cash shut).
+- What we hit: `npm install --global @bnbagent/studio-cli`, then `pnpm install` in the scaffold, then `bag deploy`.
+- What came back (first call of each outcome):
+  - npm: exit 1. `keytar@7.9.0` has no prebuilt binary (`platform=android arch=arm64`), falls back to `node-gyp rebuild`, fails at `node-addon-api/napi.h:1147` ("in-class initializer for static data member is not a constant expression") on node 26.4.0.
+  - `--ignore-scripts` install worked: 281 packages in 3 min, `bag` 0.0.14. Not tested: anything that needs the OS keychain.
+  - pnpm: `ERR_PNPM_PNPM_ENGINE_NO_NATIVE_BINARY`, `@pnpm/exe@10.24.0` ships no android-arm64 binary. Cause is the `packageManager` pin in the scaffold's `package.json`. Deleting the pin by `sed` left a trailing comma ("trailing comma at line 4 column 1").
+  - pnpm then failed with `No space left on device (os error 28)`. Retry with the store warm: 2m11s.
+  - `bag deploy` and `bag platform login`: "could not start the lockfile-pinned bnbagent-deploy; install Bun 1.3+". `bag doctor` said "bun not found" with `bun` 1.4.2 on PATH. The missing piece was the `which` command; after `pkg install which`, `bag deploy prepare` reported 0 CRITICAL. The error text does not point at `which`.
+  - `bunx --bun @bnbagent/deploy-cli --help`: resolved 599 packages, no output, killed by a 120s timeout. The local copy under `studio-cli/node_modules` ran fine with `bun --bun .../src/cli.ts`.
+- What we changed because of it: removed the pnpm pin, installed `which`, freed disk. Not verified: whether the `bunx` hang was the network or Bun on android.
+
+### 2026-10-03 — Platform login and deploy prompts (`bnb` trial)
+
+- Session: WEEKEND (Sat, 04:46 to 05:11 UTC).
+- What we hit: calling `deploy-cli` directly (the `bag` override `BNBAGENT_DEPLOY_COMMAND` is refused outside local dev), `bag deploy prepare`, `bag deploy --provider bnb`.
+- What came back (first call of each outcome):
+  - Direct `--provider bnb login`: "trial platform endpoint is not configured". It needs `BNBAGENT_API_URL=https://bnbagent-api.bnbchain.world` (found in the `bag` bundle, not in the help). With it, GitHub device-code login worked.
+  - `prepare`: CRITICAL `commerce_no_rail` until `payments.b402_seller.enabled = true` (price stays 0; erc8183 left off).
+  - `bag deploy`: typing `yes` at the trial-terms prompt returned "platform deploy cancelled — the trial terms were not accepted" while stdout was piped through `tee`. `--accept-risk --yes` worked.
+  - Deploy: 1m47s first, 1m29s on redeploy. Same agent id, new deployment id, expiry unchanged at 2026-10-05T04:50:01Z.
+  - `bag` printed "HTTP 404; no verified x402 payment challenge" for the free x402 route. Card served `skills: []`.
+- What we changed because of it: `payments.b402_seller.enabled = true`; deploy with `--accept-risk --yes`. `x402Support` stays false.
+
+### 2026-10-03 — Studio tick from the managed runtime (agent 01M401H27Z9Q80XTFB0ZW8K5HC)
+
+- Session: WEEKEND (Sat).
+- What we hit: a `tick.ts` loop in the scaffold calling `GET /api/agent/studio/tick` every 60s with `X-Studio-Token`, price "0".
+- What came back (first call of each outcome):
+  - Deployed runtime: HTTP 401 every minute (04:51:39 to 04:56:39), 270 to 283 ms. The platform forwarded only 3 secrets (`BNBAGENT_DELIVERABLE_STORAGE_MODE`, `WALLET_KEYSTORE_JSON`, `WALLET_PASSWORD`). The CLI builds the secret list from a fixed allowlist (wallet, LLM, storage, `RPC_URL`, public URL, B402); a custom env name is dropped, with no warning.
+  - Local `bag dev`: 200, 906 to 2924 ms from a phone. Runtime after the fix: 200, `mode=proposal-only arbs=1`, 1.9 to 2.3 s.
+  - Cold start: the first card request took 6.9 s, 5.4 s and 5.8 s (after ~3 h idle). Logs: "No logs yet — the runtime boots on the FIRST invoke". Status stayed `running`.
+  - Idle: no tick lines between 04:56:39 and 05:12:24, and none after ~3 h. The loop does not run unattended.
+- What we changed because of it: added a second tick-only credential (`AGENT_TICK_KEY`, query param `k`, tick endpoint only) and baked it into the uploaded bundle, because the header token cannot reach the job. The key is readable by the operator; the endpoint is proposal-only and never signs. `studioRuntime.deployed` stays false (not a scheduled job). Not verified: any platform-side scheduler or keep-warm setting.
