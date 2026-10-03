@@ -295,9 +295,18 @@
     show(title, n, sess);
   }
 
+  function sinceET(iso) {
+    const t = iso ? new Date(iso) : null;
+    if (!t || isNaN(t)) return 'Friday 16:00 ET';
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'long', hour: '2-digit', minute: '2-digit', hour12: false });
+    const p = {};
+    f.formatToParts(t).forEach((x) => { p[x.type] = x.value; });
+    return p.weekday + ' ' + p.hour.replace('24', '00') + ':' + p.minute + ' ET';
+  }
+
   async function cmdDefensive() {
     const d = await getJSON('/api/agent/defensive?usd=50');
-    const n = [line(d.qqqSymbol + ' ' + pct(d.qqqMove) + ' since ' + (d.since || 'Friday 16:00 ET') + ' · threshold ' + (d.threshold * 100).toFixed(1) + '%')];
+    const n = [line(d.qqqSymbol + ' ' + pct(d.qqqMove) + ' since ' + sinceET(d.since) + ' · threshold ' + (d.threshold * 100).toFixed(1) + '%')];
     if (!d.triggered) {
       n.push(line('triggered false · no quotes.', 'dim'));
     } else {
