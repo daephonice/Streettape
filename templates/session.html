@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}StreetTape — session book{% endblock %}
+{% block body_class %}hm bd{% endblock %}
+{% block header %}
+<header class="hm-header"><div class="hm-col hm-header-inner">
+  <a href="/" class="mkt-brand"><span class="mkt-wordmark">StreetTape</span></a>
+  <div class="hm-header-right"><a class="bd-wallet-btn" href="/">Board</a></div>
+</div></header>
+{% endblock %}
+{% block content %}
+<div class="bd-col">
+  <section class="hm-card sb-head">
+    <h1 class="bd-book-title">Session book <small id="sb-sub">loading…</small></h1>
+    <p class="bd-last-empty" id="sb-note"></p>
+  </section>
+  <div id="sb-rows"></div>
+  <p class="bd-last-empty" id="sb-meta"></p>
+</div>
+{% endblock %}
+{% block scripts %}<script src="/static/js/session.js?v={{ static_v('js/session.js') }}"></script>{% endblock %}

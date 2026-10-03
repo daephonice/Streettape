@@ -35,7 +35,7 @@
       <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
       <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
     </span>
-    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.{% else %}Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.{% endif %}</p>
+    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree. {% if book_widest %}Widest gap while cash was shut: {{ book_widest.line }}.{% else %}No shut-session tape stored yet.{% endif %} <a href="/session">Session book</a>{% else %}Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.{% endif %}</p>
     <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
       <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
       <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest <span id="bd-rot-t">NVDA</span></button>
