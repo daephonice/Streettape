@@ -563,6 +563,9 @@ async def fire_flatten() -> int:
 # Same scan logic as the internal loop, exposed as a stateless tick a
 # scheduler (Agent Studio job, 60s) can call. Proposal-only: never signs.
 STUDIO_TOKEN = os.getenv("AGENT_STUDIO_TOKEN", "")
+# Second, tick-only credential (query param `k`). Exists because the Studio platform
+# forwards only an allowlist of runtime env names, so the header token cannot reach the job.
+TICK_KEY = os.getenv("AGENT_TICK_KEY", "").strip()
 ERC8004_REGISTRY = os.getenv("ERC8004_IDENTITY_REGISTRY", "").strip()
 ERC8004_AGENT_ID = os.getenv("ERC8004_AGENT_ID", "").strip()
 ERC8004_CHAIN_ID = os.getenv("ERC8004_CHAIN_ID", "").strip() or "56"

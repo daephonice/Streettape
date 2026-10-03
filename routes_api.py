@@ -225,12 +225,15 @@ async def api_agent_scan(threshold: float | None = None, underlying: str | None 
 
 @router.get("/agent/studio/tick")
 async def api_agent_studio_tick(request: Request, size_usd: float = 50.0, threshold: float | None = None,
-                                arb_threshold: float | None = None,
+                                arb_threshold: float | None = None, k: str | None = None,
                                 x_studio_token: str | None = Header(default=None)):
     """Scheduled-job entrypoint for BNB Agent Studio (call every 60s). Proposal-only: never signs."""
-    if agent.STUDIO_TOKEN and not hmac.compare_digest(x_studio_token or "", agent.STUDIO_TOKEN):
+    ok = (not agent.STUDIO_TOKEN
+          or hmac.compare_digest(x_studio_token or "", agent.STUDIO_TOKEN)
+          or bool(agent.TICK_KEY and hmac.compare_digest(k or "", agent.TICK_KEY)))
+    if not ok:
         devlog.log_call(what="studio tick", url=str(request.url.path), status=401, ms=0,
-                        expected="200 + mode proposal-only", actual="bad or missing X-Studio-Token")
+                        expected="200 + mode proposal-only", actual="bad or missing X-Studio-Token / k")
         raise HTTPException(status_code=401, detail="bad token")
     t0 = time.monotonic()
     out = await agent.studio_tick(size_usd, threshold, arb_threshold)
