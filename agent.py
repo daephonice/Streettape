@@ -323,6 +323,8 @@ async def desk_arbs(underlying: str | None = None, limit: int = 5) -> list[dict]
     """Arbs whose raw gap clears ARB_THRESHOLD, net-of-cost quoted. Shared by
     /api/agent/scan and the studio tick."""
     arbs = await _all_arbs(underlying)
+    if underlying:  # an explicit name is asked about directly: show its net result even under the alert threshold
+        return arbs[:limit]
     return [a for a in arbs if a["gap"] > ARB_THRESHOLD][:limit]
 
 
