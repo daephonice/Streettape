@@ -25,6 +25,17 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 
 ---
 
+## AI stack
+
+- **No model computes a price.** Tape is GeckoTerminal, last cash print is Yahoo, quotes are Binance (Pancake as fallback). Gaps, share ratios and net bps are plain Python arithmetic in the app.
+- **The skill is `skills/streettape.py`.** Closed grammar (`say` accepts a fixed set of sentences: rich vs Friday, rotate into cheapest X, flatten anything N% rich, alert only when cash is shut; plus `basket`). Stdlib only. It is a thin client over the StreetTape API and invents nothing.
+- **Quote and sign.** `baw market-order quote` when `baw` is on PATH, otherwise `POST /api/swap/order`. Signing is only `quote --sign`, and only after the user says yes. Nothing auto-executes.
+- **One live comparison, 2026-10-01.** `baw` and `/api/swap/order` returned the same out-amount (0.1404166985679507 TSLAB, `deltaBps` 0.0) for USDT to TSLAB at $50. Quote only. A signed `baw` fill was **not** run: the agentic wallet was empty.
+- **Studio.** Command: `bag deploy --provider bnb --accept-risk --yes`, agent `01M401H27Z9Q80XTFB0ZW8K5HC`, plus a 60 s `tick.ts` loop calling `GET /api/agent/studio/tick`. Result (2026-10-03): the deployed runtime got 401 every minute because the platform dropped the custom token env; after a tick-only key, 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s. The runtime stops about 5 minutes after the last invoke, so this is a trial, not a scheduled job. Details in the Runtime log, "Studio tick from the managed runtime."
+- **Which file is the report.** This one. `GET /api/_devex` is the container log and resets on deploy.
+
+---
+
 ## Time to first useful call
 
 | Clock | What happened |
