@@ -860,3 +860,46 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - SPCX is held out of the official column by design: SPCXx ranged 149.07 to 159.16 and SPCXon 158.67 to 159.29.
   - Thin xStocks pools (METAx, TSLAx, QQQx, NVDAx, AAPLx, AMDx) printed one flat price all weekend, 0.02% to 21.2% off the print. They are marked thin and excluded from the widest gap. Widest live gaps: TSMon +1.57%, NVDAon +0.64%, QQQon +0.61%.
 - What we changed because of it: nothing. Not verified: Monday open mark and reconvergence minutes, which need a Mon 09:30 ET render.
+
+### 2026-10-03 — Studio tick with a named underlying (`/api/agent/studio/tick?underlying=`)
+
+- Session: WEEKEND (Sat, 18:31 UTC / 14:31 ET).
+- What we hit: `GET /api/agent/studio/tick?k=<tick key>` with no name, then `&underlying=NVDA` and `&underlying=ZZZ`, from Termux against the deployed app. The tick now carries an `answers` block (rich vs Friday, rotate, earnings).
+- What came back (first call of each outcome):
+  - No name: 200, `mode proposal-only`, `answers` keys `richVsFriday`, `rotate`, `earnings`, `earningsInside24h`. `rotate` and `earnings` are null.
+  - NVDA: 200. `rotate` NVDAon rich, NVDAB cheap, gap 0.001482, `netBps` 9.82, `costBps` 5.0 (the RFQ floor, not a fill quote), `viable` true. `earnings` 2026-11-17T20:00Z, 1081.46 h out, `inside24h` false.
+  - ZZZ: 200, `rotate` `{viable: false, reason: "no two live wrappers"}`.
+  - No key and a wrong key: 401 both.
+- What we changed because of it: nothing. Not verified: Monday cash-open values.
+
+### 2026-10-03 — Free `/x402` route returns a gateway 404 (agent 01M401H27Z9Q80XTFB0ZW8K5HC)
+
+- Session: WEEKEND (Sat, ~21:30 UTC).
+- What we hit: `bag deploy --provider bnb` with `payments.seller.price_usd = "0"` (FREE), then `POST` text, `POST` JSON `{"prompt": ...}` and `GET ?prompt=` to `/v1/rt/<agentId>/x402`. The runtime source reads the prompt from exactly those two places.
+- What came back (first call of each outcome):
+  - Deploy summary: `x402 rail is UNVERIFIED in FREE mode`; `bag deploy info`: `payment rail: unverified — HTTP 404; no verified x402 payment challenge`.
+  - All three shapes: HTTP 404 `{"error":{"code":"x402.not_found","message":"x402 endpoint not found."}}` with a `request_id`, 1.6 to 2.8 s.
+  - Runtime log after those calls: `serving on 0.0.0.0:9000 (x402: active)` and the 60 s tick lines only. No request line, so the gateway answered and the call never reached the runtime.
+  - `B402_SELL_PATHS` in the runtime package is `/x402` and `/mpp`; the stack uses x402. The path and the request shape are correct.
+- What we changed because of it: nothing. The free route is not reachable through the gateway as deployed, so no free x402 answer was produced. Not verified: whether the gateway publishes `/x402` only for PAID.
+
+### 2026-10-03 — A2A `tick` skill on the managed runtime, empty agent card
+
+- Session: WEEKEND (Sat, 21:32 UTC).
+- What we hit: `bag platform invoke-client new`, `POST /v1/oauth/token` (client_credentials), then `message/send` with `{"skill":"tick"}` twice to `/v1/rt/<agentId>/a2a`.
+- What came back (first call of each outcome):
+  - Token: 200, 2.30 s.
+  - `tick` skill: 200 both times, JSON with the tick fields and the new `answers` block. The runtime's own fetch of the Railway tick took 260 ms and 286 ms. Call wall time from the phone was not captured.
+  - Agent card: 200 with `skills: []`. The ERC-8183 rail is off, so an x402-only agent advertises no skills, and `tick` exists only in the executor, not on the card.
+  - `bag deploy info --with-curl` prints a `negotiate` example only. A plain text message is rejected with `unknown skill`, so the phrased three answers (LLM path) cannot be asked over A2A without a funded job.
+- What we changed because of it: nothing. Not verified: the three phrased answers from the live agent.
+
+### 2026-10-03 — B402 sandbox application blocked (Google Form, external accounts)
+
+- Session: WEEKEND (Sat, ~19:50 to 21:45 UTC).
+- What we hit: the application form linked from the B402 docs page, and the Binance page `/en/binancex402` ("Apply for API key") that support pointed to.
+- What came back (first call of each outcome):
+  - Google Forms: "Can't access item — The organization that owns this item doesn't allow you to access it", for every external Gmail account tried.
+  - Support chat: the request was forwarded, answer "a few hours or the next business day (off hours)". The `/binancex402` button leads to the same form; support emailed the team.
+  - Result: no sandbox `B402_*` credentials, so `bag x402 sell status` shows all five absent and the route stays FREE. No paid-call receipt exists.
+- What we changed because of it: kept `price_usd = "0"` and left `studioRuntime.deployed` and `x402Support` false on the card. Not verified: whether a sandbox application succeeds from an organization-managed account.
