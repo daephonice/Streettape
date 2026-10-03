@@ -392,7 +392,13 @@ async def build_snapshot():
     falls through to the existing Gecko tape + Yahoo mark path, published
     immediately with marks null then patched in place once Yahoo lands —
     unchanged from before, so a dead Yahoo/RWA Data never blocks rows."""
+    t0 = time.monotonic()
+    def _lap(stage):
+        dt = time.monotonic() - t0
+        if dt > 5:
+            log.warning("board: build stage %s done at %.1fs", stage, dt)
     await _sync_catalog()
+    _lap("catalog")
     pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
              for u in rwa.UNIVERSE if any(w.get("address") for w in u["wrappers"])]
     asyncio.create_task(rwa_api.refresh_mcaps(pairs))
@@ -401,6 +407,7 @@ async def build_snapshot():
 
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     official = await rwa_api.get_official_snapshot(addrs) or {}
+    _lap("official")
 
     # Only skip a ticker's Yahoo fetch if every wrapper under that underlying
     # already got an official mark — a partially-covered underlying still
@@ -415,11 +422,13 @@ async def build_snapshot():
     cash_open = rwa.session_now()["cashOpen"]
     underlyings = [u["underlying"] for u in rwa.UNIVERSE]
     fair_marks = await asyncio.to_thread(fair.synthetic_marks, underlyings, cash_open)
+    _lap("fair")
 
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
         tapes = await _gecko_prices(client, addrs)  # all wrappers: liquidity is needed even when RWA Data supplied the price
         tokens = _build_tokens(tapes, {}, official, fair_marks)
         snap = rwa.set_cached_snapshot(tokens, _group(tokens), tape_stale=_tape_stale)
+        _lap("first-publish")
 
         marks = await _yahoo_marks(client, skip_tickers)
 
