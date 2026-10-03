@@ -149,7 +149,7 @@ async def _one_gecko(client, addr: str):
     return _gecko_row(attr)
 
 
-async def _gecko_prices(client, addrs: list | None = None) -> dict:
+async def _gecko_prices(client, addrs: list | None = None, probe: bool = False) -> dict:
     global _tape_stale
     out = {}
     rate_limited = False
@@ -158,6 +158,12 @@ async def _gecko_prices(client, addrs: list | None = None) -> dict:
         chunk = addrs[i:i + 5]
         try:
             resp = await client.get(f"{GECKO}/networks/bsc/tokens/multi/{','.join(chunk)}")
+            if resp.status_code == 429 and probe:
+                await asyncio.sleep(3)  # catalog probe: one paced retry, then give up (no per-address storm)
+                resp = await client.get(f"{GECKO}/networks/bsc/tokens/multi/{','.join(chunk)}")
+                if resp.status_code == 429:
+                    rate_limited = True
+                    break
             if resp.status_code == 429:
                 rate_limited = True
             elif resp.status_code == 200:
@@ -168,10 +174,12 @@ async def _gecko_prices(client, addrs: list | None = None) -> dict:
                     attr = item.get("attributes") or {}
                     addr = (attr.get("address") or "").lower()
                     out[addr] = _gecko_row(attr)
-                await asyncio.sleep(0.2)
+                await asyncio.sleep(0.5 if probe else 0.2)
                 continue
         except Exception:
             log.info("board: gecko multi miss", exc_info=True)
+        if probe:
+            continue
         for a in chunk:
             try:
                 row = await _one_gecko(client, a)
@@ -340,7 +348,7 @@ async def _select_board():
     global _board_live, _last_catalog_sync, _board_report
     addrs = [w["address"] for w in rwa.wrappers() if w.get("address")]
     async with httpx.AsyncClient(timeout=6, headers=HEADERS) as client:
-        tapes = await _gecko_prices(client, addrs)
+        tapes = await _gecko_prices(client, addrs, probe=True)
     _board_report = {"ran": True, "at": datetime.now(timezone.utc).isoformat(), "rateLimited": bool(_tape_stale),
                      "candidates": sorted({w["underlying"] for w in rwa.wrappers()} - set(rwa.SEEDS))}
     if _tape_stale:
@@ -386,7 +394,24 @@ async def _sync_catalog():
         await _select_board()
 
 
+_first_done = False
+
+
 async def build_snapshot():
+    """First call publishes from the static seed (no catalog sync, no 488-address
+    probe) so the board is never blank for minutes after a deploy; every call
+    after that runs the full cycle including the catalog sync."""
+    global _first_done
+    if not _first_done:
+        _first_done = True
+        try:
+            await _cycle(sync=False)
+        except Exception:
+            log.exception("board: quick first publish failed")
+    return await _cycle(sync=True)
+
+
+async def _cycle(sync: bool = True):
     """RWA Data (official mark + official tape) tried first per wrapper address.
     Any address it didn't cover this cycle (unset key, parked, timeout, miss)
     falls through to the existing Gecko tape + Yahoo mark path, published
@@ -397,7 +422,8 @@ async def build_snapshot():
         dt = time.monotonic() - t0
         if dt > 5:
             log.warning("board: build stage %s done at %.1fs", stage, dt)
-    await _sync_catalog()
+    if sync:
+        await _sync_catalog()
     _lap("catalog")
     pairs = [(u["underlying"], next(w["address"] for w in u["wrappers"] if w.get("address")))
              for u in rwa.UNIVERSE if any(w.get("address") for w in u["wrappers"])]
