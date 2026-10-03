@@ -753,3 +753,33 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - `/api/board` after: 20 underlyings, every one with a mark, no thin wrapper outside the seeds. Smallest kept tape is MSTRon at about $2,900; deepest is QQQB at about $7.6M.
   - Corrects the 2026-10-02 baskets entry: AVGO, KO, PG and JNJ are in the listing. They were missing from the snapshot because of our parser. AVGO now has a tape (AVGOB, about $7,400) and sits on the board; KO, PG and JNJ are listed but have no tape of $500 or more.
 - What we changed because of it: the parser reads the real keys and keeps chain 56 only. The board is capped at 20 underlyings: seeds always kept, the rest ranked by best-wrapper liquidity, wrappers kept only with a non-thin Gecko tape. Not verified: a Buy on any new name, or whether the 421 "no tape" names have pools Gecko has not indexed.
+
+### 2026-10-03 — `priceImpactPct` re-probed: unit holds, value moves 5x between runs (`/api/_impactprobe`)
+
+- Session: AFTER-HOURS (21:09 ET Fri / 01:09 UTC Sat / 02:09 WAT Sat). Cash shut.
+- What we hit: `GET /api/_impactprobe?pair=TSLAB&big_usd=5000` with a taker set. BNB to TSLAB, `executionMode=SWAP`, one call per size.
+- What came back (first call of each):
+  - $50: provider `binance_web3`, route LiquidMesh, `priceImpactPct` 0.0008153811, rate 2.07126 TSLAB per BNB.
+  - $5,000: same provider and route, `priceImpactPct` 0.0005161235, rate 2.07011. The rate drop against the $50 quote is 5.5 bps. The raw field read as a fraction is 5.2 bps, 0.93 of the drop.
+  - Against the 2026-10-01 probe on the same pair: raw at $50 was 0.00389, now 0.000815, about 4.8x lower with the same route and size. Raw at $5,000 was 0.00273, now 0.000516.
+  - Raw still falls as size grows (8.2 bps to 5.2 bps), as before. This time it lands near the observed rate drop at $5,000; last time it was 19 to 39 bps against a 15 to 21 bps drop.
+- What we changed because of it: nothing. `PRICE_IMPACT_UNIT=fraction` is confirmed by the probe's own verdict. The field is a fraction but not stable between runs, so it is not a reliable cost input on its own. Not verified: why the value shifts between runs. TSLAon and TSLAx could not be probed for impact: both refused BNB (see the two blocks below).
+
+### 2026-10-03 — Ondo wrapper refuses BNB with a new message (BNB to TSLAon)
+
+- Session: AFTER-HOURS (Sat, minutes after the TSLAB probe). Cash shut.
+- What we hit: `GET /api/_impactprobe?pair=TSLAon&big_usd=5000` with a taker set. BNB to TSLAon at $50 and $5,000.
+- What came back (first call of each size): no route, same text both times: `Swaps between this token and real-world assets aren't supported yet. Try using a different token.` No provider, no mode, no impact. Our probe read it from the failed quote, so the HTTP status and any `code` were not captured here.
+- Differs from the 2026-10-01 AMDon BNB buy, which returned `code=40368 Ondo asset on chain 56 can only pair with allowed stablecoin(s)`. Same wrapper family and the same BNB input, different wording. The text does not say which tokens are allowed.
+- What we changed because of it: the probe now returns the failure reason per run. No change to the quote path. Not verified: the status and `code` for this text; whether it is a second code or the same one with a different message.
+
+### 2026-10-03 — Pancake fallback returned a Cloudflare 502 page (BNB to TSLAx)
+
+- Session: AFTER-HOURS (Sat, same pass). Cash shut.
+- What we hit: `GET /api/_impactprobe?pair=TSLAx&big_usd=5000`. BNB to TSLAx at $50 and $5,000. Binance refused first, so the fallback chain ran.
+- What came back (first call of each size):
+  - Binance: HTTP 200, `xStock token only supports trading with: USDT, USDC.` Already logged as `40370` on 2026-10-01.
+  - Pancake: HTTP 502, non-JSON, a Cloudflare HTML error page. On 2026-10-01 the same pair returned a signable transaction from Pancake. This is the first Pancake failure we have logged.
+  - OpenOcean: HTTP 403, plain text `Forbidden; you don't have permission to access this resource.` Already logged.
+  - All three failed at both sizes, so BNB to TSLAx had no route in this pass.
+- What we changed because of it: nothing. A 502 from Pancake is treated like any other failed provider and the next one is tried. Not verified: whether the 502 was a one-off or lasts, or a retry.
