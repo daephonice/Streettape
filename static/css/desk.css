@@ -332,8 +332,6 @@ a.hm-action-btn { cursor: pointer; }
    three wrapper columns (Tape / Official / Fair) per underlying.
    ========================================================================== */
 .bd-col { max-width: 720px; margin: 0 auto; padding: 0 16px; width: 100%; }
-.bd-x { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; margin-right: 8px; color: var(--hm-muted); }
-.bd-x:hover { color: var(--hm-text); }
 
 .bd-hero { padding: 22px 0 14px; text-align: center; }
 .bd-hero .sess-chip { font-size: 13px; padding: 7px 14px; }
@@ -1003,3 +1001,8 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bn { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; display: flex; justify-content: center; gap: 4px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--hm-bg, #07090e); border-top: 1px solid var(--hm-line, #1d2025); }
 .bn-item { flex: 1 1 0; max-width: 120px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 0; border-radius: 12px; color: var(--hm-dim, #707176); font-size: 11px; font-weight: 500; text-decoration: none; }
 .bn-item.on { background: var(--hm-ctrl, #23252a); color: var(--hm-text, #fafafa); }
+
+/* Basket top row: back link + session pill */
+.bk-top { display: flex; align-items: center; justify-content: flex-start; width: 100%; margin-bottom: 14px; }
+.bk-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--hm-muted); text-decoration: none; }
+.bk-back:hover { color: var(--hm-text); }
