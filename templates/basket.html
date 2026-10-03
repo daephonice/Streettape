@@ -7,7 +7,6 @@
   <div class="hm-col hm-header-inner">
     <a href="/" class="mkt-brand"><span class="mkt-wordmark">StreetTape</span></a>
     <div class="hm-header-right">
-      <a class="bd-x" href="/board" aria-label="Close"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></a>
       <button class="mkt-connect-btn" id="mkt-connect-btn" type="button">Connect wallet</button>
     </div>
   </div>
@@ -18,6 +17,9 @@
 {% set cash_open = b.session.cashOpen %}
 <div class="bd-col">
   <section class="bd-hero">
+    <div class="bk-top">
+      <a class="bk-back" href="/" aria-label="Back to Home"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg><span>Back to Home</span></a>
+    </div>
     <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(b.session.label, 'sess-we') }}"><span class="sess-dot"></span><span>{{ b.session.label }}</span></span>
     <p class="bd-hero-copy">{{ b.label }} basket: {{ b.names|join(', ') }}. ${{ '%.2f'|format(b.sizeUsd) }} equal weight, ${{ '%.2f'|format(b.legUsd) }} per name, quoted as buys from USDT into the cheapest wrapper with a tape and a share ratio.</p>
     {% if b.tapeStale %}<p class="bd-hero-stale">Tape delayed (rate limited). Showing last good read.</p>{% endif %}
