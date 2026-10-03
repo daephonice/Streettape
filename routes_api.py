@@ -89,12 +89,25 @@ async def api_devex():
                     headers={"Content-Disposition": 'attachment; filename="DEVEX.md"'})
 
 
+@router.get("/session")
+async def get_session(closed_at: str | None = None):
+    import asyncio
+    import sessionbook
+    try:
+        return await asyncio.to_thread(sessionbook.build, closed_at)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/board")
 async def get_board():
     import asyncio
     import board
     snap = dict(rwa.get_cached_snapshot())
     snap["lastSession"] = await asyncio.to_thread(board.last_sessions)
+    if (snap.get("session") or {}).get("cashOpen"):
+        import sessionbook
+        snap["bookWidest"] = await asyncio.to_thread(sessionbook.widest_line)
     return snap
 
 

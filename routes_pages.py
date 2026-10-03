@@ -8,6 +8,7 @@ import prices
 import rwa
 import basket
 import board
+import sessionbook
 
 router = APIRouter()
 templates = Jinja2Templates(directory="templates")
@@ -43,12 +44,18 @@ def _board_context() -> dict:
         "tape_stale": bool(snap.get("tapeStale")),
         "platform_order": PLATFORM_ORDER,
         "last_session": board.last_sessions(),
+        "book_widest": sessionbook.widest_line() if session.get("cashOpen") else None,
     }
 
 
 @router.get("/", response_class=HTMLResponse)
 async def board_page(request: Request):
     return templates.TemplateResponse(request, "board.html", _board_context())
+
+
+@router.get("/session", response_class=HTMLResponse)
+async def session_page(request: Request):
+    return templates.TemplateResponse(request, "session.html", {})
 
 
 @router.get("/basket/ai", response_class=HTMLResponse)
