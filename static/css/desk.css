@@ -993,3 +993,9 @@ html.trd-lock, html.trd-lock body { overflow: hidden; }
 .bd-o-th { color: var(--hm-dim); font-size: 11px; }
 .bd-o-p.pos { color: var(--hm-pos); }
 .bd-o-p.neg { color: var(--hm-neg, #f87171); }
+
+/* Session book */
+.sb-head, .sb-row { margin: 14px 0 0; padding: 12px 14px; }
+.sb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 8px 0; }
+.sb-cell small { display: block; font-size: 11px; color: var(--hm-muted); }
+.sb-cell b { font-size: 14px; font-variant-numeric: tabular-nums; }
