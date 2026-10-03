@@ -38,7 +38,7 @@
     <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree and there is no live rotate. Below: the last gap that cleared cost while cash was shut.{% else %}Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.{% endif %}</p>
     <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
       <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
-      <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest NVDA</button>
+      <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest <span id="bd-rot-t">NVDA</span></button>
       <button type="button" class="bd-chip" data-cmd="defensive">rotate into defensives when volatility spikes</button>
       <button type="button" class="bd-chip" data-cmd="flatten">flatten anything richer than 2% while cash is shut</button>
     </div>
