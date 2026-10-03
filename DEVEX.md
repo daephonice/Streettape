@@ -849,3 +849,14 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `GET /api/agent/studio/tick?arb_threshold=0.002&k=<tick key>` twice from Termux, against the deployed app (not the managed runtime).
 - What came back: HTTP 200 both times, 5.10 s then 3.97 s total from the phone. Body: `agent streettape-desk`, `mode proposal-only`, session WEEKEND, an SPCX arb row (SPCXon 159.105, SPCXx 149.069). Earlier runs were 1.9 to 2.3 s. The server-side tick line was not in the `/api/_devex` download taken before these calls, so the split between network and fan-out is not known. `bag status` was not run.
 - What we changed because of it: nothing.
+
+### 2026-10-03 — Session book: three names had no Friday cash print (`/api/session`)
+
+- Session: WEEKEND (Sat 09:42 ET / 13:42 UTC / 14:42 WAT).
+- What we hit: `GET /api/session` and `/session` for the Fri 2026-10-02 16:00 ET close, window open until Mon 09:30 ET.
+- What came back (first call of each outcome):
+  - 200. 15,499 wrapper snapshots inside the shut window. Every wrapper in the universe printed a tape (`noTapeWrappers: []`).
+  - No Friday cash row for AAOI, NBIS and CBRS (all bStocks-only). They have tape (AAOIB 114.60 to 115.22, NBISB 241.57 to 242.23, CBRSB 176.17 to 178.58) but no official, so no gap is computed and no row is invented. No name used the fallback official (`fallbackOfficial: []`).
+  - SPCX is held out of the official column by design: SPCXx ranged 149.07 to 159.16 and SPCXon 158.67 to 159.29.
+  - Thin xStocks pools (METAx, TSLAx, QQQx, NVDAx, AAPLx, AMDx) printed one flat price all weekend, 0.02% to 21.2% off the print. They are marked thin and excluded from the widest gap. Widest live gaps: TSMon +1.57%, NVDAon +0.64%, QQQon +0.61%.
+- What we changed because of it: nothing. Not verified: Monday open mark and reconvergence minutes, which need a Mon 09:30 ET render.
