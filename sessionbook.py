@@ -183,7 +183,7 @@ def build(closed_at: str | None = None) -> dict:
         "label": "WEEKEND" if close.astimezone(rwa.NY).weekday() == 4 else "AFTER-HOURS",
         "reconvergePct": RECONVERGE_PCT,
         "rows": rows, "widest": ({"underlying": top["underlying"], **top["widest"], "line": widest_line} if top else None),
-        "meta": {"snapshots": len(wrap_rows), "cashRows": len(cash_rows),
+        "meta": {"snapshots": sum(1 for v in tape.values() for r in v if r[0] <= open_), "cashRows": len(cash_rows),
                  "noFridayCash": no_friday, "noTapeWrappers": no_tape,
                  "fallbackOfficial": [r["underlying"] for r in rows if r["officialSource"] == "fallback"]},
     }
