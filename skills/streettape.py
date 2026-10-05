@@ -21,6 +21,8 @@ NOTE = "not auto-executed, confirm and sign in your own wallet."
 # If `baw` is on PATH it does quote/build/sign; otherwise we fall back to StreetTape /api/swap/order.
 BAW = shutil.which("baw")
 CHAIN = "56"
+TSLAB = "0x5b1910eaad6450e50f816082aa078c41f10c292f"
+DEVEX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "DEVEX.md")
 
 
 def call(path, params=None, body=None):
@@ -200,6 +202,49 @@ def cmd_verify(a):
         sys.exit(1)
 
 
+def cmd_fill(a):
+    """Quote, compare with the API, confirm, sign once, print a DEVEX block. No retry, no API fallback."""
+    if not BAW:
+        sys.exit(json.dumps({"error": "baw not on PATH: cannot sign"}))
+    args = (a.input_mint, a.output_mint, a.amount)
+    b = baw_quote(*args)
+    t = call("/api/swap/order", body={"inputMint": a.input_mint, "outputMint": a.output_mint,
+                                      "uiAmount": a.amount, "taker": a.taker})
+    ao, bo = t.get("uiOutAmount"), b["uiOutAmount"]
+    if not ao:
+        sys.exit(json.dumps({"error": "API quote empty", "provider": t.get("provider"),
+                             "fallbackReason": t.get("fallbackReason")}))
+    d = abs(bo - ao) / ao * 10000
+    print(f"baw {bo} | api {ao} ({t.get('provider')}) | delta {d:.2f} bps (tol {a.tol})")
+    if d > a.tol:
+        sys.exit("quotes differ beyond tolerance: not signing")
+    if not a.yes and input(f"Sign {a.amount} in -> ~{bo} out? type yes: ").strip().lower() != "yes":
+        sys.exit("cancelled")
+    try:
+        r = baw_sign(*args)
+    except Exception as e:
+        r = {"status": "ERROR", "error": str(e)}
+    sess = (call("/api/board").get("session") or {}).get("label", "?")
+    now = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
+    ok = r.get("status") == "FINISHED"
+    blk = (f"\n### {now[:10]} \u2014 Signed `baw market-order swap` {'filled' if ok else 'did not finish'} (USDT to TSLAB, ${a.amount:g})\n\n"
+           f"- Session: {sess} ({now}).\n"
+           f"- What we hit: `baw market-order quote`, then `/api/swap/order` (delta {d:.2f} bps), then `baw market-order swap`, polled with `market-order list`.\n"
+           f"- What came back:\n"
+           f"  - Order id `{r.get('orderId')}`, status `{r.get('status')}`, tx `{r.get('txHash')}`.\n"
+           f"  - Submit {r.get('submitSec')} s, total {r.get('totalSec')} s. Quote out {bo}, API out {ao}.\n"
+           + (f"  - Error or flag: {r.get('error')}\n" if r.get("error") else "")
+           + "- What we changed because of it: nothing.\n")
+    print(json.dumps(r, indent=2, default=str))
+    print(blk)
+    if a.write:
+        with open(DEVEX, "a") as f:
+            f.write(blk)
+        print("appended to DEVEX.md", file=sys.stderr)
+    if not ok:
+        sys.exit(1)
+
+
 def cmd_flatten(a):
     snap = call("/api/board")
     rich = [t for t in snap.get("tokens") or []
@@ -333,6 +378,12 @@ def main():
     v.add_argument("input_mint"); v.add_argument("output_mint"); v.add_argument("amount", type=float)
     v.add_argument("--taker"); v.add_argument("--tol", type=float, default=50.0, help="max out-amount gap in bps")
     v.set_defaults(f=cmd_verify)
+    fl = s.add_parser("fill", help="signed baw fill after quote check (default USDT to TSLAB, $5)")
+    fl.add_argument("amount", type=float, nargs="?", default=5.0)
+    fl.add_argument("--in", dest="input_mint", default=USDT); fl.add_argument("--out", dest="output_mint", default=TSLAB)
+    fl.add_argument("--taker"); fl.add_argument("--tol", type=float, default=50.0)
+    fl.add_argument("--yes", action="store_true"); fl.add_argument("--write", action="store_true", help="append block to DEVEX.md")
+    fl.set_defaults(f=cmd_fill)
     f = s.add_parser("flatten"); f.add_argument("--usd", type=float, default=50.0)
     f.add_argument("--taker"); f.add_argument("--pct", type=float, help="min premium as fraction, default 0.02"); f.set_defaults(f=cmd_flatten)
     bk = s.add_parser("basket"); bk.add_argument("--usd", type=float, default=50.0); bk.set_defaults(f=cmd_basket)
