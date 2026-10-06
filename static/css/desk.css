@@ -1006,3 +1006,4 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bk-top { display: flex; align-items: center; justify-content: flex-start; width: 100%; margin-bottom: 14px; }
 .bk-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--hm-muted); text-decoration: none; }
 .bk-back:hover { color: var(--hm-text); }
+.bd-proof{margin:10px 0 0;font-size:12px;opacity:.8}.bd-proof a{font-family:ui-monospace,monospace}
