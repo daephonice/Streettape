@@ -694,7 +694,7 @@
     if (document.hidden || sessionBusy) return;
     sessionBusy = true;
     try {
-      const data = await getJSON('/api/session');
+      const data = await getJSON('/api/clock');
       // /api/board's session (when it lands) reflects the same clock; don't fight it, just fill the gap.
       if (!state.session) { state.session = data; renderSession(); }
     } catch (err) { /* keep last session */ } finally {

@@ -412,7 +412,7 @@
   async function refreshSession() {
     if (document.hidden) return;
     try {
-      const resp = await fetch('/api/session', { cache: 'no-store' });
+      const resp = await fetch('/api/clock', { cache: 'no-store' });
       if (!resp.ok) return;
       applySession(await resp.json());
     } catch (err) {
