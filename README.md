@@ -1,9 +1,16 @@
 # StreetTape
 
-Mark vs tape for tokenized stocks on BNB Chain.
+Same stock, three wrappers, on BSC. Tape is the pool. Official is Friday's print. Fair is where it should be while cash is shut. Rotate stays wrapper vs wrapper.
 
-Tape = GeckoTerminal. Mark = Yahoo last cash print. Swap = PancakeSwap.
-Wallet = MetaMask / Binance Web3 / Trust. Agent = premium alerts on Telegram.
+- Live: https://streettape.up.railway.app
+- Agent card: https://streettape.up.railway.app/agent-registration.json (ERC-8004 agent 360062)
+- Settled fill: https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5
+- Report: DEVEX.md (not GET /api/_devex)
+
+Judge clicks: `/` and the four chips, `/basket/defensive`, `/t/NVDA`, a built swap sheet, then DEVEX.md.
+Spot only. Nothing auto-executes.
+
+## Run
 
 ```bash
 pip install -r requirements.txt
