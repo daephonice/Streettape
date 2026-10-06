@@ -1,6 +1,6 @@
 # StreetTape — Developer Experience Report
 
-Mid-build notes, frozen 2026-09-29. Written from live calls, not from the docs after the fact.
+Mid-build notes, last updated 2026-10-06. Written from live calls, not from the docs after the fact.
 
 This file lives in the repo so a Railway deploy cannot wipe it. The download at `GET /api/_devex` is a *different* file: it is whatever `devlog.py` wrote on that container, and it resets on every deploy. Do not treat `/api/_devex` as this report. When a feature is ready to test, download `/api/_devex`, cut it down to the new calls for that feature, and paste them under **Runtime log** at the bottom.
 
@@ -14,13 +14,14 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 ## Summary
 
 - Built against Binance Web3 quote/RFQ/swap-build, RWA Data, Transaction sim, Address Portfolio, GeckoTerminal tape, Yahoo last cash print, BSC RPC.
-- Verified live: aggregator quotes and built SWAP transactions (LiquidMesh), RFQ-requires-wallet, RWA `platforms` / `search` / `underlying-profile` / `underlying-market`, rate-limit behaviour, ERC-8004 registration on BSC, one settled TSLAB buy.
+- Verified live: aggregator quotes and built SWAP transactions (LiquidMesh), RFQ-requires-wallet, RWA `platforms` / `search` / `underlying-profile` / `underlying-market`, rate-limit behaviour, ERC-8004 registration on BSC, one settled TSLAB buy ([0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5](https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5)).
 - Called live, failed: `POST /api/v1/dex/aggregator/tx/simulate` HTTP 404; `GET /api/v1/portfolio/tokens` HTTP 202 non-JSON (19/19); `rwa/price` no usable mark on 420/420 calls in the logged window (missing `binanceChainId`, then 429).
 - Verified live (2026-10-01): one `baw market-order quote` and `/api/swap/order` returned the same out-amount for USDT to TSLAB at 50 (see Runtime log).
 - Verified live (2026-10-01): `/api/agent/studio/tick` returned an SPCX arb at 35.9 bps net, proposal-only, and 401 without the token (see Runtime log).
 - Verified live (2026-10-01): Ondo and xStock RFQ errors `40368`, `40370`, `40374`, `40375`, all HTTP 200 (see Runtime log).
 - Verified live (2026-10-01): PancakeSwap `GET /v1/quote` + `POST /v1/calldata` returned a signable BNB to TSLAx transaction when Binance refused the pair with `40370` (see Runtime log).
 - Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
+- Verified live (2026-10-03): Studio tick from the managed runtime returned 401 every minute until the platform dropped the custom token env; with a tick-only key it returned 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s, and the runtime stopped about 5 minutes after the last invoke (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
 
 ---
@@ -101,7 +102,7 @@ Still open: the raw value fell as size grew, while the rate drop grew. On this p
 
 `POST /api/v1/dex/aggregator/tx/simulate` — two calls, real taker, built SWAP tx — HTTP 404 in ~100 ms both times. Early logger treated "no code field" as success. That was our bug. No documented replacement found. Pre-sign check in use is the wallet's own simulation.
 
-After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to fail." Cancelled. A later TSLAB buy settled; holdings then showed via public RPC. Simulate is parked for an hour after a 404.
+After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to fail." Cancelled. A later TSLAB buy settled ([0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5](https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5)); holdings then showed via public RPC. Simulate is parked for an hour after a 404.
 
 ### Address Portfolio is not a portfolio
 
@@ -132,7 +133,7 @@ Agent Studio was deployed on 2026-10-03 as a 48h BNB trial (agent `01M401H27Z9Q8
 
 ## How the assets behaved
 
-- **bStocks** quoted and filled on AMM after hours. TSLAB buy settled. NVDAB build after close was flagged likely-to-fail by the wallet. Cause not proven (liquidity vs transfer limits vs stale route).
+- **bStocks** quoted and filled on AMM after hours. TSLAB buy settled ([0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5](https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5)). NVDAB build after close was flagged likely-to-fail by the wallet. Cause not proven (liquidity vs transfer limits vs stale route).
 - **Ondo / xStocks** quotes without a taker are RFQ and die. With a taker, PRE-MARKET Ondo quotes failed on `40368` (USDC), `40375` ($5 minimum) and `40374` (no liquidity), and xStocks failed on `40370` (BNB). No completed RFQ quote or fill yet.
 - **xStocks tape on Gecko** is often missing for names that have a contract. No tape means no Buy and no arb leg.
 - **SpaceX** has no Yahoo mark. Premium vs official is blank. Cross-wrapper gap still exists (SPCXon rich vs SPCXB).
