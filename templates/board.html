@@ -43,6 +43,7 @@
     </div>
     <div class="bd-cmd-out" id="bd-cmd-out" aria-live="polite" hidden></div>
     <div class="bd-basket"><div class="bd-basket-row"><span class="bd-basket-pill">AI</span><a class="bd-basket-link" href="/basket/ai">View</a><span class="bd-basket-pill">SEMIS</span><a class="bd-basket-link" href="/basket/semis">View</a><span class="bd-basket-pill">DEFENSIVE</span><a class="bd-basket-link" href="/basket/defensive">View</a></div><p class="bd-basket-sub">AI: NVDA AMD META · Semis: NVDA AMD AVGO · Defensive: KO PG JNJ · equal weight · cheapest wrapper · unfilled weight not reassigned</p></div>
+    {% if settled_tx %}<p class="bd-proof">Settled after hours: BNB to TSLAB <a href="https://bscscan.com/tx/{{ settled_tx }}" target="_blank" rel="noopener">{{ settled_tx[:10] }}…{{ settled_tx[-8:] }}</a> · agent 360062 · spot only, BSC</p>{% endif %}
   </section>
   <section class="hm-card bd-book" id="bd-book" {% if cash_open %}hidden{% endif %}>
     <h2 class="bd-book-title">Weekend book <small>same share across wrappers · net of cost at $50</small></h2>
