@@ -6,11 +6,12 @@
   const SESS_MS = 30000;
   const ORDER = ['xstocks', 'ondo', 'bstocks'];
   const SESS_CLASS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
+  const INTRO = "Same stock, three wrappers. Tape is the pool. Official is Friday's print. Fair is where it should be while cash is shut. ";
   const copyOpen = () => {
     const w = lastSnap && lastSnap.bookWidest;
-    return 'Cash is open, so tape and official agree. ' + (w ? 'Widest gap while cash was shut: ' + w.line + '. ' : 'No shut-session tape stored yet. ');
+    return INTRO + 'Cash is open, so tape and official agree. ' + (w ? 'Widest gap while cash was shut: ' + w.line + '. ' : 'No shut-session tape stored yet. ');
   };
-  const COPY_SHUT = 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
+  const COPY_SHUT = INTRO + 'Cash is shut. Official is the last print; Fair is the synthetic reference for where the underlying should trade now. Fair explains why a wrapper is rich; the rotate stays wrapper vs wrapper.';
 
   const USDT = '0x55d398326f99059fF775485246999027B3197955';
   const $ = (id) => document.getElementById(id);
