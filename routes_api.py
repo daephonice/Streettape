@@ -139,8 +139,8 @@ async def api_agent_defensive(usd: float = defensive.DEFAULT_USD):
     return await defensive.build(usd)
 
 
-@router.get("/session")
-async def api_session():
+@router.get("/clock")
+async def api_clock():
     return rwa.session_now()
 
 
