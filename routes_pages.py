@@ -36,10 +36,21 @@ templates.env.globals["telegram_bot_url"] = TELEGRAM_BOT_URL
 PLATFORM_ORDER = ("xstocks", "ondo", "bstocks")
 
 
+def _baskets(groups: list) -> list[dict]:
+    by = {g["underlying"]: g for g in groups}
+    out = []
+    for key, (label, names) in basket.THEMES.items():
+        ready = [n for n in names if basket._cheapest(by.get(n))]
+        out.append({"key": key, "label": label, "ready": ready,
+                    "missing": [n for n in names if n not in ready]})
+    return out
+
+
 def _board_context() -> dict:
     snap = rwa.get_cached_snapshot()
     session = snap.get("session") or rwa.session_now()
     return {
+        "baskets": _baskets(snap.get("groups") or []),
         "groups": snap.get("groups") or [],
         "session": session,
         "tape_stale": bool(snap.get("tapeStale")),
