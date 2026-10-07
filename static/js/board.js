@@ -206,14 +206,15 @@
   async function refreshBook() {
     if (document.hidden) return;
     const empty = $('bd-book-empty');
-    const fail = () => { if (empty && !bookNames.length) { empty.textContent = 'Book unavailable, retrying.'; empty.hidden = false; } };
+    const say = (t) => { if (empty) { empty.textContent = t; empty.hidden = false; } };
+    if (!bookNames.length) say('Pricing routes…');
     try {
       const resp = await fetch('/api/agent/scan', { cache: 'no-store' });
-      if (!resp.ok) return fail();
+      if (!resp.ok) return say('Book failed: HTTP ' + resp.status);
       renderBook(await resp.json());
     } catch (err) {
       console.warn('book refresh failed', err);
-      fail();
+      say('Book failed: ' + (err && err.message ? err.message : err));
     }
   }
 
