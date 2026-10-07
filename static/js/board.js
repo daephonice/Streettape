@@ -301,11 +301,16 @@
     ];
     if (!a.viable) {
       const noRt = (l) => !l || l.noRoute || l.uiOutAmount == null;
-      let why;
-      if (noRt(a.sellLeg)) why = 'No route for the sell leg (' + a.richSymbol + '). Refused.';
-      else if (noRt(a.buyLeg)) why = 'No route for the buy leg (' + a.cheapSymbol + '). Refused.';
-      else why = 'Costs eat the gap.';
-      n.push(line(why, 'bd-o-warn'));
+      const why = (l) => String((l && l.fallbackReason) || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+      if (noRt(a.sellLeg)) {
+        n.push(line('No route selling ' + a.richSymbol + '. Refused.', 'bd-o-warn'));
+        if (why(a.sellLeg)) n.push(line(why(a.sellLeg), 'dim'));
+      } else if (noRt(a.buyLeg)) {
+        n.push(line('No route buying ' + a.cheapSymbol + '. Refused.', 'bd-o-warn'));
+        if (why(a.buyLeg)) n.push(line(why(a.buyLeg), 'dim'));
+      } else {
+        n.push(line('Costs eat the gap.', 'bd-o-warn'));
+      }
     }
     show(title, n, sess);
   }
