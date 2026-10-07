@@ -10,8 +10,8 @@ import swap
 
 THEMES = {
     "ai": ("AI", ("NVDA", "AMD", "META")),
-    "semis": ("Semis", ("NVDA", "AMD", "AVGO")),
-    "defensive": ("Defensive", ("KO", "PG", "JNJ")),
+    "semis": ("Semis", ("NVDA", "AMD", "TSLA")),
+    "defensive": ("Defensive", ("QQQ", "AAPL", "META")),
 }
 THEME = "ai"  # default theme; defensive.py's rotation sells this one
 NAMES = THEMES[THEME][1]
