@@ -205,12 +205,15 @@
   }
   async function refreshBook() {
     if (document.hidden) return;
+    const empty = $('bd-book-empty');
+    const fail = () => { if (empty && !bookNames.length) { empty.textContent = 'Book unavailable, retrying.'; empty.hidden = false; } };
     try {
       const resp = await fetch('/api/agent/scan', { cache: 'no-store' });
-      if (!resp.ok) return;
+      if (!resp.ok) return fail();
       renderBook(await resp.json());
     } catch (err) {
       console.warn('book refresh failed', err);
+      fail();
     }
   }
 
@@ -295,7 +298,14 @@
       line('viable ' + a.viable + ' · netBps ' + num(a.netBps, 1) + ' · gross ' + num(a.grossBps, 1) + ' · cost ' + num(a.costBps, 1), a.viable ? '' : 'dim'),
       line(a.richSymbol + ' ratio ' + num(a.richRatio, 6) + ' · ' + a.cheapSymbol + ' ratio ' + num(a.cheapRatio, 6)),
     ];
-    if (!a.viable) n.push(line('Costs eat the gap.', 'bd-o-warn'));
+    if (!a.viable) {
+      const noRt = (l) => !l || l.noRoute || l.uiOutAmount == null;
+      let why;
+      if (noRt(a.sellLeg)) why = 'No route for the sell leg (' + a.richSymbol + '). Refused.';
+      else if (noRt(a.buyLeg)) why = 'No route for the buy leg (' + a.cheapSymbol + '). Refused.';
+      else why = 'Costs eat the gap.';
+      n.push(line(why, 'bd-o-warn'));
+    }
     show(title, n, sess);
   }
 
