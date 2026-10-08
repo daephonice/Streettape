@@ -380,9 +380,9 @@
     const mv = d.qqqMove;
     defEl.appendChild(el('p', 'bd-def-move ' + (mv == null ? 'flat' : tone(mv)),
       mv == null ? d.qqqSymbol + ' no tape on both sides of the Friday close'
-        : d.qqqSymbol + ' ' + pct(mv) + ' since ' + sinceET(d.since)));
-    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + Number((d.threshold * 100).toFixed(2)) + '%'
-      + (trig ? ' · viable ' + d.viable : ' · ' + (d.reason || 'move under threshold'))));
+        : d.qqqSymbol + ' ' + (mv > 0 ? '+' : '') + Math.round(mv * 10000) + ' bps since ' + sinceET(d.since)));
+    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + Math.round(d.threshold * 10000) + ' bps'
+      + (trig ? ' · viable ' + d.viable : ' · ' + (d.reason || 'move under threshold') + ' · no quotes')));
     if (trig) {
       ((d.sell || {}).legs || []).forEach((l) => defEl.appendChild(l.filled
         ? legLine('Sell ' + l.symbol + ' $' + num(l.amountUsd, 2), l)
@@ -398,7 +398,7 @@
   async function refreshDefensive() {
     if (!defEl || document.hidden || defBusy) return;
     defBusy = true;
-    try { renderDefensive(await getJSON('/api/agent/defensive?usd=50')); } catch (e) { /* keep last card */ } finally { defBusy = false; }
+    try { renderDefensive(await getJSON('/api/agent/defensive?usd=50')); } catch (e) { if (defEl.hidden) { defEl.className = 'bd-def is-off'; defEl.textContent = ''; defEl.appendChild(line('Defensive rotation: state unavailable (' + e.message + ')', 'dim')); defEl.hidden = false; } } finally { defBusy = false; }
   }
 
   const CMDS = { rich: cmdRich, rotate: cmdRotate, defensive: cmdDefensive, flatten: cmdFlatten };
