@@ -120,3 +120,31 @@ async def build(theme: str = THEME, usd: float = DEFAULT_USD) -> dict:
     if n_filled:
         _cache[key] = (time.monotonic(), payload)
     return payload
+
+
+MAX_CASH_GAP = 0.02  # reject a wrapper whose per-share tape is >2% from the cash print
+
+
+async def quick_pick(underlying: str, usd: float = 10.0) -> dict:
+    """Cheapest usable wrapper for one underlying, sanity-checked against the cash print. Quote only."""
+    u = underlying.upper()
+    snap = rwa.get_cached_snapshot()
+    g = next((x for x in snap.get("groups") or [] if x["underlying"] == u), None)
+    pick = _cheapest(g)
+    if not pick:
+        return {"ok": False, "underlying": u, "reason": "no wrapper with a live tape and share ratio"}
+    mark = g.get("markPrice")
+    if not mark:
+        return {"ok": False, "underlying": u, "symbol": pick["symbol"], "reason": "no cash print to check against"}
+    gap = pick["_perShare"] / mark - 1
+    base = {"underlying": u, "symbol": pick["symbol"], "platform": pick["platform"],
+            "perShare": pick["_perShare"], "mark": mark, "gapBps": round(gap * 1e4, 1), "usd": usd}
+    if abs(gap) > MAX_CASH_GAP:
+        return {**base, "ok": False, "reason": f"{pick['symbol']} is {gap*100:+.1f}% from the cash print, not offered"}
+    try:
+        q = await swap.quote(rwa.USDT, pick["mint"], usd)
+    except Exception as e:
+        return {**base, "ok": False, "reason": f"quote failed: {type(e).__name__}"}
+    if q.get("noRoute") or q.get("uiOutAmount") is None:
+        return {**base, "ok": False, "reason": "no route quoted"}
+    return {**base, "ok": True, "outAmount": q.get("uiOutAmount"), "provider": q.get("provider")}

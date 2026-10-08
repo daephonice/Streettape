@@ -330,6 +330,14 @@ async def api_agent_flatten(underlying: str, size_usd: float = 10.0, force: bool
     }
 
 
+@router.get("/quickbuy/{underlying}")
+async def api_quickbuy(underlying: str, usd: float = 10.0):
+    import basket
+    if not (1 <= usd <= 1000):
+        raise HTTPException(status_code=400, detail="usd must be 1 to 1000")
+    return await basket.quick_pick(underlying, usd)
+
+
 class SwapOrderRequest(BaseModel):
     inputMint: str
     outputMint: str
