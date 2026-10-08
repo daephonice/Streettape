@@ -1,6 +1,6 @@
 # StreetTape — Developer Experience Report
 
-Mid-build notes, last updated 2026-10-06. Written from live calls, not from the docs after the fact.
+Mid-build notes, last updated 2026-10-08. Written from live calls, not from the docs after the fact.
 
 This file lives in the repo so a Railway deploy cannot wipe it. The download at `GET /api/_devex` is a *different* file: it is whatever `devlog.py` wrote on that container, and it resets on every deploy. Do not treat `/api/_devex` as this report. When a feature is ready to test, download `/api/_devex`, cut it down to the new calls for that feature, and paste them under **Runtime log** at the bottom.
 
@@ -8,6 +8,14 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Agent registration: https://streettape.up.railway.app/agent-registration.json
 - Chain: BSC mainnet (`binanceChainId=56`)
 - Stance: quote, flag, alert. The user signs. Nothing auto-executes.
+
+> ## If I owned the platform
+>
+> 1. **`binanceChainId` is required on `rwa/price` and the docs must say so**, next to `tokenContractAddresses` (plural), like every sibling endpoint. It cost 213 failed calls.
+> 2. **Return non-200 on validation failure.** `40001` arrives as HTTP 200 today, so any client that checks status treats it as success. Use `400`.
+> 3. **Publish the rate limit.** `web3.binance.com` has none listed. Observed: 5 pass, next 8 at ~80 ms return `429 code=42900`, recovery in under 1 s.
+> 4. **Name the unit of `priceImpactPct` in the field description.** It is a fraction (`0.0005` = 5 bps), not a percent, and on TSLAB it falls as size grows.
+> 5. **Whitelist developer-origin cloud IPs, or say outright that serverless deploys cannot call RFQ.** Valid keys on Railway's default region got `compliance restriction`; Singapore fixed it. RFQ also needs `userWalletAddress`; the error should list every missing field and return the AMM quote beside it.
 
 ---
 
@@ -141,7 +149,7 @@ Agent Studio was deployed on 2026-10-03 as a 48h BNB trial (agent `01M401H27Z9Q8
 
 ---
 
-## If I rebuilt the developer platform
+## If I rebuilt the developer platform (full list)
 
 1. One landing example: signed GET that returns official mark + on-chain tape + `tokenToShareRatio` + `binanceChainId` already in the query.
 2. Allowed-regions line next to "create a key."
