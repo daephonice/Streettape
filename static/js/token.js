@@ -841,11 +841,32 @@
       connect, pay: pre && pre.pay, amount: pre && pre.amount,
     }));
   }
-  // $10/$25/$50 chips open the buy sheet prefilled with USDT; the sheet shows price, fee and minimum received from /api/swap/order. Wallet only, no card ramp.
-  const chips = $('tk-chips');
+  // $10/$25/$50 chips: show the quote (min out) first, then open the buy sheet a moment later. Wallet only, no card ramp.
+  const chips = $('tk-chips'), chipMin = $('tk-chips-min');
+  let chipBusy = false;
+  const f6 = (v) => Number(v).toLocaleString('en-US', { maximumSignificantDigits: 6 });
+  async function chipBuy(usd) {
+    if (chipBusy) return;
+    chipBusy = true;
+    chipMin.hidden = false; chipMin.textContent = 'Quoting\u2026';
+    const out = state.assets[keyFor(SYMBOL)] || {}, pay = state.assets.USDT || {};
+    try {
+      if (!out.mint || !pay.mint) throw new Error('no mint');
+      const r = await fetch('/api/swap/order', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputMint: pay.mint, outputMint: out.mint, uiAmount: usd, taker: state.address || null }) });
+      const o = await r.json();
+      chipMin.textContent = (r.ok && o.uiMinReceived)
+        ? `$${usd} buys \u2265 ${f6(o.uiMinReceived)} ${SYMBOL}` + (o.uiOutAmount ? ` (quote ${f6(o.uiOutAmount)})` : '')
+        : 'No quote right now';
+    } catch (e) { chipMin.textContent = 'No quote right now'; }
+    setTimeout(() => {
+      chipBusy = false;
+      openSwap('buy', undefined, undefined, { pay: 'USDT', amount: usd });
+    }, 1200);
+  }
   if (chips) chips.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-usd]');
-    if (b) openSwap('buy', undefined, undefined, { pay: 'USDT', amount: Number(b.dataset.usd) });
+    if (b) chipBuy(Number(b.dataset.usd));
   });
   els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));
