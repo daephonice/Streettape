@@ -366,6 +366,41 @@
     show('flatten anything richer than 2% while cash is shut', n, sess.label);
   }
 
+  // ---- Live defensive card (GET /api/agent/defensive) ------------------------
+  const defEl = $('bd-def');
+  let defBusy = false;
+  function renderDefensive(d) {
+    defEl.textContent = '';
+    const trig = !!d.triggered;
+    defEl.className = 'bd-def ' + (trig ? 'is-on' : 'is-off');
+    const head = el('div', 'bd-def-head');
+    head.appendChild(el('b', null, 'Defensive rotation'));
+    head.appendChild(el('span', 'bd-def-state', trig ? 'TRIGGERED' : 'NOT TRIGGERED'));
+    defEl.appendChild(head);
+    const mv = d.qqqMove;
+    defEl.appendChild(el('p', 'bd-def-move ' + (mv == null ? 'flat' : tone(mv)),
+      mv == null ? d.qqqSymbol + ' no tape on both sides of the Friday close'
+        : d.qqqSymbol + ' ' + pct(mv) + ' since ' + sinceET(d.since)));
+    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + (d.threshold * 100).toFixed(1) + '%'
+      + (trig ? ' · viable ' + d.viable : ' · ' + (d.reason || 'move under threshold'))));
+    if (trig) {
+      ((d.sell || {}).legs || []).forEach((l) => defEl.appendChild(l.filled
+        ? legLine('Sell ' + l.symbol + ' $' + num(l.amountUsd, 2), l)
+        : line('Sell ' + l.underlying + ' unfilled: ' + (l.reason || 'no route'), 'dim')));
+      const b = d.buy || {};
+      defEl.appendChild(b.filled
+        ? legLine('Buy ' + (b.symbol || d.qqqSymbol) + ' $' + num(b.amountUsd, 2), b)
+        : line('Buy ' + (b.underlying || 'QQQ') + ' unfilled: ' + (b.reason || 'no route'), 'dim'));
+      if (d.priceImpactPct != null) defEl.appendChild(line('Worst leg impact ' + d.priceImpactPct, 'dim'));
+    }
+    defEl.hidden = false;
+  }
+  async function refreshDefensive() {
+    if (!defEl || document.hidden || defBusy) return;
+    defBusy = true;
+    try { renderDefensive(await getJSON('/api/agent/defensive?usd=50')); } catch (e) { /* keep last card */ } finally { defBusy = false; }
+  }
+
   const CMDS = { rich: cmdRich, rotate: cmdRotate, defensive: cmdDefensive, flatten: cmdFlatten };
   chips.forEach((c) => c.addEventListener('click', async () => {
     chips.forEach((x) => x.classList.toggle('is-on', x === c));
@@ -443,6 +478,8 @@
   refreshSession();
   refreshBoard();
   refreshBook();
+  refreshDefensive();
+  setInterval(refreshDefensive, REFRESH_MS);
   setInterval(refreshBoard, REFRESH_MS);
   setInterval(refreshBook, REFRESH_MS);
   setInterval(refreshSession, SESS_MS);
