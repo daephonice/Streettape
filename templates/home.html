@@ -61,6 +61,19 @@
   </div>
   <p class="hm-lock-notice" id="hm-lock-notice">Connect Wallet to Access</p>
 
+  <section class="hm-quick" id="hm-quick">
+    <div class="hm-quick-row">
+      <select id="hm-quick-sym" aria-label="Stock"></select>
+      <div class="hm-quick-amts" id="hm-quick-amts">
+        <button type="button" data-usd="10" class="on">$10</button>
+        <button type="button" data-usd="50">$50</button>
+        <button type="button" data-usd="100">$100</button>
+      </div>
+    </div>
+    <button class="hm-quick-go" id="hm-quick-go" type="button">Buy cheapest for $10</button>
+    <p class="hm-quick-note" id="hm-quick-note"></p>
+  </section>
+
   <section class="hm-stocks" id="hm-stocks">
     <div class="hm-stocks-head">
       <h2 class="hm-news-title">Stocks</h2>
@@ -122,6 +135,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
 <script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
 <script src="/static/js/home.js?v={{ static_v('js/home.js') }}"></script>
 {% endblock %}
