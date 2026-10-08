@@ -28,6 +28,18 @@
 {% block content %}
 {% set cash_open = session.cashOpen %}
 <div class="bd-col" id="bd-root">
+  <section class="hm-quick" id="hm-quick">
+    <div class="hm-quick-row">
+      <select id="qb-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
+      <div class="hm-quick-amts" id="qb-amts">
+        <button type="button" data-usd="10" class="on">$10</button>
+        <button type="button" data-usd="50">$50</button>
+        <button type="button" data-usd="100">$100</button>
+      </div>
+    </div>
+    <button class="hm-quick-go" id="qb-go" type="button">Buy cheapest NVDA for $10</button>
+    <p class="hm-quick-note" id="qb-note"></p>
+  </section>
   <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
     <span class="sess-wrap">
       <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
@@ -111,5 +123,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
+<script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
+<script src="/static/js/quickbuy.js?v={{ static_v('js/quickbuy.js') }}"></script>
 <script src="/static/js/board.js?v={{ static_v('js/board.js') }}"></script>
 {% endblock %}
