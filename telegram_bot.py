@@ -529,7 +529,7 @@ async def on_buy(message: Message, command: CommandObject):
         await message.answer("<code>" + "\n".join(lines) + "</code>")
         return
     link = f"{WEB_PUBLIC_URL}/t/{r['symbol']}#swap?pay=USDT&amt={usd:g}"
-    await message.answer("<code>" + "\n".join(lines) + f"</code>\nBuy {r['symbol']}, you sign in your wallet:\n{link}", disable_web_page_preview=True)
+    await message.answer("<code>" + "\n".join(lines) + f"</code>\nBuy {r['symbol']}, you sign in your wallet. Open in your wallet's dApp browser and connect first, the Buy sheet opens after connect (Telegram's in-app browser has no wallet):\n{link}", disable_web_page_preview=True)
 
 
 @router.message(Command("agent"))
