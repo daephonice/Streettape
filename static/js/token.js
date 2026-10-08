@@ -52,6 +52,7 @@
     group: null,      // /api/token/{underlying} result once loaded (group pages only)
     session: null,    // { cashOpen, ... } from /api/prices
     tapeStale: false,
+    arb: null,        // latest cross-wrapper hit (winner = cheapSymbol, rejected = richSymbol)
   };
 
   // ---- Formatting ---------------------------------------------------------
@@ -520,7 +521,7 @@
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem ' + premCls(w.premium); prem.textContent = fmtPrem(w.premium);
         cell.appendChild(val); cell.appendChild(prem);
         if (state.tapeStale) {
-          const note = document.createElement('span'); note.className = 'hm-tape-note'; note.textContent = 'tape delayed';
+          const note = document.createElement('span'); note.className = 'hm-tape-note'; note.textContent = 'benchmark price \u00b7 live tape unavailable';
           cell.appendChild(note);
         }
       } else if (!w || !w.address) {
@@ -530,6 +531,17 @@
         const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = '—';
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem flat'; prem.textContent = '—';
         cell.appendChild(val); cell.appendChild(prem);
+      }
+      cell.classList.remove('win', 'rej');
+      const a = state.arb;
+      if (a && w && w.symbol) {
+        const role = w.symbol === a.cheapSymbol ? 'win' : w.symbol === a.richSymbol ? 'rej' : '';
+        if (role) {
+          cell.classList.add(role);
+          const tag = document.createElement('span'); tag.className = 'hm-tape-role';
+          tag.textContent = role === 'win' ? 'Winner \u00b7 buy' : 'Rejected \u00b7 rich';
+          cell.appendChild(tag);
+        }
       }
     });
   }
@@ -613,16 +625,19 @@
       const hit = data.hit;
       if (!hit) { arbEls.card.hidden = true; return; }
       arbEls.card.hidden = false;
+      state.arb = hit;
+      if (state.group) renderTapeRow(state.group);
       if (location.hash === '#rotate' && !loadArb.scrolled) {
         loadArb.scrolled = true;
         arbEls.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
       arbEls.net.textContent = (hit.viable ? '+' : '') + Math.round(hit.netBps) + ' bps';
       arbEls.net.className = 'tk-arb-net ' + (hit.viable ? 'pos' : 'neg');
-      arbEls.line.textContent = `Sell ${hit.richSymbol} \u2192 Buy ${hit.cheapSymbol} \u00b7 $${hit.sizeUsd.toFixed(0)} each leg`;
+      arbEls.line.textContent = `Winner: buy ${hit.cheapSymbol} \u00b7 Rejected: ${hit.richSymbol} (rich) \u00b7 $${hit.sizeUsd.toFixed(0)} each leg`;
       arbEls.note.textContent = hit.viable
         ? `Gross ${Math.round(hit.grossBps)} bps, ~${Math.round(hit.costBps)} bps costs.`
         : `Gross ${Math.round(hit.grossBps)} bps doesn't clear ~${Math.round(hit.costBps)} bps in costs — not viable at $${hit.sizeUsd.toFixed(0)}.`;
+      if (state.tapeStale) arbEls.note.textContent += ' Benchmark price only \u2014 live pool tape unavailable from this host.';
       if (arbEls.ratios) {
         arbEls.ratios.hidden = false;
         arbEls.ratios.textContent = `Shares per token: ${hit.richSymbol} ${hit.richRatio} (${hit.richPrice} \u2192 ${hit.richSharePrice.toFixed(4)}/sh) \u00b7 ${hit.cheapSymbol} ${hit.cheapRatio} (${hit.cheapPrice} \u2192 ${hit.cheapSharePrice.toFixed(4)}/sh)`;
