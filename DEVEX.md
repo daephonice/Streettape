@@ -23,6 +23,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
 - Verified live (2026-10-03): Studio tick from the managed runtime returned 401 every minute until the platform dropped the custom token env; with a tick-only key it returned 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s, and the runtime stopped about 5 minutes after the last invoke (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
+- Settled rotate (sell + buy): see Runtime log, "First live rotate" (fill in after the run).
 
 ---
 
@@ -523,3 +524,10 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Support chat: the request was forwarded, answer "a few hours or the next business day (off hours)". The `/binancex402` button leads to the same form; support emailed the team.
   - Result: no sandbox `B402_*` credentials, so `bag x402 sell status` shows all five absent and the route stays FREE. No paid-call receipt exists.
 - What we changed because of it: kept `price_usd = "0"` and left `studioRuntime.deployed` and `x402Support` false on the card. Not verified: whether a sandbox application succeeds from an organization-managed account.
+
+### YYYY-MM-DD — First live rotate: sell <RICH> / buy <CHEAP> (`/t/<TICKER>#rotate`, `POST /api/swap/order`)
+
+- Session: <CASH OPEN | AFTER-HOURS | WEEKEND> (<time ET / UTC>).
+- What we hit: Rotate on the token page in the wallet dApp browser, $<N>. Sell leg `POST /api/swap/order` <rich wrapper> to <stable>, then buy leg <stable> to <cheap wrapper>.
+- What came back (first call of each outcome): sell leg <HTTP / code / ms / route / wallet simulation result>, hash [<SELL_HASH>](https://bscscan.com/tx/<SELL_HASH>). Buy leg <HTTP / code / ms / route>, hash [<BUY_HASH>](https://bscscan.com/tx/<BUY_HASH>). Out-amounts vs quote: <sell quoted vs filled, buy quoted vs filled>, realised slippage <bps>. Gap at quote <bps net>, gap after fills <bps>. Any error or wallet warning: <paste or "none">.
+- What we changed because of it: <nothing | fix>.

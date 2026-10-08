@@ -58,12 +58,23 @@ def _board_context() -> dict:
         "last_session": board.last_sessions(),
         "book_widest": sessionbook.widest_line() if session.get("cashOpen") else None,
         "settled_tx": _settled_tx(),
+        "rotate_tx": _rotate_tx(),
     }
 
 
 def _settled_tx():
     h = (os.environ.get("SETTLED_TX_HASH") or "").strip()
     return h if re.fullmatch(r"0x[0-9a-fA-F]{64}", h) else None
+
+
+def _rotate_tx():
+    out = []
+    for k in ("SETTLED_ROTATE_SELL_TX_HASH", "SETTLED_ROTATE_BUY_TX_HASH"):
+        h = (os.environ.get(k) or "").strip()
+        if not re.fullmatch(r"0x[0-9a-fA-F]{64}", h):
+            return None
+        out.append(h)
+    return {"sell": out[0], "buy": out[1]}
 
 
 @router.get("/", response_class=HTMLResponse)
