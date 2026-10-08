@@ -126,6 +126,9 @@ async def build(theme: str = THEME, usd: float = DEFAULT_USD) -> dict:
 QUICKBUY_BAND_BPS = float(os.getenv("QUICKBUY_BAND_BPS", "100"))  # reject a wrapper whose per-share tape is farther than this from the cash print
 
 
+QUICKBUY_QUOTE_BAND_BPS = float(os.getenv("QUICKBUY_QUOTE_BAND_BPS", "300"))  # reject a quote whose implied price per share is farther than this from the cash print
+
+
 def _candidate(w: dict, mark: float | None) -> dict:
     """One wrapper row for quick_pick: per-share price, gap to cash print, and why it was rejected (if it was)."""
     ratio, px = w.get("tokenToShareRatio"), w.get("tokenPrice")
@@ -172,9 +175,21 @@ async def quick_pick(underlying: str, usd: float = 10.0) -> dict:
         if q.get("noRoute") or q.get("uiOutAmount") is None:
             c["ok"], c["reason"] = False, "no route quoted"
             continue
+        ratio = wmap[c["symbol"]].get("tokenToShareRatio")
+        try:
+            implied = usd / (float(q["uiOutAmount"]) / float(ratio))
+            qbps = (implied / mark - 1) * 1e4
+        except (TypeError, ValueError, ZeroDivisionError):
+            c["ok"], c["reason"] = False, "quote unreadable"
+            continue
+        c["quoteBps"] = round(qbps, 1)
+        if abs(qbps) > QUICKBUY_QUOTE_BAND_BPS:
+            c["ok"], c["reason"] = False, f"quote implies ${implied:,.2f}/sh, {qbps:+.0f} bps from cash print, band is {QUICKBUY_QUOTE_BAND_BPS:.0f}"
+            continue
         c["win"] = True
         return {**base, "ok": True, "symbol": c["symbol"], "platform": c["platform"], "perShare": c["perShare"],
-                "gapBps": c["gapBps"], "outAmount": q.get("uiOutAmount"), "provider": q.get("provider")}
+                "gapBps": c["gapBps"], "quoteBps": c["quoteBps"], "impliedPerShare": implied,
+                "contract": wmap[c["symbol"]]["mint"], "outAmount": q.get("uiOutAmount"), "provider": q.get("provider")}
     return {**base, "ok": False, "reason": "no wrapper passed the cash-print band and had a route"}
 
 
@@ -184,6 +199,7 @@ def pick_lines(r: dict) -> list[str]:
     for c in r.get("candidates") or []:
         px = f"${c['perShare']:,.2f}/sh" if c.get("perShare") else "no price"
         gap = f" {c['gapBps']:+.0f}bps" if c.get("gapBps") is not None else ""
+        qb = f" quote{c['quoteBps']:+.0f}bps" if c.get("quoteBps") is not None else ""
         mark = "WIN" if c.get("win") else ("ok" if c.get("ok") else f"rejected: {c.get('reason')}")
-        out.append(f"{c['symbol']} {px}{gap} - {mark}")
+        out.append(f"{c['symbol']} {px}{gap}{qb} - {mark}")
     return out
