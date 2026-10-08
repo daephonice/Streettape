@@ -533,6 +533,13 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - Result: no sandbox `B402_*` credentials, so `bag x402 sell status` shows all five absent and the route stays FREE. No paid-call receipt exists.
 - What we changed because of it: kept `price_usd = "0"` and left `studioRuntime.deployed` and `x402Support` false on the card. Not verified: whether a sandbox application succeeds from an organization-managed account.
 
+### 2026-10-08 — Quote-implied price per share vs tape (`/api/quickbuy/NVDA?usd=10`)
+
+- Session: PRE-MARKET (08:20 ET / 13:20 WAT)
+- What we hit: `GET /api/quickbuy/NVDA?usd=10` and Telegram `/buy NVDA 10`, USDT to each wrapper, cash print $237.47.
+- What came back: NVDAB tape $234.94/sh (-107 bps vs cash print); the Binance quote implied $235.53/sh (-82 bps). NVDAon tape -101 bps. NVDAon in a later call: tape -91 bps, quote implied $238.83/sh (+57 bps), a 148 bps gap between Ondo's tape and its own quote; NVDAB's gap was 24 bps. NVDAx thin pool, no price. At a 100 bps tape band both priced wrappers were rejected before any quote. Forced guard: with `QUICKBUY_QUOTE_BAND_BPS=1`, NVDAB (-72 bps) and NVDAon (+57 bps) were both rejected with "quote implies $…/sh, … bps from cash print", and no Buy link was returned.
+- What we changed because of it: added a second check on the quote's implied price per share (`QUICKBUY_QUOTE_BAND_BPS=300`); raised the tape band to 200 bps (`QUICKBUY_BAND_BPS=200`).
+
 ### YYYY-MM-DD — First live rotate: sell <RICH> / buy <CHEAP> (`/t/<TICKER>#rotate`, `POST /api/swap/order`)
 
 - Session: <CASH OPEN | AFTER-HOURS | WEEKEND> (<time ET / UTC>).
