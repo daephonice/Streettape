@@ -381,7 +381,7 @@
     defEl.appendChild(el('p', 'bd-def-move ' + (mv == null ? 'flat' : tone(mv)),
       mv == null ? d.qqqSymbol + ' no tape on both sides of the Friday close'
         : d.qqqSymbol + ' ' + pct(mv) + ' since ' + sinceET(d.since)));
-    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + (d.threshold * 100).toFixed(1) + '%'
+    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + Number((d.threshold * 100).toFixed(2)) + '%'
       + (trig ? ' · viable ' + d.viable : ' · ' + (d.reason || 'move under threshold'))));
     if (trig) {
       ((d.sell || {}).legs || []).forEach((l) => defEl.appendChild(l.filled
@@ -391,7 +391,7 @@
       defEl.appendChild(b.filled
         ? legLine('Buy ' + (b.symbol || d.qqqSymbol) + ' $' + num(b.amountUsd, 2), b)
         : line('Buy ' + (b.underlying || 'QQQ') + ' unfilled: ' + (b.reason || 'no route'), 'dim'));
-      if (d.priceImpactPct != null) defEl.appendChild(line('Worst leg impact ' + d.priceImpactPct, 'dim'));
+      if (d.priceImpactPct != null) defEl.appendChild(line('Worst leg impact ' + num(d.priceImpactPct, 4), 'dim'));
     }
     defEl.hidden = false;
   }
