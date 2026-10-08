@@ -89,6 +89,19 @@ async def api_devex():
                     headers={"Content-Disposition": 'attachment; filename="DEVEX.md"'})
 
 
+@router.get("/floor/{underlying}")
+async def get_floor(underlying: str, notional: float = 1000.0, floor: float = 0.03):
+    """Quote-only weekend floor from the stored session book. No premium, no contract."""
+    import asyncio
+    import sessionbook
+    if not (0 < notional <= 1_000_000 and 0 < floor < 1):
+        raise HTTPException(status_code=400, detail="notional 0-1,000,000 and floor 0-1 required")
+    try:
+        return await asyncio.to_thread(sessionbook.floor_quote, underlying, notional, floor)
+    except Exception:
+        return {"underlying": underlying.upper(), "quote": None}
+
+
 @router.get("/session")
 async def get_session(closed_at: str | None = None):
     import asyncio

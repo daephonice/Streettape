@@ -196,3 +196,45 @@ def widest_line() -> dict | None:
     except Exception:
         log.warning("sessionbook: widest failed", exc_info=True)
         return None
+
+
+_floor_cache: dict = {"at": 0.0, "book": None}
+FLOOR_TTL = 300.0
+
+
+def _last_weekend_close(now: datetime) -> datetime:
+    """Most recent Friday 16:00 NY whose Monday open has already passed."""
+    d = now.astimezone(rwa.NY).replace(hour=16, minute=0, second=0, microsecond=0)
+    while True:
+        if d.weekday() == 4 and d.astimezone(timezone.utc) < now and next_open(d.astimezone(timezone.utc)) <= now:
+            return d.astimezone(timezone.utc)
+        d -= timedelta(days=1)
+
+
+def floor_quote(underlying: str, notional: float = 1000.0, floor: float = 0.03) -> dict:
+    """Quote-only floor from last weekend's session book: what a -`floor` line under
+    `notional` of `underlying` would have paid Friday print -> Monday open (or the
+    weekend tape low when no Monday cash mark is stored). No premium, no contract."""
+    import time
+    und = underlying.upper()
+    now = datetime.now(timezone.utc)
+    if time.time() - _floor_cache["at"] > FLOOR_TTL or _floor_cache["book"] is None:
+        close = _last_weekend_close(now)
+        _floor_cache.update(at=time.time(), book=build(close.isoformat()))
+    book = _floor_cache["book"]
+    row = next((r for r in book["rows"] if r["underlying"] == und), None)
+    if not row or not row["official"]:
+        return {"underlying": und, "quote": None}
+    if row["mondayOpen"]:
+        basis, basis_kind = row["mondayOpen"], "open"
+    else:
+        lows = [w["minTape"] for w in row["wrappers"] if not w["thin"]]
+        if not lows:
+            return {"underlying": und, "quote": None}
+        basis, basis_kind = min(lows), "tapeLow"
+    move = basis / row["official"] - 1
+    payout = notional * max(0.0, -move - floor)
+    return {"underlying": und, "quote": {
+        "notional": notional, "floor": floor, "official": row["official"], "basis": basis,
+        "basisKind": basis_kind, "move": move, "payout": round(payout, 2),
+        "closedAt": book["closedAt"], "opensAt": book["opensAt"]}}
