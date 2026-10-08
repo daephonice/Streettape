@@ -631,11 +631,15 @@
         loadArb.scrolled = true;
         arbEls.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }
-      arbEls.net.textContent = (hit.viable ? '+' : '') + Math.round(hit.netBps) + ' bps';
+      const routed = (l) => !!l && !l.noRoute && !l.unsupported && !!l.uiOutAmount;
+      const noRoute = hit.netBps > 0 && !hit.viable && !(routed(hit.sellLeg) && routed(hit.buyLeg));
+      arbEls.net.textContent = (hit.viable ? '+' : '') + Math.round(hit.netBps) + ' bps' + (noRoute ? ' \u00b7 no route' : '');
       arbEls.net.className = 'tk-arb-net ' + (hit.viable ? 'pos' : 'neg');
       arbEls.line.textContent = `Winner: buy ${hit.cheapSymbol} \u00b7 Rejected: ${hit.richSymbol} (rich) \u00b7 $${hit.sizeUsd.toFixed(0)} each leg`;
       arbEls.note.textContent = hit.viable
         ? `Gross ${Math.round(hit.grossBps)} bps, ~${Math.round(hit.costBps)} bps costs.`
+        : noRoute
+        ? `Gross ${Math.round(hit.grossBps)} bps clears ~${Math.round(hit.costBps)} bps in costs, but a leg has no firm route \u2014 not viable at $${hit.sizeUsd.toFixed(0)}.`
         : `Gross ${Math.round(hit.grossBps)} bps doesn't clear ~${Math.round(hit.costBps)} bps in costs — not viable at $${hit.sizeUsd.toFixed(0)}.`;
       if (state.tapeStale) arbEls.note.textContent += ' Benchmark price only \u2014 live pool tape unavailable from this host.';
       if (arbEls.ratios) {
