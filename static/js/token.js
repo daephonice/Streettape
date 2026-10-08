@@ -598,7 +598,7 @@
     try {
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
-      if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); }
+      if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); loadFloor(); }
       loadEarnings();
       if (/^#swap/.test(location.hash) && !loadGroup.opened && state.address) {
         loadGroup.opened = true;
@@ -651,6 +651,25 @@
       }
     } catch (err) {
       arbEls.card.hidden = true;
+    }
+  }
+
+  async function loadFloor() {
+    const card = $('tk-floor');
+    if (!card) return;
+    try {
+      const q = (await getJSON(`/api/floor/${encodeURIComponent(UNDERLYING)}`)).quote;
+      if (!q) { card.hidden = true; return; }
+      const pct1 = (v) => (v > 0 ? '+' : '') + (v * 100).toFixed(2) + '%';
+      const to = q.basisKind === 'open' ? 'Monday open' : 'weekend tape low';
+      $('tk-floor-pay').textContent = '$' + q.payout.toFixed(2);
+      $('tk-floor-pay').className = 'tk-arb-net ' + (q.payout > 0 ? 'pos' : 'flat');
+      $('tk-floor-line').textContent =
+        `A \u2212${(q.floor * 100).toFixed(0)}% floor on $${q.notional.toLocaleString('en-US')} of ${UNDERLYING} would have paid ` +
+        `${q.payout > 0 ? '$' + q.payout.toFixed(2) : 'nothing'} last weekend: Friday print $${q.official.toFixed(2)} \u2192 ${to} $${q.basis.toFixed(2)} (${pct1(q.move)}).`;
+      card.hidden = false;
+    } catch (err) {
+      card.hidden = true;
     }
   }
 
