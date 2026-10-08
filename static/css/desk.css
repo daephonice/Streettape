@@ -1007,3 +1007,14 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bk-back { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--hm-muted); text-decoration: none; }
 .bk-back:hover { color: var(--hm-text); }
 .bd-proof{margin:10px 0 0;font-size:12px;opacity:.8}.bd-proof a{font-family:ui-monospace,monospace}
+
+.bd-def { margin: 12px auto 0; max-width: 520px; text-align: left; padding: 12px; border-radius: 12px; border: 1px solid rgba(128,128,128,.25); font-size: 13px; }
+.bd-def[hidden] { display: none; }
+.bd-def.is-on { border-color: var(--hm-star, #eaaa08); }
+.bd-def-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.bd-def-state { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--hm-dim); }
+.is-on .bd-def-state { color: var(--hm-star, #eaaa08); }
+.bd-def-move { margin: 3px 0; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bd-def-move.pos { color: var(--hm-pos); }
+.bd-def-move.neg { color: var(--hm-neg, #f87171); }
+.bd-def-sub { margin: 0 0 4px; font-size: 12px; color: var(--hm-muted); }
