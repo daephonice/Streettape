@@ -634,8 +634,6 @@
       state.tapeStale = !!data.tapeStale;
       state.groupsLoaded = true;
       renderStocks();
-      renderQuickSyms();
-      quickLabel();
       renderSession();
     } catch (err) { /* keep last groups */ } finally {
       boardBusy = false;
@@ -678,58 +676,6 @@
         setTimeout(tickBalances, 2500);
       },
     });
-  });
-
-  // ---- Quick buy ------------------------------------------------------------
-  const q = { sym: $('hm-quick-sym'), amts: $('hm-quick-amts'), go: $('hm-quick-go'), note: $('hm-quick-note'), usd: 10, busy: false };
-
-  function renderQuickSyms() {
-    if (!q.sym) return;
-    const names = state.groups.map((g) => g.underlying);
-    if (q.sym.options.length === names.length && names.every((n, i) => q.sym.options[i].value === n)) return;
-    const cur = q.sym.value;
-    q.sym.textContent = '';
-    names.forEach((n) => { const o = document.createElement('option'); o.value = n; o.textContent = n; q.sym.appendChild(o); });
-    if (cur && names.includes(cur)) q.sym.value = cur;
-    else if (names.includes('NVDA')) q.sym.value = 'NVDA';
-  }
-
-  function quickLabel() { q.go.textContent = `Buy cheapest ${q.sym.value || ''} for $${q.usd}`; }
-
-  q.amts.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-usd]');
-    if (!b) return;
-    q.usd = Number(b.dataset.usd);
-    q.amts.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-    quickLabel();
-  });
-  q.sym.addEventListener('change', () => { q.note.textContent = ''; quickLabel(); });
-
-  q.go.addEventListener('click', async () => {
-    if (q.busy || !q.sym.value) return;
-    q.busy = true;
-    q.go.disabled = true;
-    q.note.textContent = 'Checking quote…';
-    try {
-      const r = await getJSON(`/api/quickbuy/${encodeURIComponent(q.sym.value)}?usd=${q.usd}`);
-      if (!r.ok) { q.note.textContent = r.reason || 'Not available right now'; return; }
-      const gap = r.gapBps === null || r.gapBps === undefined ? '' : ` · ${r.gapBps > 0 ? '+' : ''}${r.gapBps} bps vs cash`;
-      q.note.textContent = `${r.symbol} at ${fmtPrice(r.perShare)}/share${gap}. You sign in your wallet.`;
-      const key = String(r.symbol).toUpperCase();
-      const ok = window.MarktapeSwap && window.MarktapeSwap.open({
-        side: 'buy', symbol: key, label: r.symbol, title: r.underlying, stocks: [],
-        getCtx: () => ({ address: state.address, holdings: state.holdings || {}, prices: state.prices, assets: state.assets }),
-        onDone: () => { tickBalances(); setTimeout(tickBalances, 2500); },
-        connect: () => window.MarktapeWallet && window.MarktapeWallet.connectWithPicker(),
-        pay: 'USDT', amount: q.usd,
-      });
-      if (!ok) q.note.textContent = 'Could not open the swap sheet for this pair';
-    } catch (err) {
-      q.note.textContent = 'Quote failed, try again';
-    } finally {
-      q.busy = false;
-      q.go.disabled = false;
-    }
   });
 
   // ---- Wallet -------------------------------------------------------------
