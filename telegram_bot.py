@@ -501,6 +501,37 @@ async def on_session(message: Message):
     await message.answer(text)
 
 
+@router.message(Command("buy"))
+async def on_buy(message: Message, command: CommandObject):
+    import basket
+    parts = (command.args or "").split()
+    if not parts:
+        await message.answer("Usage: /buy NVDA 50")
+        return
+    u = rwa.resolve_underlying(parts[0])
+    if not u:
+        await message.answer(f"Unknown symbol: {parts[0]}")
+        return
+    try:
+        usd = float(parts[1].lstrip("$")) if len(parts) > 1 else 10.0
+    except ValueError:
+        await message.answer("Usage: /buy NVDA 50")
+        return
+    if not 1 <= usd <= 1000:
+        await message.answer("Dollars must be 1 to 1000.")
+        return
+    r = await basket.quick_pick(u, usd)
+    lines = basket.pick_lines(r)
+    if r.get("mark"):
+        lines.insert(0, f"{u} cash print ${r['mark']:,.2f}, band +/-{r['bandBps']:.0f} bps, ${usd:g}")
+    if not r.get("ok"):
+        lines.append(r.get("reason") or "Not available right now")
+        await message.answer("<code>" + "\n".join(lines) + "</code>")
+        return
+    link = f"{WEB_PUBLIC_URL}/t/{r['symbol']}#swap?pay=USDT&amt={usd:g}"
+    await message.answer("<code>" + "\n".join(lines) + f"</code>\nBuy {r['symbol']}, you sign in your wallet:\n{link}", disable_web_page_preview=True)
+
+
 @router.message(Command("agent"))
 async def on_agent(message: Message, command: CommandObject):
     import agent

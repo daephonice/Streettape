@@ -3,6 +3,7 @@ Built from the cached snapshot + one swap.quote(USDT, mint, usd/3) per filled le
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 
 import rwa
@@ -122,29 +123,67 @@ async def build(theme: str = THEME, usd: float = DEFAULT_USD) -> dict:
     return payload
 
 
-MAX_CASH_GAP = 0.02  # reject a wrapper whose per-share tape is >2% from the cash print
+QUICKBUY_BAND_BPS = float(os.getenv("QUICKBUY_BAND_BPS", "100"))  # reject a wrapper whose per-share tape is farther than this from the cash print
+
+
+def _candidate(w: dict, mark: float | None) -> dict:
+    """One wrapper row for quick_pick: per-share price, gap to cash print, and why it was rejected (if it was)."""
+    ratio, px = w.get("tokenToShareRatio"), w.get("tokenPrice")
+    c = {"symbol": w.get("symbol"), "platform": w.get("platform"), "perShare": None, "gapBps": None, "ok": False, "reason": None}
+    if not w.get("mint"):
+        c["reason"] = "no contract"
+    elif not (w.get("hasTape") and px):
+        c["reason"] = "no tape"
+    elif w.get("thin"):
+        c["reason"] = "thin pool"
+    elif not ratio:
+        c["reason"] = "no share ratio"
+    else:
+        c["perShare"] = px / ratio
+        if mark:
+            c["gapBps"] = round((c["perShare"] / mark - 1) * 1e4, 1)
+            if abs(c["gapBps"]) > QUICKBUY_BAND_BPS:
+                c["reason"] = f"{c['gapBps']:+.0f} bps from cash print, band is {QUICKBUY_BAND_BPS:.0f}"
+            else:
+                c["ok"] = True
+    return c
 
 
 async def quick_pick(underlying: str, usd: float = 10.0) -> dict:
-    """Cheapest usable wrapper for one underlying, sanity-checked against the cash print. Quote only."""
+    """Score every wrapper of one underlying against the cash print, drop any outside the band,
+    quote survivors cheapest first, return the winner plus all candidates with reasons. Quote only."""
     u = underlying.upper()
     snap = rwa.get_cached_snapshot()
     g = next((x for x in snap.get("groups") or [] if x["underlying"] == u), None)
-    pick = _cheapest(g)
-    if not pick:
-        return {"ok": False, "underlying": u, "reason": "no wrapper with a live tape and share ratio"}
+    if not g:
+        return {"ok": False, "underlying": u, "usd": usd, "candidates": [], "reason": "not on the board"}
     mark = g.get("markPrice")
+    wmap = {w.get("symbol"): w for w in g.get("wrappers") or []}
+    cands = [_candidate(w, mark) for w in wmap.values()]
+    base = {"underlying": u, "usd": usd, "mark": mark, "bandBps": QUICKBUY_BAND_BPS, "candidates": cands}
     if not mark:
-        return {"ok": False, "underlying": u, "symbol": pick["symbol"], "reason": "no cash print to check against"}
-    gap = pick["_perShare"] / mark - 1
-    base = {"underlying": u, "symbol": pick["symbol"], "platform": pick["platform"],
-            "perShare": pick["_perShare"], "mark": mark, "gapBps": round(gap * 1e4, 1), "usd": usd}
-    if abs(gap) > MAX_CASH_GAP:
-        return {**base, "ok": False, "reason": f"{pick['symbol']} is {gap*100:+.1f}% from the cash print, not offered"}
-    try:
-        q = await swap.quote(rwa.USDT, pick["mint"], usd)
-    except Exception as e:
-        return {**base, "ok": False, "reason": f"quote failed: {type(e).__name__}"}
-    if q.get("noRoute") or q.get("uiOutAmount") is None:
-        return {**base, "ok": False, "reason": "no route quoted"}
-    return {**base, "ok": True, "outAmount": q.get("uiOutAmount"), "provider": q.get("provider")}
+        return {**base, "ok": False, "reason": "no cash print to check against"}
+    for c in sorted((c for c in cands if c["ok"]), key=lambda c: c["perShare"]):
+        try:
+            q = await swap.quote(rwa.USDT, wmap[c["symbol"]]["mint"], usd)
+        except Exception as e:
+            c["ok"], c["reason"] = False, f"quote failed: {type(e).__name__}"
+            continue
+        if q.get("noRoute") or q.get("uiOutAmount") is None:
+            c["ok"], c["reason"] = False, "no route quoted"
+            continue
+        c["win"] = True
+        return {**base, "ok": True, "symbol": c["symbol"], "platform": c["platform"], "perShare": c["perShare"],
+                "gapBps": c["gapBps"], "outAmount": q.get("uiOutAmount"), "provider": q.get("provider")}
+    return {**base, "ok": False, "reason": "no wrapper passed the cash-print band and had a route"}
+
+
+def pick_lines(r: dict) -> list[str]:
+    """Plain-text lines: every wrapper's per-share price, gap, and verdict. Shared by Telegram."""
+    out = []
+    for c in r.get("candidates") or []:
+        px = f"${c['perShare']:,.2f}/sh" if c.get("perShare") else "no price"
+        gap = f" {c['gapBps']:+.0f}bps" if c.get("gapBps") is not None else ""
+        mark = "WIN" if c.get("win") else ("ok" if c.get("ok") else f"rejected: {c.get('reason')}")
+        out.append(f"{c['symbol']} {px}{gap} - {mark}")
+    return out
