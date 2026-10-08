@@ -200,6 +200,17 @@ a.hm-action-btn { cursor: pointer; }
 .hm-actions.locked #hm-send-btn { opacity: 0.5; }
 .hm-lock-notice { margin: 14px 0 0; text-align: center; font-size: 12px; color: var(--hm-dim); }
 
+/* Quick buy */
+.hm-quick { background: var(--hm-card); border-radius: 20px; padding: 16px; margin-top: 24px; }
+.hm-quick-row { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.hm-quick select { background: var(--hm-ctrl); color: var(--hm-text); border: none; border-radius: 12px; padding: 10px 12px; font-size: 15px; font-weight: 600; }
+.hm-quick-amts { display: flex; gap: 6px; }
+.hm-quick-amts button { background: var(--hm-ctrl); color: var(--hm-muted); border: none; border-radius: 12px; padding: 10px 12px; font-size: 14px; cursor: pointer; }
+.hm-quick-amts button.on { background: #1475E1; color: #fff; }
+.hm-quick-go { width: 100%; margin-top: 12px; background: #1475E1; color: #fff; border: none; border-radius: 14px; padding: 14px; font-size: 16px; font-weight: 600; cursor: pointer; }
+.hm-quick-go:disabled { opacity: 0.6; }
+.hm-quick-note { margin: 10px 0 0; font-size: 12px; color: var(--hm-dim); min-height: 1em; }
+
 /* Cards */
 .hm-card { background: var(--hm-card); border-radius: 20px; padding: 16px; margin-top: 16px; }
 .hm-lock-notice + .hm-card { margin-top: 28px; }
