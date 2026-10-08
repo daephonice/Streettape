@@ -63,15 +63,15 @@
 
   <section class="hm-quick" id="hm-quick">
     <div class="hm-quick-row">
-      <select id="hm-quick-sym" aria-label="Stock"></select>
-      <div class="hm-quick-amts" id="hm-quick-amts">
+      <select id="qb-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
+      <div class="hm-quick-amts" id="qb-amts">
         <button type="button" data-usd="10" class="on">$10</button>
         <button type="button" data-usd="50">$50</button>
         <button type="button" data-usd="100">$100</button>
       </div>
     </div>
-    <button class="hm-quick-go" id="hm-quick-go" type="button">Buy cheapest for $10</button>
-    <p class="hm-quick-note" id="hm-quick-note"></p>
+    <button class="hm-quick-go" id="qb-go" type="button">Buy cheapest NVDA for $10</button>
+    <p class="hm-quick-note" id="qb-note"></p>
   </section>
 
   <section class="hm-stocks" id="hm-stocks">
@@ -137,5 +137,6 @@
 {% block scripts %}
 <script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
 <script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
+<script src="/static/js/quickbuy.js?v={{ static_v('js/quickbuy.js') }}"></script>
 <script src="/static/js/home.js?v={{ static_v('js/home.js') }}"></script>
 {% endblock %}
