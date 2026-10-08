@@ -330,6 +330,11 @@ a.hm-action-btn { cursor: pointer; }
 .hm-tape-prem.pos { color: var(--hm-pos, #4ade80); }
 .hm-tape-prem.neg { color: var(--hm-neg, #fb7185); }
 .hm-tape-prem.flat { color: var(--hm-muted); }
+.hm-tape-cell.win { border: 1px solid; border-color: var(--pos, #4ade80); }
+.hm-tape-cell.rej { opacity: 0.6; border: 1px solid; border-color: var(--neg, #fb7185); }
+.hm-tape-role { display: block; margin-top: 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
+.hm-tape-cell.win .hm-tape-role { color: var(--pos, #4ade80); }
+.hm-tape-cell.rej .hm-tape-role { color: var(--neg, #fb7185); }
 .hm-tape-note { display: block; font-size: 10px; color: var(--hm-dim); margin-top: 2px; }
 .tk-empty-note { font-size: 12px; color: var(--hm-dim); font-weight: 500; }
 .hm-stk-foot { display: flex; align-items: center; font-size: 12px; margin-top: 10px; }
