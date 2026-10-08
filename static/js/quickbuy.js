@@ -51,9 +51,13 @@
     st.busy = true; go.disabled = true; note.textContent = 'Checking quote…';
     try {
       const r = await getJSON(`/api/quickbuy/${encodeURIComponent(sym.value)}?usd=${st.usd}`);
-      if (!r.ok) { note.textContent = r.reason || 'Not available right now'; return; }
-      const bps = r.gapBps > 0 ? '+' + r.gapBps : String(r.gapBps);
-      note.textContent = `${r.symbol} at ${usd.format(r.perShare)}/share · ${bps} bps vs cash print. You sign in your wallet.`;
+      const rows = (r.candidates || []).map((c) => {
+        const px = c.perShare ? usd.format(c.perShare) + '/sh' : 'no price';
+        const g = c.gapBps == null ? '' : ' ' + (c.gapBps > 0 ? '+' : '') + c.gapBps + ' bps';
+        return `${c.symbol} ${px}${g} · ${c.win ? 'picked' : c.ok ? 'ok' : 'rejected: ' + c.reason}`;
+      });
+      if (!r.ok) { note.textContent = [...rows, r.reason || 'Not available right now'].join('\n'); return; }
+      note.textContent = [...rows, 'You sign in your wallet.'].join('\n');
       let address = await loadCtx();
       const ok = window.MarktapeSwap && window.MarktapeSwap.open({
         side: 'buy', symbol: String(r.symbol).toUpperCase(), label: r.symbol, title: r.underlying, stocks: [],
