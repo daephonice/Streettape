@@ -841,33 +841,13 @@
       connect, pay: pre && pre.pay, amount: pre && pre.amount,
     }));
   }
-  // $10/$25/$50 chips: min-out comes from the same /api/swap/order quote the swap sheet builds. Wallet only, no card ramp.
-  const chips = $('tk-chips'), chipMin = $('tk-chips-min');
-  let chipUsd = 0, chipReq = 0;
-  async function chipQuote(usd) {
-    const req = ++chipReq;
-    const out = state.assets[keyFor(SYMBOL)] || {}, pay = state.assets.USDT || {};
-    chipMin.hidden = false;
-    if (!out.mint || !pay.mint) { chipMin.textContent = 'Min out unavailable'; return; }
-    chipMin.textContent = 'Quoting…';
-    try {
-      const r = await fetch('/api/swap/order', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ inputMint: pay.mint, outputMint: out.mint, uiAmount: usd, taker: state.address || null }) });
-      const o = await r.json();
-      if (req !== chipReq) return;
-      if (!r.ok || !o.uiMinReceived) { chipMin.textContent = 'No quote right now'; return; }
-      const f = (v) => Number(v).toLocaleString('en-US', { maximumSignificantDigits: 6 });
-      chipMin.textContent = `$${usd} buys ≥ ${f(o.uiMinReceived)} ${SYMBOL}` + (o.uiOutAmount ? ` (quote ${f(o.uiOutAmount)})` : '');
-    } catch (e) { if (req === chipReq) chipMin.textContent = 'No quote right now'; }
-  }
+  // $10/$25/$50 chips open the buy sheet prefilled with USDT; the sheet shows price, fee and minimum received from /api/swap/order. Wallet only, no card ramp.
+  const chips = $('tk-chips');
   if (chips) chips.addEventListener('click', (e) => {
     const b = e.target.closest('button[data-usd]');
-    if (!b) return;
-    chipUsd = Number(b.dataset.usd);
-    chips.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
-    chipQuote(chipUsd);
+    if (b) openSwap('buy', undefined, undefined, { pay: 'USDT', amount: Number(b.dataset.usd) });
   });
-  els.buy.addEventListener('click', () => openSwap('buy', undefined, undefined, chipUsd ? { pay: 'USDT', amount: chipUsd } : undefined));
+  els.buy.addEventListener('click', () => openSwap('buy'));
   els.sell.addEventListener('click', () => openSwap('sell'));
 
   async function copyText(text) {
