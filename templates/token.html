@@ -141,7 +141,7 @@
 </div>
 
 <div class="tk-bar" id="tk-bar">
-  {% if token and token.symbol not in ('USDC', 'USDT') %}
+  {% if not token or token.symbol not in ('USDC', 'USDT', 'BNB') %}
   <div class="hm-col tk-chips-wrap" id="tk-chips-wrap">
     <p class="tk-chips-note">Wallet required. Card ramp is not in this build.</p>
     <div class="tk-chips" id="tk-chips">
