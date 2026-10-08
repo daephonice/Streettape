@@ -141,6 +141,17 @@
 </div>
 
 <div class="tk-bar" id="tk-bar">
+  {% if token and token.symbol not in ('USDC', 'USDT') %}
+  <div class="hm-col tk-chips-wrap" id="tk-chips-wrap">
+    <p class="tk-chips-note">Wallet required. Card ramp is not in this build.</p>
+    <div class="tk-chips" id="tk-chips">
+      <button class="tk-chip" type="button" data-usd="10">$10</button>
+      <button class="tk-chip" type="button" data-usd="25">$25</button>
+      <button class="tk-chip" type="button" data-usd="50">$50</button>
+    </div>
+    <p class="tk-chips-min" id="tk-chips-min" hidden></p>
+  </div>
+  {% endif %}
   <div class="hm-col tk-bar-inner">
     <button class="tk-act tk-act-sell" id="tk-sell" type="button">
       <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>Sell
