@@ -385,6 +385,8 @@ a.hm-action-btn { cursor: pointer; }
 .bd-px-l { font-size: 11px; font-weight: 600; color: var(--hm-dim); }
 .bd-px b { font-size: 14px; font-weight: 600; color: var(--hm-text); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .bd-px-src { font-size: 9px; color: var(--hm-muted); }
+.bd-facts { font-size: 10px; color: var(--hm-dim); line-height: 1.3; }
+.bd-nomark { font-size: 9px; color: var(--hm-muted); line-height: 1.3; }
 .bd-px-fair b { color: var(--hm-star, #eaaa08); }
 .bd-thin { font-size: 11px; font-weight: 600; padding: 1px 8px; white-space: nowrap; border-radius: 999px; color: var(--hm-muted); background: rgba(255,255,255,.06); }
 .bd-src-binance { color: var(--hm-star, #eaaa08); }
