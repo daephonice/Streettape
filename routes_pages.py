@@ -46,11 +46,35 @@ def _baskets(groups: list) -> list[dict]:
     return out
 
 
+def _now_block(groups: list, session: dict) -> dict | None:
+    """Three plain lines + one button for the top of the board, filled from the cached snapshot."""
+    by = {g["underlying"]: g for g in groups}
+    u = "NVDA" if basket._cheapest(by.get("NVDA")) else next((g["underlying"] for g in groups if basket._cheapest(g)), None)
+    if not u:
+        return None
+    cheap = basket._cheapest(by[u])["symbol"]
+    rich = None
+    for w in by[u].get("wrappers") or []:
+        p = w.get("premiumToOfficial")
+        if w.get("hasTape") and not w.get("thin") and p and p > 0 and (rich is None or p > rich[1]):
+            rich = (w["symbol"], p)
+    cash_open = bool(session.get("cashOpen"))
+    l1 = ("Cash is open. The reference is the live stock price." if cash_open
+          else "Cash is shut. The reference is the last cash print.")
+    if rich and rich[0] != cheap:
+        l2 = f"{rich[0]} is rich versus that price. {cheap} is the cheaper wrapper of the same stock."
+    else:
+        l2 = f"{cheap} is the cheapest wrapper of {u} right now."
+    return {"underlying": u, "l1": l1, "l2": l2,
+            "l3": "This builds an unsigned swap. You sign it. Nothing sends itself."}
+
+
 def _board_context() -> dict:
     snap = rwa.get_cached_snapshot()
     session = snap.get("session") or rwa.session_now()
     return {
         "baskets": _baskets(snap.get("groups") or []),
+        "now_block": _now_block(snap.get("groups") or [], session),
         "groups": snap.get("groups") or [],
         "session": session,
         "tape_stale": bool(snap.get("tapeStale")),
