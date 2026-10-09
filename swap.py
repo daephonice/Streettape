@@ -6,6 +6,7 @@ import time
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import os
 import uuid
@@ -160,6 +161,25 @@ def share_check(input_mint: str, output_mint: str, ui_amount: float, res: dict |
         return None
 
 
+def check_proof(input_mint: str, output_mint: str, ui_amount: float, res: dict) -> dict | None:
+    """Off-chain proof of the check: sha256 over quote id, both mints, amount and per-share prices.
+    Recompute sha256(payload) to verify. Not anchored on-chain, not a trade."""
+    try:
+        sc = res.get("shareCheck") or {}
+        r8 = lambda v: None if v is None else round(float(v), 8)
+        payload = json.dumps({
+            "v": 1, "quoteId": res.get("quoteId"), "in": (input_mint or "").lower(), "out": (output_mint or "").lower(),
+            "amount": r8(ui_amount), "outAmount": r8(res.get("uiOutAmount")), "provider": res.get("provider"),
+            "perShare": r8(sc.get("perShare")),
+            "others": {o["symbol"]: r8(o["perShare"]) for o in sc.get("others") or []},
+        }, sort_keys=True, separators=(",", ":"))
+        return {"hash": "0x" + hashlib.sha256(payload.encode()).hexdigest(), "payload": payload,
+                "note": "sha256(payload) == hash. Off-chain proof of the check, not anchored, not a trade."}
+    except Exception:
+        log.warning("check_proof failed", exc_info=True)
+        return None
+
+
 def _timestamp() -> str:
     now = datetime.now(timezone.utc)
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
@@ -273,6 +293,7 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                     "provider": "binance_web3",
                     "executionMode": exec_mode,
                     "needsWallet": True,
+                    "quoteId": quote_id,
                     "sim": None,
                 }
 
@@ -303,6 +324,7 @@ async def _binance_quote(input_mint: str, output_mint: str, ui_amount: float, ta
                 "transferFeeBps": 0,
                 "provider": "binance_web3",
                 "executionMode": exec_mode,
+                "quoteId": quote_id,
                 "fees": _fees(router_result),
             }
             devlog.log_call(
@@ -551,6 +573,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 if res.get("priceImpactPct") in (None, ""):
                     res["priceImpactPct"] = loss
             res["shareCheck"] = share_check(input_mint, output_mint, ui_amount, res)
+            res["checkProof"] = check_proof(input_mint, output_mint, ui_amount, res)
             res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if res.get("routes") else "")
             res["attempts"] = attempts
             if attempts:

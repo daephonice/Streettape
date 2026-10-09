@@ -113,6 +113,8 @@ Still open: the raw value fell as size grew, while the rate drop grew. On this p
 
 After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to fail." Cancelled. A later TSLAB buy settled ([0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5](https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5)); holdings then showed via public RPC. Simulate is parked for an hour after a 404.
 
+**Proof of the check is off-chain.** Each quote from `/api/swap/order` carries `checkProof`: sha256 over quote id, both mints, amount, out-amount and per-share prices (payload included, so anyone can recompute it), shown on the swap sheet. It is not anchored on-chain: `tx/simulate` is 404 on this key, so there is no live simulation to attest, and a hash of a quote is not a broadcast. The one settled fill above is the on-chain proof.
+
 ### Address Portfolio is not a portfolio
 
 `GET /api/v1/portfolio/tokens` on `web3.binance.com/wallet` — 19/19 HTTP 202, non-JSON, 10-40 ms. Holdings in the UI come from public BSC `eth_call` / `eth_getBalance`. Parked for 10 minutes after a failure.
