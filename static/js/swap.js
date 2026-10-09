@@ -434,7 +434,7 @@
   function fmtFees(o) {
     const f = o.fees || {};
     const parts = [];
-    if (f.gasBnb) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
+    if (f.gasBnb && f.gasBnb < 0.1) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
     if (f.tradeFeeUsd) parts.push(`$${f.tradeFeeUsd.toFixed(2)} trade fee`);
     if (o.transferFeeBps) parts.push(`${(o.transferFeeBps / 100).toFixed(2)}% transfer fee`);
     return parts.length ? parts.join(' + ') : '\u2014';

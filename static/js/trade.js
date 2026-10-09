@@ -599,7 +599,7 @@
   function fmtFees(o) {
     const f = o.fees || {};
     const parts = [];
-    if (f.gasBnb) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
+    if (f.gasBnb && f.gasBnb < 0.1) parts.push(`~${f.gasBnb.toFixed(6)} BNB gas`);
     if (f.tradeFeeUsd) parts.push(`$${f.tradeFeeUsd.toFixed(2)} trade fee`);
     const bps = o.transferFeeBps || 0;
     if (bps) parts.push(`${(bps / 100).toFixed(2)}% token transfer fee`);
