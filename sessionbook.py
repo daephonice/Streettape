@@ -9,6 +9,8 @@ within RECONVERGE_PCT of it. Built only from price_snapshots + the live cache
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
@@ -16,7 +18,7 @@ from sqlalchemy import select
 import fair
 import rwa
 from database import SessionLocal
-from models import PriceSnapshot
+from models import PriceSnapshot, ProposalProof
 
 log = logging.getLogger("sessionbook")
 
@@ -238,3 +240,36 @@ def floor_quote(underlying: str, notional: float = 1000.0, floor: float = 0.03) 
         "notional": notional, "floor": floor, "official": row["official"], "basis": basis,
         "basisKind": basis_kind, "move": move, "payout": round(payout, 2),
         "closedAt": book["closedAt"], "opensAt": book["opensAt"]}}
+
+
+def record_proposal(q: dict) -> dict | None:
+    """Hash a rotate proposal (underlying, rich/cheap legs, net bps, quote ids, time) and
+    store it. Proof of proposal only: nothing is signed, anchored or broadcast."""
+    try:
+        at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        body = {
+            "underlying": q["underlying"], "rich": q["richSymbol"], "cheap": q["cheapSymbol"],
+            "netBps": round(float(q["netBps"]), 2), "sizeUsd": q.get("sizeUsd"),
+            "quoteIds": [(q.get(k) or {}).get("quoteId") or (q.get(k) or {}).get("requestId")
+                         for k in ("sellLeg", "buyLeg")],
+            "at": at,
+        }
+        payload = json.dumps(body, sort_keys=True, separators=(",", ":"))
+        h = "0x" + hashlib.sha256(payload.encode()).hexdigest()
+        with SessionLocal() as db:
+            db.add(ProposalProof(hash=h, underlying=body["underlying"], rich_symbol=body["rich"],
+                                 cheap_symbol=body["cheap"], net_bps=body["netBps"], payload=payload))
+            db.commit()
+        return {"hash": h, "at": at}
+    except Exception:
+        log.warning("sessionbook: record_proposal failed", exc_info=True)
+        return None
+
+
+def get_proposal(h: str) -> dict | None:
+    with SessionLocal() as db:
+        r = db.execute(select(ProposalProof).where(ProposalProof.hash == h)).scalar_one_or_none()
+        if not r:
+            return None
+        return {"hash": r.hash, "payload": r.payload, "createdAt": r.created_at.isoformat(),
+                "note": "sha256(payload) == hash. Proof of proposal, not a trade."}

@@ -76,3 +76,17 @@ class SessionGap(Base):
     __table_args__ = (
         UniqueConstraint("underlying", "closed_at", name="uq_session_gaps_und_closed"),
     )
+
+
+class ProposalProof(Base):
+    """Hash of a rotate proposal shown to the user. Proof of proposal, not of a trade."""
+    __tablename__ = "proposal_proofs"
+
+    id = Column(Integer, primary_key=True)
+    hash = Column(String(66), nullable=False, unique=True)
+    underlying = Column(String, nullable=False, index=True)
+    rich_symbol = Column(String, nullable=False)
+    cheap_symbol = Column(String, nullable=False)
+    net_bps = Column(Float, nullable=False)
+    payload = Column(Text, nullable=False)  # canonical JSON that was hashed
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)

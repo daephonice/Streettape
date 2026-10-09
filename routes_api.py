@@ -1,3 +1,4 @@
+import asyncio
 import hmac
 import logging
 import time
@@ -284,13 +285,27 @@ async def api_agent_identity():
 
 
 @router.get("/agent/arb/{underlying}")
-async def api_agent_arb(underlying: str, size_usd: float = 50.0):
-    """Single-underlying rotate quote for the token page's 'Rotate $N' button."""
+async def api_agent_arb(underlying: str, size_usd: float = 50.0, proof: int = 0):
+    """Single-underlying rotate quote for the token page's 'Rotate $N' button.
+    proof=1: hash + store the viable proposal (proof of proposal, not a trade)."""
     hits = agent.check_cross_arb(underlying, threshold=0.0)
     if not hits:
         return {"underlying": underlying.upper(), "hit": None}
     priced = await agent.net_arb_quote(hits[0], size_usd)
+    if proof and priced.get("viable"):
+        import sessionbook
+        priced["proof"] = await asyncio.to_thread(sessionbook.record_proposal, priced)
     return {"underlying": underlying.upper(), "hit": priced}
+
+
+@router.get("/agent/proof/{h}")
+async def api_agent_proof(h: str):
+    """Stored payload behind a proposal hash, so anyone can recompute sha256(payload)."""
+    import sessionbook
+    out = await asyncio.to_thread(sessionbook.get_proposal, h)
+    if not out:
+        raise HTTPException(404, "unknown proof")
+    return out
 
 
 @router.get("/earnings")
