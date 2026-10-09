@@ -1047,3 +1047,8 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bd-now[hidden] { display: none; }
 .bd-now p { margin: 0 0 6px; font-size: 15px; line-height: 1.45; color: var(--hm-text); }
 .bd-now a.hm-quick-go { display: block; text-align: center; text-decoration: none; margin-top: 12px; }
+.swp-share { margin: 6px 0 0; padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,0.04); font-size: 12px; line-height: 1.4; color: var(--hm-muted); }
+.swp-share[hidden] { display: none; }
+.swp-share p { margin: 0 0 3px; }
+.swp-share p.neg { color: var(--hm-neg, #fb7185); font-weight: 600; }
+.swp-share .swp-share-note { margin: 4px 0 0; font-size: 11px; opacity: 0.8; }
