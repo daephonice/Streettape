@@ -122,6 +122,7 @@
           <div><dt>Price impact</dt><dd data-d="impact"></dd></div>
           <div><dt>Fees</dt><dd data-d="fees"></dd></div>
           <div><dt>Min received</dt><dd data-d="min"></dd></div>
+          <div><dt>Check proof</dt><dd data-d="proof"></dd></div>
         </dl>
         <p class="swp-note" role="alert"></p>
         <div class="swp-share" hidden></div>
@@ -135,7 +136,7 @@
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
       cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), share: q('.swp-share'), proof: q('.swp-proof'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
-      dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'),
+      dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'), dProof: q('[data-d="proof"]'),
     });
 
     R.backdrop.addEventListener('click', () => { if (S && !S.busy) close(); });
@@ -448,6 +449,9 @@
       + (o.fallbackFrom ? ` (${o.fallbackFrom} quote failed)` : '');
     R.dImpact.textContent = fmtImpact(o.priceImpactPct);
     R.dFees.textContent = fmtFees(o);
+    const cp = o.checkProof;
+    R.dProof.textContent = cp ? `${cp.hash.slice(0, 10)}\u2026${cp.hash.slice(-6)} \u00b7 off-chain` : '\u2014';
+    R.dProof.title = cp ? `${cp.note}\n${cp.payload}` : '';
     R.dMin.textContent = o.uiMinReceived ? `${fmtTok(o.uiMinReceived)} ${S.side === 'buy' ? S.symbol : S.cur}` : '\u2014';
   }
 
