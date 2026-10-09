@@ -74,7 +74,8 @@
     w.appendChild(pxs);
     const facts = el('div', 'bd-facts', (t.platformLabel || t.platform || '') +
       (t.tokenToShareRatio ? ' \u00b7 ' + Number(t.tokenToShareRatio).toFixed(4) + ' sh/token' : '') +
-      ' \u00b7 cash ' + (t.cashState && t.cashState.open ? 'open' : 'shut'));
+      ' \u00b7 cash ' + (t.cashState && t.cashState.open ? 'open' : 'shut') +
+      (t.cashState && t.cashState.code ? ' \u00b7 feed ' + t.cashState.code : ''));
     if (t.tokenToShareRatio) facts.title = 'tokenToShareRatio ' + t.tokenToShareRatio;
     w.appendChild(facts);
     if (t.markPrice != null && t.markSource !== 'binance') {

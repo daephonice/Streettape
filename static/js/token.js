@@ -169,6 +169,7 @@
         els.facts.textContent = (w.platformLabel || w.platform || '') +
           (w.tokenToShareRatio ? ' \u00b7 ' + Number(w.tokenToShareRatio).toFixed(4) + ' sh/token' : '') +
           ' \u00b7 cash ' + (w.cashState && w.cashState.open ? 'open' : 'shut') +
+          (w.cashState && w.cashState.code ? ' \u00b7 feed ' + w.cashState.code : '') +
           (w.markPrice != null && w.markSource !== 'binance' ? '. Last cash print. RWA price endpoint returned no mark on this deploy.' : '');
       } else els.facts.hidden = true;
     }
