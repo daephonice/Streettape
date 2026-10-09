@@ -49,6 +49,7 @@
     range: '1D',
     points: [],       // [[ms, price], ...] history for the selected range (single-series)
     multiChart: null, // { mark: [[ms,px]], wrappers: { SYM: [[ms,px]] } } for group pages
+    route: null,   // /api/token/{underlying}/route: wrappers by per-share price, cheapest passing the 95% check flagged
     group: null,      // /api/token/{underlying} result once loaded (group pages only)
     session: null,    // { cashOpen, ... } from /api/prices
     tapeStale: false,
@@ -521,15 +522,26 @@
   function renderTapeRow(g) {
     if (!els.tapeRow) return;
     const cells = els.tapeRow.querySelectorAll('.hm-tape-cell');
-    ['xstocks', 'ondo', 'bstocks'].forEach((plat, i) => {
-      const w = g.wrappers.find((x) => x.platform === plat);
+    const route = state.route && state.route.wrappers ? state.route.wrappers : null;
+    const rmap = {};
+    (route || []).forEach((r) => { rmap[r.symbol] = r; });
+    const perShare = (w) => (w && w.tokenPrice && w.tokenToShareRatio ? w.tokenPrice / w.tokenToShareRatio : null);
+    // Sorted by per-share price after tokenToShareRatio, cheapest first; wrappers with no price go last.
+    const list = ['xstocks', 'ondo', 'bstocks'].map((plat) => ({ plat, w: g.wrappers.find((x) => x.platform === plat) }));
+    list.sort((p, q) => {
+      const a = perShare(p.w), b = perShare(q.w);
+      return a === null && b === null ? 0 : a === null ? 1 : b === null ? -1 : a - b;
+    });
+    list.forEach(({ plat, w }, i) => {
       const cell = cells[i];
       if (!cell) return;
       cell.textContent = '';
+      cell.classList.remove('win', 'rej', 'off');
       const lbl = document.createElement('span'); lbl.className = 'hm-tape-lbl'; lbl.textContent = PLAT_LABEL[plat];
       cell.appendChild(lbl);
+      const ps = perShare(w);
       if (w && w.tokenPrice) {
-        const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = fmtPrice(w.tokenPrice);
+        const val = document.createElement('span'); val.className = 'hm-tape-val'; val.textContent = fmtPrice(ps !== null ? ps : w.tokenPrice) + (ps !== null ? ' /sh' : '');
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem ' + premCls(w.premium); prem.textContent = fmtPrem(w.premium);
         cell.appendChild(val); cell.appendChild(prem);
         if (state.tapeStale) {
@@ -544,18 +556,24 @@
         const prem = document.createElement('span'); prem.className = 'hm-tape-prem flat'; prem.textContent = '—';
         cell.appendChild(val); cell.appendChild(prem);
       }
-      cell.classList.remove('win', 'rej');
-      const a = state.arb;
-      if (a && w && w.symbol) {
-        const role = w.symbol === a.cheapSymbol ? 'win' : w.symbol === a.richSymbol ? 'rej' : '';
-        if (role) {
-          cell.classList.add(role);
-          const tag = document.createElement('span'); tag.className = 'hm-tape-role';
-          tag.textContent = role === 'win' ? 'Winner \u00b7 buy' : 'Rejected \u00b7 rich';
-          cell.appendChild(tag);
-        }
-      }
+      const tag = (cls, text) => {
+        cell.classList.add(cls);
+        const t = document.createElement('span'); t.className = 'hm-tape-role'; t.textContent = text;
+        cell.appendChild(t);
+      };
+      const r = w && w.symbol ? rmap[w.symbol] : null;
+      if (r && r.route) tag('win', 'Route');
+      else if (r && !r.ok && r.perShare !== null && r.reason && r.reason !== 'no tape') tag('off', r.reason);
+      else if (!route && state.arb && w && w.symbol === state.arb.richSymbol) tag('rej', 'Rich');
     });
+  }
+
+  async function loadRoute() {
+    if (!IS_GROUP) return;
+    try {
+      state.route = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}/route?usd=${QUICK_SIZE_USD}`);
+      if (state.group) renderTapeRow(state.group);
+    } catch (err) { /* keep the unsorted-by-route row */ }
   }
 
   function applyGroup(g) {
@@ -610,7 +628,7 @@
     try {
       const g = await getJSON(`/api/token/${encodeURIComponent(UNDERLYING)}`);
       applyGroup(g);
-      if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); loadFloor(); }
+      if (IS_GROUP) { loadArb(); refreshFlattenVisibility(); loadFloor(); loadRoute(); }
       loadEarnings();
       if (/^#swap/.test(location.hash) && !loadGroup.opened && state.address) {
         loadGroup.opened = true;
