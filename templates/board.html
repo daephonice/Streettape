@@ -101,7 +101,7 @@
             <div class="bd-px"><span class="bd-px-l">Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b>{% if src and t.markPrice is not none %}<small class="bd-px-src bd-src-{{ t.markSource }}">{{ src }}</small>{% endif %}</div>
             {% if show_fair %}<div class="bd-px bd-px-fair"><span class="bd-px-l">Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
           </div>
-          <div class="bd-facts">{{ t.platformLabel or t.platform }}{% if t.tokenToShareRatio %} · <span title="tokenToShareRatio {{ t.tokenToShareRatio }}">{{ '%.4f'|format(t.tokenToShareRatio) }} sh/token</span>{% endif %} · cash {{ 'open' if (t.cashState and t.cashState.open) else 'shut' }}</div>
+          <div class="bd-facts">{{ t.platformLabel or t.platform }}{% if t.tokenToShareRatio %} · <span title="tokenToShareRatio {{ t.tokenToShareRatio }}">{{ '%.4f'|format(t.tokenToShareRatio) }} sh/token</span>{% endif %} · cash {{ 'open' if (t.cashState and t.cashState.open) else 'shut' }}{% if t.cashState and t.cashState.code %} · feed {{ t.cashState.code }}{% endif %}</div>
           {% if t.markPrice is not none and t.markSource != 'binance' %}<div class="bd-nomark">Last cash print. RWA price endpoint returned no mark on this deploy.</div>{% endif %}
           {% if t.hasTape %}
           <div class="bd-badges"><span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% if t.thin %}<span class="bd-thin" title="Stale price, not a real gap.">thin pool{% if t.liquidityUsd is not none %} · {{ '${:,.2f}'.format(t.liquidityUsd) }}{% endif %}</span>{% endif %}</div>
