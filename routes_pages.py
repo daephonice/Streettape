@@ -55,13 +55,15 @@ def _now_block(groups: list, session: dict) -> dict | None:
     cheap = basket._cheapest(by[u])["symbol"]
     rich = None
     for w in by[u].get("wrappers") or []:
-        p = w.get("premiumToOfficial")
-        if w.get("hasTape") and not w.get("thin") and p and p > 0 and (rich is None or p > rich[1]):
-            rich = (w["symbol"], p)
+        p, r, px = w.get("premiumToOfficial"), w.get("tokenToShareRatio"), w.get("tokenPrice")
+        if w["symbol"] == cheap or not (w.get("hasTape") and not w.get("thin") and p and p > 0 and r and px):
+            continue
+        if rich is None or px / r > rich[1]:
+            rich = (w["symbol"], px / r)
     cash_open = bool(session.get("cashOpen"))
     l1 = ("Cash is open. The reference is the live stock price." if cash_open
           else "Cash is shut. The reference is the last cash print.")
-    if rich and rich[0] != cheap:
+    if rich:
         l2 = f"{rich[0]} is rich versus that price. {cheap} is the cheaper wrapper of the same stock."
     else:
         l2 = f"{cheap} is the cheapest wrapper of {u} right now."

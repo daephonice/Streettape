@@ -115,6 +115,51 @@ def _impact_block(input_mint, output_mint, ui_amount, out_ui) -> dict:
     }
 
 
+def share_check(input_mint: str, output_mint: str, ui_amount: float, res: dict | None) -> dict | None:
+    """Per-share price of this quote (after tokenToShareRatio), the other wrappers' tape per share, and a block verdict.
+    Buys are blocked when the output is worth under IMPACT_FLOOR of the spend (covers the near-zero-tokens quote). Sells only warn."""
+    try:
+        in_l, out_l = (input_mint or "").lower(), (output_mint or "").lower()
+        hit = None
+        for g in rwa.get_cached_snapshot().get("groups") or []:
+            for w in g.get("wrappers") or []:
+                m = (w.get("mint") or "").lower()
+                if m and m in (in_l, out_l) and w.get("tokenToShareRatio"):
+                    hit = (g, w, m == out_l)
+        if not hit:
+            return None
+        g, w, buying = hit
+        ratio = float(w["tokenToShareRatio"])
+        out_ui = float((res or {}).get("uiOutAmount") or 0)
+        usd_px = _price_of_mint(input_mint if buying else output_mint)
+        wrap_px = w.get("tokenPrice") or _price_of_mint(output_mint if buying else input_mint)
+        if not usd_px or not wrap_px:
+            return None
+        spend = ui_amount * usd_px if buying else ui_amount * wrap_px
+        value_out = out_ui * wrap_px if buying else out_ui * usd_px
+        shares = (out_ui if buying else ui_amount) * ratio
+        usd = value_out if not buying else spend
+        per_share = (usd / shares) if shares > 0 else None
+        low = spend > 0 and value_out < IMPACT_FLOOR * spend
+        reason = None
+        if low:
+            reason = ("near-zero output for a non-zero spend" if value_out < 0.05 * spend
+                      else f"output worth under {int(IMPACT_FLOOR * 100)}% of the spend")
+        others = [{"symbol": o["symbol"], "perShare": o["tokenPrice"] / o["tokenToShareRatio"]}
+                  for o in g.get("wrappers") or []
+                  if o is not w and o.get("hasTape") and not o.get("thin") and o.get("tokenPrice") and o.get("tokenToShareRatio")]
+        cash_open = bool((rwa.get_cached_snapshot().get("session") or {}).get("cashOpen"))
+        fair = g.get("fairPrice") if not cash_open else None
+        ref_px, ref_label = (fair, "Fair") if fair else (g.get("markPrice"), "Official")
+        ref = ({"label": ref_label, "price": ref_px, "devPct": (per_share / ref_px - 1) * 100}
+               if per_share and ref_px else None)
+        return {"symbol": w["symbol"], "perShare": per_share, "others": others, "ref": ref,
+                "blocked": bool(low and buying), "warn": bool(low and not buying), "reason": reason}
+    except Exception:
+        log.warning("share_check failed", exc_info=True)
+        return None
+
+
 def _timestamp() -> str:
     now = datetime.now(timezone.utc)
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
@@ -503,6 +548,7 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 res["priceImpactTooHigh"] = True
                 if res.get("priceImpactPct") in (None, ""):
                     res["priceImpactPct"] = loss
+            res["shareCheck"] = share_check(input_mint, output_mint, ui_amount, res)
             res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if res.get("routes") else "")
             res["attempts"] = attempts
             if attempts:
@@ -513,7 +559,13 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
             log.warning("%s quote failed", name, exc_info=True)
             attempts.append({"provider": name, "error": f"{type(e).__name__}: {str(e)[:200]}"})
     reason = "; ".join(f"{a['provider']}: {a['error']}" for a in attempts)
-    return _no_route(reason, attempts)
+    nr = _no_route(reason, attempts)
+    if attempts and all("empty quote" in a["error"] for a in attempts):
+        sc = share_check(input_mint, output_mint, ui_amount, {"uiOutAmount": 0})
+        if sc and sc["blocked"]:
+            sc["reason"] = "zero tokens returned for a non-zero spend"
+            nr["shareCheck"] = sc
+    return nr
 
 
 _sim_parked_until = 0.0
