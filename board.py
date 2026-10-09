@@ -558,11 +558,10 @@ PLATFORM_LABELS = {"bstocks": "bStocks", "ondo": "Ondo", "xstocks": "xStocks"}
 
 
 def _cash_state(underlying: str) -> dict:
-    """Cash open/shut from underlying-market statusInfo; falls back to the NY clock."""
-    code = rwa_api.get_cash_status(underlying)
-    if code:
-        return {"open": code == "TRADING", "code": code, "source": "underlying-market"}
-    return {"open": bool(rwa.session_now().get("cashOpen")), "code": None, "source": "clock"}
+    """Cash open/shut from the NY clock. underlying-market statusInfo.reasonCode is
+    TRADING outside US cash hours (seen 00:30 ET), so it is shown as `code`, not used as the state."""
+    return {"open": bool(rwa.session_now().get("cashOpen")),
+            "code": rwa_api.get_cash_status(underlying), "source": "clock"}
 
 
 def last_sessions() -> list[dict]:
