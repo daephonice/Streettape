@@ -28,6 +28,21 @@
 {% block content %}
 {% set cash_open = session.cashOpen %}
 <div class="bd-col" id="bd-root">
+  <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
+    <span class="sess-wrap">
+      <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
+      <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
+      <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
+    </span>
+    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree. {% if book_widest %}Widest gap while cash was shut: {{ book_widest.line }}.{% else %}No shut-session tape stored yet.{% endif %} <a href="/session">Session book</a>{% else %}At 4pm the stock freezes; the token keeps trading. A frozen print is not a market, so we never trade a wrapper against it: rotate only swaps one wrapper for another.{% endif %}</p>
+    <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
+      <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
+      <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest <span id="bd-rot-t">NVDA</span></button>
+      <button type="button" class="bd-chip" data-cmd="defensive">rotate into defensives when volatility spikes</button>
+      <button type="button" class="bd-chip" data-cmd="flatten">flatten anything richer than 2% while cash is shut</button>
+    </div>
+    <div class="bd-cmd-out" id="bd-cmd-out" aria-live="polite" hidden></div>
+    <section class="bd-def" id="bd-def" aria-live="polite" hidden></section>
   <section class="hm-card bd-now" id="bd-now"{% if not now_block %} hidden{% endif %}>
     {% if now_block %}<p>{{ now_block.l1 }}</p>
     <p>{{ now_block.l2 }}</p>
@@ -46,21 +61,6 @@
     <button class="hm-quick-go" id="qb-go" type="button">Buy cheapest NVDA for $10</button>
     <p class="hm-quick-note" id="qb-note"></p>
   </section>
-  <section class="bd-hero" id="bd-hero" data-cash-open="{{ '1' if cash_open else '0' }}">
-    <span class="sess-wrap">
-      <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(session.label, 'sess-we') }}" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">{{ session.label }}</span></span>
-      <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
-      <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
-    </span>
-    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree. {% if book_widest %}Widest gap while cash was shut: {{ book_widest.line }}.{% else %}No shut-session tape stored yet.{% endif %} <a href="/session">Session book</a>{% else %}At 4pm the stock freezes; the token keeps trading. A frozen print is not a market, so we never trade a wrapper against it: rotate only swaps one wrapper for another.{% endif %}</p>
-    <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
-      <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
-      <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest <span id="bd-rot-t">NVDA</span></button>
-      <button type="button" class="bd-chip" data-cmd="defensive">rotate into defensives when volatility spikes</button>
-      <button type="button" class="bd-chip" data-cmd="flatten">flatten anything richer than 2% while cash is shut</button>
-    </div>
-    <div class="bd-cmd-out" id="bd-cmd-out" aria-live="polite" hidden></div>
-    <section class="bd-def" id="bd-def" aria-live="polite" hidden></section>
     <div class="bd-basket"><div class="bd-basket-row">{% for b in baskets if b.ready %}<span class="bd-basket-pill">{{ b.label|upper }}</span><a class="bd-basket-link" href="/basket/{{ b.key }}">View</a>{% endfor %}</div><p class="bd-basket-sub">{% for b in baskets if b.ready %}{{ b.label }}: {{ b.ready|join(' ') }}{% if b.missing %} (not listed yet: {{ b.missing|join(' ') }}){% endif %} · {% endfor %}{% for b in baskets if not b.ready %}{{ b.label }}: not listed yet · {% endfor %}equal weight · cheapest wrapper · unfilled weight not reassigned</p></div>
     {% if rotate_tx %}<p class="bd-proof">Settled rotate: sold <a href="https://bscscan.com/tx/{{ rotate_tx.sell }}" target="_blank" rel="noopener">{{ rotate_tx.sell[:10] }}…{{ rotate_tx.sell[-8:] }}</a> · bought <a href="https://bscscan.com/tx/{{ rotate_tx.buy }}" target="_blank" rel="noopener">{{ rotate_tx.buy[:10] }}…{{ rotate_tx.buy[-8:] }}</a>{% if settled_tx %} · earlier buy <a href="https://bscscan.com/tx/{{ settled_tx }}" target="_blank" rel="noopener">{{ settled_tx[:10] }}…{{ settled_tx[-8:] }}</a>{% endif %} · agent 360062 · spot only, BSC</p>
     {% elif settled_tx %}<p class="bd-proof">Settled after hours: BNB to TSLAB <a href="https://bscscan.com/tx/{{ settled_tx }}" target="_blank" rel="noopener">{{ settled_tx[:10] }}…{{ settled_tx[-8:] }}</a> · agent 360062 · spot only, BSC</p>{% endif %}
