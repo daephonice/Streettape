@@ -124,6 +124,7 @@
           <div><dt>Min received</dt><dd data-d="min"></dd></div>
         </dl>
         <p class="swp-note" role="alert"></p>
+        <div class="swp-share" hidden></div>
         <p class="swp-proof" hidden></p>
       </div>`;
     document.body.appendChild(root);
@@ -133,7 +134,7 @@
       backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), stk: q('.swp-stk'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
-      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), proof: q('.swp-proof'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
+      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), share: q('.swp-share'), proof: q('.swp-proof'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
       dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'),
     });
 
@@ -198,6 +199,18 @@
   const price = (c, sym) => (c.prices[sym] ? c.prices[sym].price : 0);
 
   function setNote(msg) { R.note.textContent = msg || ''; }
+  const ps = (v) => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function renderShare(sc) {
+    R.share.textContent = '';
+    R.share.hidden = !sc;
+    if (!sc) return;
+    const line = (t, cls) => { const p = document.createElement('p'); p.textContent = t; if (cls) p.className = cls; R.share.appendChild(p); };
+    line(sc.perShare ? `This quote: ${ps(sc.perShare)} per share (${sc.symbol})` : `This quote: no tokens returned (${sc.symbol})`);
+    if (sc.others && sc.others.length) line('Others: ' + sc.others.map((o) => `${o.symbol} ${ps(o.perShare)}`).join(' \u00b7 ') + ' per share');
+    if (sc.ref) line(`vs ${sc.ref.label} ${ps(sc.ref.price)}: ${sc.ref.devPct > 0 ? '+' : ''}${sc.ref.devPct.toFixed(1)}% per share`);
+    line(sc.blocked ? `Blocked: ${sc.reason}` : sc.warn ? `Warning: ${sc.reason}` : 'Check passed: output within 5% of the spend', sc.blocked ? 'neg' : '');
+    line('Buys are blocked if output is worth under 95% of the spend. Rotate stays wrapper versus wrapper.', 'swp-share-note');
+  }
 
   function setCur(cur) {
     if (cur === S.cur) return;
@@ -256,6 +269,7 @@
   function resetQuote() {
     if (!S) return;
     S.order = null;
+    if (R.share) renderShare(null);
     S.quoting = false;
     clearTimeout(S.quoteTimer);
     S.quoteReq = (S.quoteReq || 0) + 1;
@@ -264,6 +278,7 @@
   function scheduleQuote() {
     if (!S) return;
     S.order = null;
+    if (R.share) renderShare(null);
     clearTimeout(S.quoteTimer);
     const amt = S.side === 'buy' ? parseFloat(S.raw) || 0 : sellCalcAmount();
     if (!S.address || !(amt > 0)) { S.quoting = false; return; }
@@ -303,7 +318,11 @@
       });
       if (S !== sess || sess.quoteReq !== reqId) return;
       sess.quoting = false;
-      if (order.uiOutAmount) {
+      renderShare(order.shareCheck || null);
+      if (order.shareCheck && order.shareCheck.blocked) {
+        sess.order = null;
+        setNote('Blocked: ' + order.shareCheck.reason);
+      } else if (order.uiOutAmount) {
         sess.order = order;
         if (order.needsApproval) {
           setNote('Approve this token in the wallet, then confirm the swap.');
@@ -325,6 +344,7 @@
       if (S !== sess || sess.quoteReq !== reqId) return;
       sess.quoting = false;
       sess.order = null;
+      renderShare(null);
       setNote(err.message || 'Could not get a price');
       render();
     }
