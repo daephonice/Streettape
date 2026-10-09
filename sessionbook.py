@@ -252,6 +252,9 @@ def record_proposal(q: dict) -> dict | None:
             "netBps": round(float(q["netBps"]), 2), "sizeUsd": q.get("sizeUsd"),
             "quoteIds": [(q.get(k) or {}).get("quoteId") or (q.get(k) or {}).get("requestId")
                          for k in ("sellLeg", "buyLeg")],
+            "legs": [{"provider": (q.get(k) or {}).get("provider"), "route": (q.get(k) or {}).get("routeLabel"),
+                      "out": (q.get(k) or {}).get("uiOutAmount"), "min": (q.get(k) or {}).get("uiMinReceived")}
+                     for k in ("sellLeg", "buyLeg")],
             "at": at,
         }
         payload = json.dumps(body, sort_keys=True, separators=(",", ":"))
