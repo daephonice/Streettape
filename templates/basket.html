@@ -21,10 +21,18 @@
       <a class="bk-back" href="/" aria-label="Back to Home"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg><span>Back to Home</span></a>
     </div>
     <span class="sess-chip {{ {'CASH OPEN':'sess-open','PRE-MARKET':'sess-pre','AFTER-HOURS':'sess-ah','WEEKEND':'sess-we'}.get(b.session.label, 'sess-we') }}"><span class="sess-dot"></span><span>{{ b.session.label }}</span></span>
+    {% if b.theme == 'defensive' %}<h1 class="bk-title">Defensives when the book is rich</h1>{% endif %}
     <p class="bd-hero-copy">{{ b.label }} basket: {{ b.names|join(', ') }}. ${{ '%.2f'|format(b.sizeUsd) }} equal weight, ${{ '%.2f'|format(b.legUsd) }} per name, quoted as buys from USDT into the cheapest wrapper with a tape and a share ratio.</p>
     {% if b.tapeStale %}<p class="bd-hero-stale">Tape delayed (rate limited). Showing last good read.</p>{% endif %}
   </section>
 
+  {% if b.theme == 'defensive' %}
+  <section class="hm-card bk-def">
+    <h2>Rotate out of the rich wrapper, into the cheapest</h2>
+    {% for l in b.legs %}<p><b>{{ l.underlying }}</b> · {% if l.filled %}cheapest {{ l.symbol }}{% if l.cheapPremium is not none %} {{ format_premium(l.cheapPremium) }}{% endif %}{% else %}no cheapest wrapper ({{ l.reason }}){% endif %}{% if l.rich %} · richest {{ l.rich.symbol }} {{ format_premium(l.rich.premium) }} vs {{ 'official' if cash_open else 'Friday' }}{% endif %}</p>{% endfor %}
+    <p class="bk-w">A floor made of rotates, not a lending market. Unsigned swaps, no custody, no vault.</p>
+  </section>
+  {% endif %}
   {% for l in b.legs %}
   <article class="hm-card bk-leg">
     <div class="bk-head"><b>{{ l.underlying }}{% if l.name %} <span class="bk-w">{{ l.name }}</span>{% endif %}</b><span class="bk-w">{{ '%.1f'|format(l.weight * 100) }}%</span></div>
