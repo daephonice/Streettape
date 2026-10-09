@@ -95,12 +95,14 @@
         {% set show_fair = (not cash_open) and (not g.noYahoo) and g.markPrice and t.fairPrice %}
         <div class="bd-w{% if t.symbol == g.cheapest and g.cheapest != g.richest %} is-cheap{% elif t.symbol == g.richest and g.cheapest != g.richest %} is-rich{% endif %}{% if t.thin %} is-thin{% endif %}" data-symbol="{{ t.symbol }}">
           <div class="bd-w-top"><span class="bd-w-sym">{{ t.symbol }}</span></div>
-          {% set src = {'binance': 'From Binance', 'yahoo': 'From Yahoo', 'last-print': 'From Yahoo'}.get(t.markSource) %}
+          {% set src = {'binance': 'From Binance'}.get(t.markSource) %}
           <div class="bd-pxs">
             <div class="bd-px"><span class="bd-px-l">Tape</span><b>{{ '$%.2f'|format(t.tokenPrice) if t.tokenPrice is not none else '—' }}</b></div>
             <div class="bd-px"><span class="bd-px-l">Official</span><b>{{ '$%.2f'|format(t.markPrice) if t.markPrice is not none else '—' }}</b>{% if src and t.markPrice is not none %}<small class="bd-px-src bd-src-{{ t.markSource }}">{{ src }}</small>{% endif %}</div>
             {% if show_fair %}<div class="bd-px bd-px-fair"><span class="bd-px-l">Fair</span><b>{{ '$%.2f'|format(t.fairPrice) }}</b></div>{% endif %}
           </div>
+          <div class="bd-facts">{{ t.platformLabel or t.platform }}{% if t.tokenToShareRatio %} · <span title="tokenToShareRatio {{ t.tokenToShareRatio }}">{{ '%.4f'|format(t.tokenToShareRatio) }} sh/token</span>{% endif %} · cash {{ 'open' if (t.cashState and t.cashState.open) else 'shut' }}</div>
+          {% if t.markPrice is not none and t.markSource != 'binance' %}<div class="bd-nomark">Last cash print. RWA price endpoint returned no mark on this deploy.</div>{% endif %}
           {% if t.hasTape %}
           <div class="bd-badges"><span class="bd-bl">vs off</span>{{ prem(t.premiumToOfficial) }}{% if show_fair %}<span class="bd-bl">vs fair</span>{{ prem(t.premiumToFair) }}{% endif %}{% if t.thin %}<span class="bd-thin" title="Stale price, not a real gap.">thin pool{% if t.liquidityUsd is not none %} · {{ '${:,.2f}'.format(t.liquidityUsd) }}{% endif %}</span>{% endif %}</div>
           {% endif %}
