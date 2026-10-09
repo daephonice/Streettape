@@ -65,13 +65,21 @@
     const top = el('div', 'bd-w-top');
     top.appendChild(el('span', 'bd-w-sym', t.symbol));
     w.appendChild(top);
-    const SRC = { binance: 'From Binance', yahoo: 'From Yahoo', 'last-print': 'From Yahoo' };
+    const SRC = { binance: 'From Binance' };
     const src = t.markSource && SRC[t.markSource] && t.markPrice != null ? { key: t.markSource, text: SRC[t.markSource] } : null;
     const pxs = el('div', 'bd-pxs');
     pxs.appendChild(px('Tape', t.hasTape ? money(t.tokenPrice) : '—'));
     pxs.appendChild(px('Official', money(t.markPrice), '', src));
     if (showFair) pxs.appendChild(px('Fair', money(t.fairPrice), 'bd-px-fair'));
     w.appendChild(pxs);
+    const facts = el('div', 'bd-facts', (t.platformLabel || t.platform || '') +
+      (t.tokenToShareRatio ? ' \u00b7 ' + Number(t.tokenToShareRatio).toFixed(4) + ' sh/token' : '') +
+      ' \u00b7 cash ' + (t.cashState && t.cashState.open ? 'open' : 'shut'));
+    if (t.tokenToShareRatio) facts.title = 'tokenToShareRatio ' + t.tokenToShareRatio;
+    w.appendChild(facts);
+    if (t.markPrice != null && t.markSource !== 'binance') {
+      w.appendChild(el('div', 'bd-nomark', 'Last cash print. RWA price endpoint returned no mark on this deploy.'));
+    }
     if (t.hasTape) {
       const badges = el('div', 'bd-badges');
       badges.appendChild(el('span', 'bd-bl', 'vs off'));

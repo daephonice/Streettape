@@ -29,7 +29,7 @@
 
   const $ = (id) => document.getElementById(id);
   const els = {
-    stats: $('tk-stats'), mark: $('tk-mark'), prem: $('tk-prem'), fair: $('tk-fair'), premFair: $('tk-prem-fair'),
+    facts: $('tk-facts'), stats: $('tk-stats'), mark: $('tk-mark'), prem: $('tk-prem'), fair: $('tk-fair'), premFair: $('tk-prem-fair'),
     plot: $('tk-plot'), axis: $('tk-axis'), xaxis: $('tk-xaxis'), cursor: $('tk-cursor'), tip: $('tk-tip'),
     noHist: $('tk-nohist'), ranges: $('tk-ranges'),
     posList: $('tk-pos-list'), posTotal: $('tk-pos-total'),
@@ -160,6 +160,17 @@
       const showFair = !!p.fairPrice && state.session && !state.session.cashOpen;
       setVal(els.fair, showFair ? fmtPrice(p.fairPrice) : DASH);
       if (showFair) premVal(els.premFair, p.premiumToFair); else setVal(els.premFair, DASH);
+    }
+
+    if (els.facts) {
+      const w = state.group && (state.group.wrappers || []).find((x) => x.symbol === SYMBOL);
+      if (w) {
+        els.facts.hidden = false;
+        els.facts.textContent = (w.platformLabel || w.platform || '') +
+          (w.tokenToShareRatio ? ' \u00b7 ' + Number(w.tokenToShareRatio).toFixed(4) + ' sh/token' : '') +
+          ' \u00b7 cash ' + (w.cashState && w.cashState.open ? 'open' : 'shut') +
+          (w.markPrice != null && w.markSource !== 'binance' ? '. Last cash print. RWA price endpoint returned no mark on this deploy.' : '');
+      } else els.facts.hidden = true;
     }
 
     renderPosition();
