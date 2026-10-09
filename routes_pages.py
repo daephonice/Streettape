@@ -60,15 +60,10 @@ def _now_block(groups: list, session: dict) -> dict | None:
             continue
         if rich is None or px / r > rich[1]:
             rich = (w["symbol"], px / r)
-    cash_open = bool(session.get("cashOpen"))
-    l1 = ("Cash is open. The reference is the live stock price." if cash_open
-          else "Cash is shut. The reference is the last cash print.")
-    if rich:
-        l2 = f"{rich[0]} is rich versus that price. {cheap} is the cheaper wrapper of the same stock."
-    else:
-        l2 = f"{cheap} is the cheapest wrapper of {u} right now."
-    return {"underlying": u, "l1": l1, "l2": l2,
-            "l3": "This builds an unsigned swap. You sign it. Nothing sends itself."}
+    ref = "the live price" if session.get("cashOpen") else "Friday"
+    l1 = f"{rich[0]} is rich versus {ref}." if rich else f"No {u} wrapper is rich versus {ref}."
+    return {"underlying": u, "l1": l1, "l2": f"{cheap} is the cheaper wrapper.",
+            "l3": "This builds an unsigned swap."}
 
 
 def _board_context() -> dict:

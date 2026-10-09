@@ -21,6 +21,18 @@ _TTL = 30.0
 _cache: dict = {}  # (theme, usd) -> (monotonic ts, payload)
 
 
+def _richest(group: dict | None) -> dict | None:
+    """Wrapper with the highest premium to the official mark (Friday's print while cash is shut). Tape, no thin pools."""
+    best = None
+    for w in (group or {}).get("wrappers") or []:
+        p = w.get("premiumToOfficial")
+        if p is None or not w.get("hasTape") or w.get("thin"):
+            continue
+        if best is None or p > best["premiumToOfficial"]:
+            best = w
+    return best
+
+
 def _cheapest(group: dict | None) -> dict | None:
     """Cheapest per-share wrapper with a live tape, a contract and a share ratio. Thin pools never qualify."""
     best, best_px = None, None
@@ -68,6 +80,11 @@ async def build(theme: str = THEME, usd: float = DEFAULT_USD) -> dict:
             "fair": g.get("fairPrice") if not cash_open else None,
             "filled": False,
         }
+        rich = _richest(g)
+        if rich:
+            leg["rich"] = {"symbol": rich["symbol"], "premium": rich["premiumToOfficial"]}
+        if pick:
+            leg["cheapSymbol"], leg["cheapPremium"] = pick["symbol"], pick.get("premiumToOfficial")
         if not pick:
             leg["reason"] = "no tape with a share ratio" if g else "not in snapshot yet"
             legs.append(leg)
@@ -127,6 +144,57 @@ QUICKBUY_BAND_BPS = float(os.getenv("QUICKBUY_BAND_BPS", "100"))  # reject a wra
 
 
 QUICKBUY_QUOTE_BAND_BPS = float(os.getenv("QUICKBUY_QUOTE_BAND_BPS", "300"))  # reject a quote whose implied price per share is farther than this from the cash print
+
+
+_route_cache: dict = {}  # (underlying, usd) -> (monotonic ts, payload)
+
+
+async def route_board(underlying: str, usd: float = 10.0) -> dict:
+    """Every wrapper of one underlying sorted by per-share price (after tokenToShareRatio). The cheapest wrapper that
+    routes and passes the 95% output check is flagged `route`; any wrapper that fails the check or has no route is `ok: false`."""
+    u = underlying.upper()
+    key = (u, usd)
+    hit = _route_cache.get(key)
+    if hit and time.monotonic() - hit[0] < _TTL:
+        return hit[1]
+    snap = rwa.get_cached_snapshot()
+    g = next((x for x in snap.get("groups") or [] if x["underlying"] == u), None)
+    if not g:
+        return {"underlying": u, "usd": usd, "wrappers": []}
+    rows, quotable = [], []
+    for w in g.get("wrappers") or []:
+        ratio, px = w.get("tokenToShareRatio"), w.get("tokenPrice")
+        r = {"symbol": w.get("symbol"), "platform": w.get("platform"), "perShare": (px / ratio) if (px and ratio) else None,
+             "ok": False, "route": False, "reason": None}
+        if not w.get("mint"):
+            r["reason"] = "no contract"
+        elif not (w.get("hasTape") and px):
+            r["reason"] = "no tape"
+        elif w.get("thin"):
+            r["reason"] = "thin pool"
+        elif not ratio:
+            r["reason"] = "no share ratio"
+        else:
+            quotable.append((r, w))
+        rows.append(r)
+    quotes = await asyncio.gather(*(swap.quote(rwa.USDT, w["mint"], usd) for _, w in quotable), return_exceptions=True)
+    for (r, _), q in zip(quotable, quotes):
+        if isinstance(q, Exception) or q.get("noRoute") or q.get("uiOutAmount") is None:
+            r["reason"] = "no route quoted"
+            continue
+        sc = q.get("shareCheck") or {}
+        if q.get("priceImpactTooHigh") or sc.get("blocked"):
+            r["reason"] = sc.get("reason") or "output worth under 95% of the spend"
+            continue
+        r["ok"] = True
+    rows.sort(key=lambda r: (r["perShare"] is None, r["perShare"] or 0))
+    win = next((r for r in rows if r["ok"]), None)
+    if win:
+        win["route"] = True
+    payload = {"underlying": u, "usd": usd, "wrappers": rows}
+    if win:
+        _route_cache[key] = (time.monotonic(), payload)
+    return payload
 
 
 def _candidate(w: dict, mark: float | None) -> dict:

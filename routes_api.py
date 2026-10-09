@@ -131,6 +131,11 @@ async def _basket(theme: str, usd: float):
     return await basket.build(theme, usd)
 
 
+@router.get("/token/{underlying}/route")
+async def api_token_route(underlying: str, usd: float = 10.0):
+    return await basket.route_board(underlying, max(1.0, min(usd, 1000.0)))
+
+
 @router.get("/basket/ai")
 async def api_basket_ai(usd: float = basket.DEFAULT_USD):
     return await _basket("ai", usd)
