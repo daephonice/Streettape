@@ -28,6 +28,12 @@
 {% block content %}
 {% set cash_open = session.cashOpen %}
 <div class="bd-col" id="bd-root">
+  <section class="hm-card bd-now" id="bd-now"{% if not now_block %} hidden{% endif %}>
+    {% if now_block %}<p>{{ now_block.l1 }}</p>
+    <p>{{ now_block.l2 }}</p>
+    <p>{{ now_block.l3 }}</p>
+    <a class="hm-quick-go" href="/t/{{ now_block.underlying }}#swap">Build the {{ now_block.underlying }} swap</a>{% endif %}
+  </section>
   <section class="hm-quick" id="hm-quick">
     <div class="hm-quick-row">
       <select id="qb-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
@@ -46,7 +52,7 @@
       <span class="sess-sub" id="sess-sub">{% if cash_open %}Close in {{ (session.nyCloseInSec // 3600) }}h {{ ((session.nyCloseInSec % 3600) // 60) }}m · Lagos {{ session.wat }} · New York {{ session.et }}{% else %}Lagos {{ session.wat }} · New York {{ session.et }} · NY close {{ session.nyCloseAtWat }} WAT{% endif %}</span>
       <span class="bd-hero-stale" id="bd-hero-stale" {% if not tape_stale %}hidden{% endif %}>Tape delayed (rate limited)</span>
     </span>
-    <p class="bd-hero-copy" id="bd-hero-copy">At 4pm the stock freezes; the token keeps trading. Tape is the pool. Official is Friday&#39;s frozen print. Fair is where it should be now. {% if cash_open %}Cash is open, so tape and official agree. {% if book_widest %}Widest gap while cash was shut: {{ book_widest.line }}.{% else %}No shut-session tape stored yet.{% endif %} <a href="/session">Session book</a>{% else %}Cash is shut. Fair is the last print moved by QQQ and news since the close. A frozen print is not a market, so we never trade a wrapper against Friday: Fair explains why a wrapper is rich, and rotate only swaps one wrapper for another.{% endif %}</p>
+    <p class="bd-hero-copy" id="bd-hero-copy">{% if cash_open %}Cash is open, so tape and official agree. {% if book_widest %}Widest gap while cash was shut: {{ book_widest.line }}.{% else %}No shut-session tape stored yet.{% endif %} <a href="/session">Session book</a>{% else %}At 4pm the stock freezes; the token keeps trading. A frozen print is not a market, so we never trade a wrapper against it: rotate only swaps one wrapper for another.{% endif %}</p>
     <div class="bd-cmds" id="bd-cmds" role="group" aria-label="Commands">
       <button type="button" class="bd-chip" data-cmd="rich">what's rich vs Friday</button>
       <button type="button" class="bd-chip" data-cmd="rotate">rotate into cheapest <span id="bd-rot-t">NVDA</span></button>
@@ -71,7 +77,10 @@
     <p class="bd-last-empty" id="bd-last-empty" {% if last_session %}hidden{% endif %}>No cash-shut print stored yet. First one lands at 21:00 WAT.</p>
   </section>
 
-  <p class="bd-legend"><b>Tape</b> onchain price · <b>Official</b> issuer mark · <b>Fair</b> synthetic mark (cash shut, not an issuer mark, not the onchain tape)</p>
+  <p class="bd-legend"><b>Wrapper</b> one tokenized version of a stock (xStocks, Ondo, bStocks).</p>
+  <p class="bd-legend"><b>Tape</b> the onchain pool price.</p>
+  <p class="bd-legend"><b>Official</b> the issuer mark, or the last cash print.</p>
+  <p class="bd-legend"><b>Fair</b> the last print moved by QQQ and news since the close. Cash shut only.</p>
 
   <div class="bd-search-wrap">
     <input type="text" id="bd-search" class="bd-search" placeholder="Search NVDA, SpaceX…" autocomplete="off" aria-label="Search">
