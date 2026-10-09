@@ -7,8 +7,10 @@ Same stock, three wrappers, on BSC. Tape is the pool. Official is Friday's print
 - Settled fill: https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5
 - Report: DEVEX.md (not GET /api/_devex)
 
-Judge clicks: `/` and the four chips, `/basket/defensive`, `/t/NVDA`, a built swap sheet, then DEVEX.md.
+Judge clicks: `/` and the four chips, `/basket/defensive`, `/t/NVDA`, the Rotate sheet at `/t/NVDA#rotate`, then DEVEX.md.
 Spot only. Nothing auto-executes.
+
+Rotate is its own sheet, not Sell then Buy. Heading is `ROTATE {rich} to {cheap}`. Size is 25 / 50 / 75 / MAX of the rich wrapper. The button says Connect wallet until a wallet is in, then Rotate. One quote, rich mint to cheap mint, one signature. BNB against Ondo stays blocked. Sell and Buy stay cash sheets.
 
 ## Run
 
