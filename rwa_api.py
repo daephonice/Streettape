@@ -306,7 +306,13 @@ async def _underlying_market_retry(client, addr):
                 continue
             raise
 _mcaps: dict[str, float] = {}
+_status: dict[str, str] = {}  # underlying -> statusInfo.reasonCode from underlying-market
 _mcap_last = 0.0
+
+
+def get_cash_status(underlying: str | None) -> str | None:
+    """statusInfo.reasonCode ('TRADING', ...) for the underlying, or None if not fetched."""
+    return _status.get((underlying or "").upper())
 
 
 def get_mcap(underlying: str | None) -> float | None:
@@ -327,6 +333,9 @@ async def refresh_mcaps(pairs: list[tuple[str, str]]) -> None:
                 await asyncio.sleep(MCAP_GAP)
             try:
                 data = await _underlying_market_retry(client, addr)
+                code = ((data or {}).get("statusInfo") or {}).get("reasonCode")
+                if isinstance(code, str) and code:
+                    _status[und.upper()] = code.upper()
                 mc = float(((data or {}).get("marketData") or {}).get("marketCap"))
                 if mc > 0:
                     _mcaps[und.upper()] = mc

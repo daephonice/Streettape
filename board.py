@@ -284,6 +284,8 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "name": w["name"],
             "underlying": w["underlying"],
             "platform": w["platform"],
+            "platformLabel": PLATFORM_LABELS.get(w["platform"], w["platform"]),
+            "cashState": _cash_state(w["underlying"]),
             "mint": w["address"],
             "address": w["address"],
             "hasTape": has_addr,
@@ -550,6 +552,17 @@ def record_session_gaps(tokens, now=None):
         db.rollback()
     finally:
         db.close()
+
+
+PLATFORM_LABELS = {"bstocks": "bStocks", "ondo": "Ondo", "xstocks": "xStocks"}
+
+
+def _cash_state(underlying: str) -> dict:
+    """Cash open/shut from underlying-market statusInfo; falls back to the NY clock."""
+    code = rwa_api.get_cash_status(underlying)
+    if code:
+        return {"open": code == "TRADING", "code": code, "source": "underlying-market"}
+    return {"open": bool(rwa.session_now().get("cashOpen")), "code": None, "source": "clock"}
 
 
 def last_sessions() -> list[dict]:

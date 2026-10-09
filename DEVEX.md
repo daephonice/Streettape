@@ -31,7 +31,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
 - Verified live (2026-10-03): Studio tick from the managed runtime returned 401 every minute until the platform dropped the custom token env; with a tick-only key it returned 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s, and the runtime stopped about 5 minutes after the last invoke (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
-- Settled rotate (sell + buy): see Runtime log, "First live rotate" (fill in after the run).
+- Settled rotate (sell + buy): not run, no second leg funded.
 
 ---
 
@@ -539,10 +539,3 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `GET /api/quickbuy/NVDA?usd=10` and Telegram `/buy NVDA 10`, USDT to each wrapper, cash print $237.47.
 - What came back: NVDAB tape $234.94/sh (-107 bps vs cash print); the Binance quote implied $235.53/sh (-82 bps). NVDAon tape -101 bps. NVDAon in a later call: tape -91 bps, quote implied $238.83/sh (+57 bps), a 148 bps gap between Ondo's tape and its own quote; NVDAB's gap was 24 bps. NVDAx thin pool, no price. At a 100 bps tape band both priced wrappers were rejected before any quote. Forced guard: with `QUICKBUY_QUOTE_BAND_BPS=1`, NVDAB (-72 bps) and NVDAon (+57 bps) were both rejected with "quote implies $…/sh, … bps from cash print", and no Buy link was returned.
 - What we changed because of it: added a second check on the quote's implied price per share (`QUICKBUY_QUOTE_BAND_BPS=300`); raised the tape band to 200 bps (`QUICKBUY_BAND_BPS=200`).
-
-### YYYY-MM-DD — First live rotate: sell <RICH> / buy <CHEAP> (`/t/<TICKER>#rotate`, `POST /api/swap/order`)
-
-- Session: <CASH OPEN | AFTER-HOURS | WEEKEND> (<time ET / UTC>).
-- What we hit: Rotate on the token page in the wallet dApp browser, $<N>. Sell leg `POST /api/swap/order` <rich wrapper> to <stable>, then buy leg <stable> to <cheap wrapper>.
-- What came back (first call of each outcome): sell leg <HTTP / code / ms / route / wallet simulation result>, hash [<SELL_HASH>](https://bscscan.com/tx/<SELL_HASH>). Buy leg <HTTP / code / ms / route>, hash [<BUY_HASH>](https://bscscan.com/tx/<BUY_HASH>). Out-amounts vs quote: <sell quoted vs filled, buy quoted vs filled>, realised slippage <bps>. Gap at quote <bps net>, gap after fills <bps>. Any error or wallet warning: <paste or "none">.
-- What we changed because of it: <nothing | fix>.
