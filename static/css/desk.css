@@ -733,6 +733,7 @@ html.hld-lock, html.hld-lock body { overflow: hidden; }
 .swp-det dd { margin: 0; text-align: right; color: var(--hm-muted, #9d9ea2); font-variant-numeric: tabular-nums; }
 .swp-note { margin: 8px 0 0; font-size: 14px; color: var(--hm-neg, #fb7185); }
 .swp-note:empty { display: none; }
+.swp-proof { margin: 8px 0 0; font-size: 12px; color: var(--hm-dim); word-break: break-all; }
 
 /* ==========================================================================
    Trade (Swap) panel — homepage full-panel. Blue theme.
