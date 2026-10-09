@@ -683,13 +683,14 @@
     if (!arbEls.rotateBtn) return;
     arbEls.rotateBtn.disabled = true;
     try {
-      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${ROTATE_USD}`);
+      const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${ROTATE_USD}&proof=1`);
       const hit = data.hit;
       if (!hit) { arbEls.rotateBtn.textContent = 'No rotate available'; return; }
       if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${ROTATE_USD} · not viable`; return; }
       // One sheet at a time: sell leg first, buy leg opens when it closes.
-      const opened = openSwap('sell', hit.richSymbol, () => openSwap('buy', hit.cheapSymbol));
-      if (!opened) openSwap('buy', hit.cheapSymbol);
+      const pre = { proof: hit.proof && hit.proof.hash };
+      const opened = openSwap('sell', hit.richSymbol, () => openSwap('buy', hit.cheapSymbol, undefined, pre), pre);
+      if (!opened) openSwap('buy', hit.cheapSymbol, undefined, pre);
     } catch (err) {
       arbEls.rotateBtn.textContent = 'Rotate failed';
     } finally {
@@ -838,7 +839,7 @@
     }
     return !!(window.MarktapeSwap && window.MarktapeSwap.open({
       side, symbol: key, label, title: IS_GROUP ? UNDERLYING : label, stocks, getCtx, onDone: refreshBalances, onClose,
-      connect, pay: pre && pre.pay, amount: pre && pre.amount,
+      connect, pay: pre && pre.pay, amount: pre && pre.amount, proof: pre && pre.proof,
     }));
   }
   // $10/$25/$50 chips: show the quote (min out) first, then open the buy sheet a moment later. Wallet only, no card ramp.

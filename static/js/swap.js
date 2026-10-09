@@ -124,6 +124,7 @@
           <div><dt>Min received</dt><dd data-d="min"></dd></div>
         </dl>
         <p class="swp-note" role="alert"></p>
+        <p class="swp-proof" hidden></p>
       </div>`;
     document.body.appendChild(root);
 
@@ -132,7 +133,7 @@
       backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), stk: q('.swp-stk'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
       sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
-      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
+      cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), proof: q('.swp-proof'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
       dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'),
     });
 
@@ -594,6 +595,10 @@
     };
     R.input.value = '';
     setNote('');
+    const ph = host.proof;
+    R.proof.hidden = !ph;
+    R.proof.textContent = ph ? `Proof of proposal ${ph.slice(0, 10)}\u2026${ph.slice(-6)} \u00b7 not a trade` : '';
+    R.proof.title = ph || '';
     renderStk();
     renderCur();
     renderQuick();
