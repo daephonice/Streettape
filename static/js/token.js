@@ -660,6 +660,7 @@
       if (location.hash === '#rotate' && !loadArb.scrolled) {
         loadArb.scrolled = true;
         arbEls.card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        openRotate(hit);
       }
       const routed = (l) => !!l && !l.noRoute && !l.unsupported && !!l.uiOutAmount;
       const noRoute = hit.netBps > 0 && !hit.viable && !(routed(hit.sellLeg) && routed(hit.buyLeg));
@@ -707,8 +708,10 @@
     }
   }
 
-  // "Rotate $10": quotes the cross-wrapper arb at a small fixed size and, if
-  // viable, opens the sell/buy legs the same way the leg buttons above do.
+  // Rotate: one sheet, rich wrapper -> cheap wrapper, one quote, one signature.
+  function openRotate(hit) {
+    return openSwap('rotate', hit.richSymbol, undefined, { out: hit.cheapSymbol, proof: hit.proof && hit.proof.hash });
+  }
   async function rotateQuick() {
     if (!arbEls.rotateBtn) return;
     arbEls.rotateBtn.disabled = true;
@@ -716,11 +719,8 @@
       const data = await getJSON(`/api/agent/arb/${encodeURIComponent(UNDERLYING)}?size_usd=${ROTATE_USD}&proof=1`);
       const hit = data.hit;
       if (!hit) { arbEls.rotateBtn.textContent = 'No rotate available'; return; }
-      if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${ROTATE_USD} · not viable`; return; }
-      // One sheet at a time: sell leg first, buy leg opens when it closes.
-      const pre = { proof: hit.proof && hit.proof.hash };
-      const opened = openSwap('sell', hit.richSymbol, () => openSwap('buy', hit.cheapSymbol, undefined, pre), pre);
-      if (!opened) openSwap('buy', hit.cheapSymbol, undefined, pre);
+      if (!hit.viable) { arbEls.rotateBtn.textContent = `Rotate $${ROTATE_USD} \u00b7 not viable`; return; }
+      openRotate(hit);
     } catch (err) {
       arbEls.rotateBtn.textContent = 'Rotate failed';
     } finally {
@@ -861,7 +861,8 @@
     const label = sym || SYMBOL;
     const key = keyFor(label);
     let stocks = [];
-    if (IS_GROUP && state.group) {
+    const rot = side === 'rotate' && pre && pre.out;
+    if (!rot && IS_GROUP && state.group) {
       stocks = ['xstocks', 'ondo', 'bstocks'].map((plat) => {
         const w = (state.group.wrappers || []).find((x) => x.platform === plat);
         return { symbol: w ? keyFor(w.symbol) : '', name: w ? w.symbol : '', label: PLAT_LABEL[plat], disabled: !w || !(w.mint || w.address) };
@@ -869,7 +870,7 @@
     }
     return !!(window.MarktapeSwap && window.MarktapeSwap.open({
       side, symbol: key, label, title: IS_GROUP ? UNDERLYING : label, stocks, getCtx, onDone: refreshBalances, onClose,
-      connect, pay: pre && pre.pay, amount: pre && pre.amount, proof: pre && pre.proof,
+      connect, out: rot ? keyFor(pre.out) : undefined, outLabel: rot ? pre.out : undefined, pay: pre && pre.pay, amount: pre && pre.amount, proof: pre && pre.proof,
     }));
   }
   // $10/$25/$50 chips: show the quote (min out) first, then open the buy sheet a moment later. Wallet only, no card ramp.

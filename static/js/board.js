@@ -200,7 +200,7 @@
       'Sell ' + r.richSymbol + ' ' + money(r.richSharePrice) + ' → buy ' + r.cheapSymbol + ' ' + money(r.cheapSharePrice) + ' per share'));
     if (clears) {
       row.appendChild(el('p', 'bd-bk-line', 'gap ' + bps(r.gapBps) + ' · cost ' + bps(r.costBps) + ' · net +' + bps(r.netBps) + ' at $' + Math.round(r.sizeUsd || 50)));
-      const a = el('a', 'bd-bk-btn', 'Rotate $' + Math.round(r.sizeUsd || 50));
+      const a = el('a', 'bd-bk-btn', 'Rotate');
       a.href = '/t/' + encodeURIComponent(r.underlying) + '#rotate';
       row.appendChild(a);
     } else {
@@ -332,6 +332,8 @@
         n.push(line('Costs eat the gap.', 'bd-o-warn'));
       }
     }
+    n.push(el('a', 'bd-bk-btn', 'Open rotate sheet'));
+    n[n.length - 1].href = '/t/' + encodeURIComponent(u) + '#rotate';
     show(title, n, sess);
   }
 

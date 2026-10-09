@@ -2,6 +2,7 @@
  *
  *   Buy  : pay in BNB or USDC, type an amount (device keyboard), quick amounts.
  *   Sell : receive BNB or USDC, pick a % of the holding (slider / - +).
+ *   Rotate: rich wrapper -> cheap wrapper of the same stock, one quote, one signature.
  *
  * A token can't be paid / received in itself, so on the BNB page only USDC is
  * offered and on the USDC page only BNB.
@@ -106,6 +107,12 @@
           <div class="swp-quick"></div>
         </div>
         <div class="swp-sell">
+          <div class="swp-quick swp-pcts" hidden>
+            <button type="button" class="swp-chip" data-pct="25">25%</button>
+            <button type="button" class="swp-chip" data-pct="50">50%</button>
+            <button type="button" class="swp-chip" data-pct="75">75%</button>
+            <button type="button" class="swp-chip" data-pct="100">MAX</button>
+          </div>
           <div class="swp-stepper">
             <button type="button" class="swp-step swp-minus" aria-label="Decrease">&minus;</button>
             <div class="swp-pct"></div>
@@ -134,7 +141,7 @@
     Object.assign(R, {
       backdrop: q('.swp-backdrop'), sheet: q('.swp-sheet'), title: q('.swp-title'), stk: q('.swp-stk'), cur: q('.swp-cur'),
       bal: q('.swp-bal'), buy: q('.swp-buy'), input: q('.swp-input'), quick: q('.swp-quick'),
-      sell: q('.swp-sell'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
+      sell: q('.swp-sell'), pcts: q('.swp-pcts'), minus: q('.swp-minus'), plus: q('.swp-plus'), pct: q('.swp-pct'), range: q('.swp-range'),
       cta: q('.swp-cta'), est: q('.swp-est'), note: q('.swp-note'), share: q('.swp-share'), proof: q('.swp-proof'), modeChip: q('.swp-mode-chip'), det: q('.swp-det'),
       dRoute: q('[data-d="route"]'), dImpact: q('[data-d="impact"]'), dFees: q('[data-d="fees"]'), dMin: q('[data-d="min"]'), dProof: q('[data-d="proof"]'),
     });
@@ -164,6 +171,10 @@
       render();
     });
     R.input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !R.cta.disabled) R.cta.click(); });
+    R.pcts.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pct]');
+      if (b && S && !S.busy) setPct(Number(b.dataset.pct));
+    });
     R.range.addEventListener('input', () => setPct(Number(R.range.value)));
     R.minus.addEventListener('click', () => setPct(S.pct - STEP));
     R.plus.addEventListener('click', () => setPct(S.pct + STEP));
@@ -300,8 +311,9 @@
     const reqId = ++sess.quoteReq;
     const c = sess.host.getCtx();
     const buying = sess.side === 'buy';
+    const rotating = sess.side === 'rotate';
     const inSym = buying ? sess.cur : sess.symbol;
-    const outSym = buying ? sess.symbol : sess.cur;
+    const outSym = buying ? sess.symbol : rotating ? sess.out : sess.cur;
     const inMint = (c.assets[inSym] || {}).mint;
     const outMint = (c.assets[outSym] || {}).mint;
     const amt = buying ? (parseFloat(sess.raw) || 0) : sellCalcAmount();
@@ -319,8 +331,15 @@
       });
       if (S !== sess || sess.quoteReq !== reqId) return;
       sess.quoting = false;
-      renderShare(order.shareCheck || null);
-      if (order.shareCheck && order.shareCheck.blocked) {
+      const rotBlock = rotating ? rotateBlock(c, inSym, outSym, amt, order) : '';
+      renderShare(rotating ? null : (order.shareCheck || null));
+      if (rotating && (order.unsupported || order.error) && !order.uiOutAmount) {
+        sess.order = null;
+        setNote(order.unsupported ? order.error : 'No route');
+      } else if (rotBlock) {
+        sess.order = null;
+        setNote('Blocked: ' + rotBlock);
+      } else if (order.shareCheck && order.shareCheck.blocked && !rotating) {
         sess.order = null;
         setNote('Blocked: ' + order.shareCheck.reason);
       } else if (order.uiOutAmount) {
@@ -338,7 +357,7 @@
         sess.order = null;
         const c2 = sess.host.getCtx();
         const platform = ((c2.assets[sess.symbol] || {}).platform || '').toLowerCase();
-        setNote(platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found (Binance, PancakeSwap, OpenOcean)');
+        setNote(rotating ? 'No route' : platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found (Binance, PancakeSwap, OpenOcean)');
       }
       render();
     } catch (err) {
@@ -349,6 +368,19 @@
       setNote(err.message || 'Could not get a price');
       render();
     }
+  }
+
+  // Rotate guard, same 95% floor as buys: output worth under 95% of input, or near zero.
+  function rotateBlock(c, inSym, outSym, amt, order) {
+    if (order.priceImpactTooHigh) return 'output worth under 95% of input';
+    const pin = price(c, inSym), pout = price(c, outSym);
+    const out = order.uiOutAmount || 0;
+    if (!order.uiOutAmount) return '';
+    if (!(pin > 0) || !(pout > 0)) return '';
+    const vin = amt * pin, vout = out * pout;
+    if (vout < 0.05 * vin) return 'near-zero output';
+    if (vout < 0.95 * vin) return 'output worth under 95% of input';
+    return '';
   }
 
   // ---- Render -------------------------------------------------------------------
@@ -452,18 +484,24 @@
     const cp = o.checkProof;
     R.dProof.textContent = cp ? `${cp.hash.slice(0, 10)}\u2026${cp.hash.slice(-6)} \u00b7 off-chain` : '\u2014';
     R.dProof.title = cp ? `${cp.note}\n${cp.payload}` : '';
-    R.dMin.textContent = o.uiMinReceived ? `${fmtTok(o.uiMinReceived)} ${S.side === 'buy' ? S.symbol : S.cur}` : '\u2014';
+    R.dMin.textContent = o.uiMinReceived ? `${fmtTok(o.uiMinReceived)} ${S.side === 'buy' ? S.symbol : S.side === 'rotate' ? S.outLabel : S.cur}` : '\u2014';
   }
 
   function render() {
     if (!S) return;
     const c = S.host.getCtx();
     const buying = S.side === 'buy';
+    const rotating = S.side === 'rotate';
     const st = (S.host.stocks || []).find((x) => x.symbol === S.symbol);
-    R.title.textContent = `${buying ? 'Buy' : 'Sell'} ${S.host.title || S.host.label || S.symbol}${st ? ' ' + st.label : ''}`.trim();
+    R.title.textContent = rotating
+      ? `ROTATE ${S.host.label || S.symbol} to ${S.outLabel}`
+      : `${buying ? 'Buy' : 'Sell'} ${S.host.title || S.host.label || S.symbol}${st ? ' ' + st.label : ''}`.trim();
     renderDetails();
     R.buy.hidden = !buying;
     R.sell.hidden = buying;
+    R.cur.hidden = rotating;
+    R.pcts.hidden = !rotating;
+    if (rotating) R.pcts.querySelectorAll('.swp-chip').forEach((b) => b.classList.toggle('active', Number(b.dataset.pct) === S.pct));
 
     const mode = modeLabel(c);
     if (mode) {
@@ -497,6 +535,32 @@
         R.est.textContent = `~${fmtTok(d.out)} tokens${sharesStr} ≈ ${usdFmt.format(d.usdIn)}`;
       } else {
         R.est.textContent = `You will receive in ${S.symbol}`;
+      }
+    } else if (rotating) {
+      const d = sellCalc(c);
+      R.bal.textContent = `Balance: ${trunc(d.bal, TOKEN_DEC)} ${S.host.label || S.symbol}`;
+      R.pct.textContent = S.pct + '%';
+      R.range.value = S.pct;
+      R.range.style.setProperty('--pct', S.pct + '%');
+      R.minus.disabled = S.busy || S.pct <= 0 || !S.address;
+      R.plus.disabled = S.busy || S.pct >= 100 || !S.address;
+      R.range.disabled = S.busy || !(d.bal > 0);
+      const ok = S.order && S.order.uiOutAmount;
+      if (S.busy) setCta('Rotating', true, true);
+      else if (!S.address) setCta('Connect wallet', false);
+      else if (!(d.bal > 0)) setCta('Insufficient balance', true);
+      else if (!(d.amt > 0)) setCta('Select an amount', true);
+      else if (S.quoting) setCta('Getting price...', true, true);
+      else if (!ok) setCta('Rotate', true);
+      else setCta('Rotate', false);
+      if (d.amt > 0 && ok) {
+        const m = multiplierOf(c, S.out);
+        const shares = tokensToShares(S.order.uiOutAmount, m);
+        const usd = S.order.uiOutAmount * price(c, S.out);
+        const ps2 = shares && usd > 0 ? ` \u00b7 ${usdFmt.format(usd / shares)}/share` : '';
+        R.est.textContent = `~${fmtTok(S.order.uiOutAmount)} ${S.outLabel}${ps2}`;
+      } else {
+        R.est.textContent = `You will receive ${S.outLabel}`;
       }
     } else {
       const d = sellCalc(c);
@@ -608,12 +672,14 @@
   function open(host) {
     const c = host.getCtx();
     if (S) return false;
+    const rot = host.side === 'rotate' && !!host.out;
     const opts = allowedPay(c, host.symbol);
     const cur = opts.includes(host.pay) ? host.pay : opts[0];
-    if (!cur) return false;
+    if (!cur && !rot) return false;
     build();
     S = {
-      host, address: c.address || null, side: host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
+      host, address: c.address || null, side: rot ? 'rotate' : host.side === 'sell' ? 'sell' : 'buy', symbol: host.symbol,
+      out: rot ? host.out : null, outLabel: rot ? (host.outLabel || host.out) : null,
       cur, raw: '', pct: 25, busy: false,
       order: null, quoting: false, quoteTimer: null, quoteReq: 0,
     };
@@ -623,9 +689,7 @@
     R.proof.hidden = !ph;
     R.proof.textContent = ph ? `Proof of proposal ${ph.slice(0, 10)}\u2026${ph.slice(-6)} \u00b7 not a trade` : '';
     R.proof.title = ph || '';
-    renderStk();
-    renderCur();
-    renderQuick();
+    if (S.side !== 'rotate') { renderStk(); renderCur(); renderQuick(); } else { R.stk.hidden = true; }
     render();
     root.hidden = false;
     document.documentElement.classList.add('snd-lock');
