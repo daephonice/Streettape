@@ -335,6 +335,8 @@ a.hm-action-btn { cursor: pointer; }
 .hm-tape-role { display: block; margin-top: 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; }
 .hm-tape-cell.win .hm-tape-role { color: var(--pos, #4ade80); }
 .hm-tape-cell.rej .hm-tape-role { color: var(--neg, #fb7185); }
+.hm-tape-cell.off { opacity: 0.45; filter: grayscale(1); }
+.hm-tape-cell.off .hm-tape-role { color: var(--hm-dim); }
 .hm-tape-note { display: block; font-size: 10px; color: var(--hm-dim); margin-top: 2px; }
 .tk-empty-note { font-size: 12px; color: var(--hm-dim); font-weight: 500; }
 .hm-stk-foot { display: flex; align-items: center; font-size: 12px; margin-top: 10px; }
@@ -1053,3 +1055,9 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .swp-share p.neg { color: var(--hm-neg, #fb7185); font-weight: 600; }
 .swp-share .swp-share-note { margin: 4px 0 0; font-size: 11px; opacity: 0.8; }
 .bd-mirror { font-size: 9px; color: var(--hm-muted); line-height: 1.3; margin-top: 2px; }
+
+.bk-def { padding: 14px 16px; margin: 12px 0; }
+.bk-def h2 { margin: 0 0 8px; font-size: 16px; }
+.bk-def p { margin: 0 0 6px; font-size: 14px; line-height: 1.45; color: var(--hm-text); }
+.bk-def .bk-w { display: block; margin-top: 8px; }
+.bk-title { margin: 12px 0 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
