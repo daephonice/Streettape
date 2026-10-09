@@ -539,3 +539,17 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `GET /api/quickbuy/NVDA?usd=10` and Telegram `/buy NVDA 10`, USDT to each wrapper, cash print $237.47.
 - What came back: NVDAB tape $234.94/sh (-107 bps vs cash print); the Binance quote implied $235.53/sh (-82 bps). NVDAon tape -101 bps. NVDAon in a later call: tape -91 bps, quote implied $238.83/sh (+57 bps), a 148 bps gap between Ondo's tape and its own quote; NVDAB's gap was 24 bps. NVDAx thin pool, no price. At a 100 bps tape band both priced wrappers were rejected before any quote. Forced guard: with `QUICKBUY_QUOTE_BAND_BPS=1`, NVDAB (-72 bps) and NVDAon (+57 bps) were both rejected with "quote implies $…/sh, … bps from cash print", and no Buy link was returned.
 - What we changed because of it: added a second check on the quote's implied price per share (`QUICKBUY_QUOTE_BAND_BPS=300`); raised the tape band to 200 bps (`QUICKBUY_BAND_BPS=200`).
+
+### 2026-10-09 — `underlying-market` `statusInfo.reasonCode` is TRADING with cash shut (`/api/board`)
+
+- Session: PRE-MARKET (00:30 ET / 05:30 WAT, Friday).
+- What we hit: `underlying-market` for one wrapper address per underlying (hourly mcap refresh), read back through `GET /api/board`.
+- What came back (first call): `statusInfo.reasonCode=TRADING` for all 7 underlyings (SPCX, AMD, NVDA, QQQ, TSLA, AAPL, META), so 21 of 21 addressed wrappers. The NY clock said cash was shut. LIon, which has no address in the catalog, got no code.
+- What we changed because of it: the first version of the board row read `TRADING` as "cash open" and printed it at 00:30 ET. Cash open/shut now comes from `rwa.session_now()`. The code is printed as its own fact (`feed TRADING`) and is not used as the state.
+
+### 2026-10-09 — `tokenToShareRatio` is not 1.0 on Ondo or bStocks (`/api/board`)
+
+- Session: PRE-MARKET (00:30 ET / 05:30 WAT).
+- What we hit: `underlying-profile` per wrapper address (hourly refresh), read back through `GET /api/board`.
+- What came back (first call): Ondo `NVDAon` 1.0017, `QQQon` 1.0041, `AAPLon` 1.0034, `METAon` 1.0028. bStocks `NVDAB` 1.0008, `QQQB` 1.0007, `AAPLB` 1.0006, `METAB` 1.0005. Every xStocks wrapper is exactly 1.0, as are `SPCX*`, `AMD*`, `TSLAB` and `TSLAon`. `LIon` has no ratio. The seed catalog stores `multiplier: 1.0` for bStocks and `None` for Ondo.
+- What we changed because of it: nothing in the math, which already divides by the live ratio. The ratio is now printed on each wrapper row (`sh/token`) so a share-normalized gap can be checked by eye.
