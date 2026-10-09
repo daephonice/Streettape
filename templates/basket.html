@@ -29,7 +29,7 @@
   {% if b.theme == 'defensive' %}
   <section class="hm-card bk-def">
     <h2>Rotate out of the rich wrapper, into the cheapest</h2>
-    {% for l in b.legs %}<p><b>{{ l.underlying }}</b> · {% if l.filled %}cheapest {{ l.symbol }}{% if l.cheapPremium is not none %} {{ format_premium(l.cheapPremium) }}{% endif %}{% else %}no cheapest wrapper ({{ l.reason }}){% endif %}{% if l.rich %} · richest {{ l.rich.symbol }} {{ format_premium(l.rich.premium) }} vs {{ 'official' if cash_open else 'Friday' }}{% endif %}</p>{% endfor %}
+    {% for l in b.legs %}<p><b>{{ l.underlying }}</b> · {% if l.filled and l.rich and l.rich.symbol == l.symbol %}only {{ l.symbol }} priced{% if l.cheapPremium is not none %} {{ format_premium(l.cheapPremium) }}{% endif %} vs {{ 'official' if cash_open else 'Friday' }} · nothing to rotate{% else %}{% if l.filled %}cheapest {{ l.symbol }}{% if l.cheapPremium is not none %} {{ format_premium(l.cheapPremium) }}{% endif %}{% else %}no cheapest wrapper ({{ l.reason }}){% endif %}{% if l.rich %} · richest {{ l.rich.symbol }} {{ format_premium(l.rich.premium) }} vs {{ 'official' if cash_open else 'Friday' }}{% endif %}{% endif %}</p>{% endfor %}
     <p class="bk-w">A floor made of rotates, not a lending market. Unsigned swaps, no custody, no vault.</p>
   </section>
   {% endif %}
