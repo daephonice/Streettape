@@ -1,6 +1,6 @@
 # StreetTape — Developer Experience Report
 
-Mid-build notes, last updated 2026-10-08. Written from live calls, not from the docs after the fact.
+Mid-build notes, last updated 2026-10-09. Written from live calls, not from the docs after the fact.
 
 This file lives in the repo so a Railway deploy cannot wipe it. The download at `GET /api/_devex` is a *different* file: it is whatever `devlog.py` wrote on that container, and it resets on every deploy. Do not treat `/api/_devex` as this report. When a feature is ready to test, download `/api/_devex`, cut it down to the new calls for that feature, and paste them under **Runtime log** at the bottom.
 
@@ -31,7 +31,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
 - Verified live (2026-10-03): Studio tick from the managed runtime returned 401 every minute until the platform dropped the custom token env; with a tick-only key it returned 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s, and the runtime stopped about 5 minutes after the last invoke (see Runtime log).
 - Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
-- Settled rotate (sell + buy): not run, no second leg funded.
+- Settled rotate: not run. The old path was Sell then Buy; no second leg was funded. As of 2026-10-09 the desk quotes rich wrapper to cheap wrapper in one Rotate sheet (25 / 50 / 75 / MAX of the held rich wrapper, Connect wallet until a wallet is in). Not signed.
 
 ---
 
@@ -175,6 +175,20 @@ Agent Studio was deployed on 2026-10-03 as a 48h BNB trial (agent `01M401H27Z9Q8
 
 ---
 
+## Rotate sheet (2026-10-09)
+
+The 2026-09-29 desk pass opened Sell, then Buy on close (`Rotate $50`). That is no longer the control.
+
+- Rotate is a third sheet, same shell as Buy and Sell. Heading `ROTATE {rich} to {cheap}`.
+- Size is 25 / 50 / 75 / MAX of the rich wrapper, plus the bar. No dollar chips on this sheet.
+- Disconnected, the button says Connect wallet. Connected, it says Rotate.
+- One `POST /api/swap/order`, input mint the rich wrapper, output mint the cheap wrapper. The aggregator may hop inside that transaction. The user signs once.
+- BNB against Ondo stays blocked (`unsupported_pair`). No route, or output under 95% of expected, leaves the button disabled.
+- `#rotate`, the board Rotate link, and the token Rotate button open this sheet. Sell, Buy, and Flatten are unchanged.
+- Not signed. No settled rotate.
+
+---
+
 ## Runtime log
 
 Only live-key outcomes the file does not already have. One block per outcome, first call only. No redesign, layout, copy or parser sessions. No Yahoo polls, `balanceOf` reads or repeat calls with a status already pasted. `/api/_devex` is disposable.
@@ -199,7 +213,7 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - Session: PRE-MARKET (chip; 09:26 ET / 14:26 WAT). Wallet pass ran again at CASH OPEN (~09:39 ET).
 - What we hit: `GET /api/agent/scan`; `GET /api/agent/arb/NVDA?size_usd=50`; `/t/TSLA#rotate` in a wallet dApp browser (Sell TSLAon, Buy TSLAB, Rotate $50, Flatten $10).
 - What came back (log, first of each): good quote, LiquidMesh, ~100 ms (NVDAB/TSLAB legs). RFQ without wallet, HTTP 200 `code=40001 userWalletAddress is required for RFQ (Ondo) quote` at 13:23:13 UTC, then fallback to Pancake link. 429 `code=42900 Rate limit exceeded` on NVDAon and SPCX legs in the same scan. `rwa/price` with `tokenAddress`, `tokenContractAddress` and `binanceChainId=56` still returned 200 + `code=40001 Parameter tokenContractAddresses is required` (plural) on all 3 calls, so the price-confirmation item stays open. No 404s. Scan best: TSLAon rich vs TSLAB, gross 1881 bps, net 1876 bps; page showed +1933 bps a minute later.
-- What we changed because of it: Sell TSLAon and Flatten did nothing. Server keys prices/assets by uppercase symbol (`TSLAON`); the page looked up `TSLAon`, missed, and the swap sheet returned silently. TSLAB is already uppercase, so Buy worked. Page now resolves the uppercase key, and Rotate opens Sell first, Buy on close. The Pancake link opened when the sheet could not. That link was removed later: a miss now returns a Pancake transaction or no route. Next: send `tokenContractAddresses` to `rwa/price`.
+- What we changed because of it: Sell TSLAon and Flatten did nothing. Server keys prices/assets by uppercase symbol (`TSLAON`); the page looked up `TSLAon`, missed, and the swap sheet returned silently. TSLAB is already uppercase, so Buy worked. Page now resolves the uppercase key, and Rotate opens Sell first, Buy on close. Superseded 2026-10-09: Rotate is its own sheet (`side=rotate`), not Sell then Buy. The 2026-09-29 pass is what we hit that day. The Pancake link opened when the sheet could not. That link was removed later: a miss now returns a Pancake transaction or no route. Next: send `tokenContractAddresses` to `rwa/price`.
 
 ### 2026-09-30 — Fair (synthetic mark)
 
