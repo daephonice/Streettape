@@ -103,6 +103,9 @@
         badges.appendChild(tb);
       }
       w.appendChild(badges);
+      if (t.cheapVsPrint && !cashOpen) {
+        w.appendChild(el('div', 'bd-mirror', 'Cheap versus the last print. This is the weekend exposure a floor would insure. StreetTape does not sell the insurance. It shows the gap and the cheaper wrapper.'));
+      }
     }
     if (t.hasTape) {
       const rot = arbMap[g.underlying];
