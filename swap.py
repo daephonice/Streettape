@@ -360,7 +360,9 @@ def _fees(d: dict | None) -> dict:
     """Best-effort fee fields from a Binance route object. None when the API did not send them."""
     d = d or {}
     gas = _num(d.get("estimateGasFee"))
-    return {"gasBnb": (gas / 1e18) if gas and gas > 1e6 else gas, "tradeFeeUsd": _num(d.get("tradeFee"))}
+    # Binance sends gas as wei, BNB, or a bare gas-unit count (e.g. 250000); only the first two are a BNB amount.
+    gas_bnb = gas / 1e18 if gas and gas >= 1e12 else gas if gas and gas <= 1 else None
+    return {"gasBnb": gas_bnb, "tradeFeeUsd": _num(d.get("tradeFee"))}
 
 
 def _find(d, keys, depth=0):

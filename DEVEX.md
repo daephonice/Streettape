@@ -553,3 +553,11 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: `underlying-profile` per wrapper address (hourly refresh), read back through `GET /api/board`.
 - What came back (first call): Ondo `NVDAon` 1.0017, `QQQon` 1.0041, `AAPLon` 1.0034, `METAon` 1.0028. bStocks `NVDAB` 1.0008, `QQQB` 1.0007, `AAPLB` 1.0006, `METAB` 1.0005. Every xStocks wrapper is exactly 1.0, as are `SPCX*`, `AMD*`, `TSLAB` and `TSLAon`. `LIon` has no ratio. The seed catalog stores `multiplier: 1.0` for bStocks and `None` for Ondo.
 - What we changed because of it: nothing in the math, which already divides by the live ratio. The ratio is now printed on each wrapper row (`sh/token`) so a share-normalized gap can be checked by eye.
+
+### 2026-10-09 — Binance route `estimateGasFee` is not a BNB amount (`POST /api/swap/order`, USDT to NVDAB)
+
+- Session: PRE-MARKET (06:42 ET / 11:42 WAT). Buy sheet on `/t/NVDA`, $10 USDT to NVDAB, route Binance Web3 · LiquidMesh, no wallet balance.
+- What we hit: the swap sheet's Fees row, filled from the Binance route's `estimateGasFee`.
+- What came back (first call): the row read `~250000.000000 BNB gas + $0.01 trade fee`. We read this from the rendered row, not from the raw JSON. Our parser treated any value under 1e6 as already BNB, so the field reached the sheet as 250000. The value matches a gas-unit count, not wei and not BNB. The docs do not give a unit. Price impact on the same quote read under 0.01%.
+- What we changed because of it: `_fees` now counts the field as BNB only when it is wei (at least 1e12, divided by 1e18) or already BNB-sized (1 or less). Anything else is dropped, and gas is then filled from the built transaction's `gas` times `gasPrice` when both are present. The sheet also hides any gas figure of 0.1 BNB or more. Not verified: that 250000 is a gas-unit count, since we did not log the raw field.
+
