@@ -294,6 +294,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
             "markPrice": mark,
             "noYahoo": not w.get("yahoo"),
             "premium": prem if has_addr else None,
+            "cheapVsPrint": bool(has_addr and not thin and prem is not None and prem < -_flatten_threshold()),
             "status": "thin" if thin else (rwa.premium_status(prem) if has_addr else "flat"),
             "thin": thin,
             "liquidityUsd": liq if has_addr else None,
@@ -328,7 +329,7 @@ def _build_tokens(tapes: dict, marks: dict, official: dict | None = None, fair_m
         med = statistics.median(r["tokenPrice"] for r in rows)
         for r in rows:
             if abs(r["tokenPrice"] / med - 1) > STALE_DEVIATION:
-                r.update({"thin": True, "status": "thin", "premium": None,
+                r.update({"thin": True, "status": "thin", "premium": None, "cheapVsPrint": False,
                           "premiumToOfficial": None, "premiumToFair": None})
     tokens.sort(key=lambda t: abs(t["premium"] or 0), reverse=True)
     return tokens
@@ -555,6 +556,15 @@ def record_session_gaps(tokens, now=None):
 
 
 PLATFORM_LABELS = {"bstocks": "bStocks", "ondo": "Ondo", "xstocks": "xStocks"}
+
+
+def _flatten_threshold() -> float:
+    """Same 2% gate agent.py uses for the flatten chip, mirrored for wrappers that are cheap versus the print."""
+    try:
+        from agent import FLATTEN_THRESHOLD
+        return FLATTEN_THRESHOLD
+    except Exception:
+        return 0.02
 
 
 def _cash_state(underlying: str) -> dict:
