@@ -30,8 +30,8 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Verified live (2026-10-01): PancakeSwap `GET /v1/quote` + `POST /v1/calldata` returned a signable BNB to TSLAx transaction when Binance refused the pair with `40370` (see Runtime log).
 - Called live, failed: OpenOcean `swap` / `swap_quote` returns HTTP 403 plain text from the Railway Singapore server while the same URL returns JSON in a phone browser (see Runtime log).
 - Verified live (2026-10-03): Studio tick from the managed runtime returned 401 every minute until the platform dropped the custom token env; with a tick-only key it returned 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s, and the runtime stopped about 5 minutes after the last invoke (see Runtime log).
-- Not verified live: `baw` signing (`quote --sign`). The agentic wallet balance was empty.
-- Settled rotate: not run. The old path was Sell then Buy; no second leg was funded. As of 2026-10-09 the desk quotes rich wrapper to cheap wrapper in one Rotate sheet (25 / 50 / 75 / MAX of the held rich wrapper, Connect wallet until a wallet is in). Not signed.
+- Verified live (2026-10-10): one signed `baw market-order swap`, 0.0027 BNB to TSLAB, status FINISHED, tx [0x3f2e027a3c356783cb39be21b69cb0959d15fed3c2f13dfc09f79b4ba7d2161a](https://bscscan.com/tx/0x3f2e027a3c356783cb39be21b69cb0959d15fed3c2f13dfc09f79b4ba7d2161a) (see Runtime log).
+- Settled rotate (2026-10-10): NVDAon to NVDAB through Pancake, tx [0x160d05c5ea2c347d70b5da4498ac254732f28554ade688008970478d20bbd8b7](https://bscscan.com/tx/0x160d05c5ea2c347d70b5da4498ac254732f28554ade688008970478d20bbd8b7); second run [0x7a0b6cdf2d47f382529693522abc4dba6e7dde0927b3907712d2ad02aa0562f9](https://bscscan.com/tx/0x7a0b6cdf2d47f382529693522abc4dba6e7dde0927b3907712d2ad02aa0562f9) (see Runtime log).
 
 ---
 
@@ -40,7 +40,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - **No model computes a price.** Tape is GeckoTerminal, last cash print is Yahoo, quotes are Binance (Pancake as fallback). Gaps, share ratios and net bps are plain Python arithmetic in the app.
 - **The skill is `skills/streettape.py`.** Closed grammar (`say` accepts a fixed set of sentences: rich vs Friday, rotate into cheapest X, flatten anything N% rich, alert only when cash is shut; plus `basket`). Stdlib only. It is a thin client over the StreetTape API and invents nothing.
 - **Quote and sign.** `baw market-order quote` when `baw` is on PATH, otherwise `POST /api/swap/order`. Signing is only `quote --sign`, and only after the user says yes. Nothing auto-executes.
-- **One live comparison, 2026-10-01.** `baw` and `/api/swap/order` returned the same out-amount (0.1404166985679507 TSLAB, `deltaBps` 0.0) for USDT to TSLAB at $50. Quote only. A signed `baw` fill was **not** run: the agentic wallet was empty.
+- **One live comparison, 2026-10-01.** `baw` and `/api/swap/order` returned the same out-amount (0.1404166985679507 TSLAB, `deltaBps` 0.0) for USDT to TSLAB at $50. Quote only. A signed `baw` fill was **not** run that day: the agentic wallet was empty. It was run on 2026-10-10 (see Runtime log).
 - **Studio.** Command: `bag deploy --provider bnb --accept-risk --yes`, agent `01M401H27Z9Q80XTFB0ZW8K5HC`, plus a 60 s `tick.ts` loop calling `GET /api/agent/studio/tick`. Result (2026-10-03): the deployed runtime got 401 every minute because the platform dropped the custom token env; after a tick-only key, 200 `mode=proposal-only arbs=1` in 1.9 to 2.3 s. The runtime stops about 5 minutes after the last invoke, so this is a trial, not a scheduled job. Details in the Runtime log, "Studio tick from the managed runtime."
 - **Which file is the report.** This one. `GET /api/_devex` is the container log and resets on deploy.
 
@@ -127,7 +127,7 @@ After US close the wallet flagged a Binance-built BNB to NVDAB swap "likely to f
 - `baw auth verify` returned `DNS_RESOLVE_FAILED (www.binance.com)` while `auth signin` and `app.binance.com` worked. Changing the phone's Private DNS fixed it. The pairing code lasts about 5 minutes and the link is a QR to scan with the Binance app.
 - `baw market-order quote` returns symbols, amounts and slippage only. No route and no price impact. Those come from the API path.
 - The skill wraps `baw market-order quote` / `swap`. It does not sign from Python.
-- StreetTape calls `baw` when it is on PATH, else `/api/swap/order`. `--sign` is explicit. A live `baw` quote has been run (Runtime log 2026-10-01). A signed `baw` fill has not.
+- StreetTape calls `baw` when it is on PATH, else `/api/swap/order`. `--sign` is explicit. A live `baw` quote has been run (Runtime log 2026-10-01). A signed `baw` fill was run on 2026-10-10 (Runtime log).
 
 ### ERC-8004 identity. Studio runtime is a trial, not a scheduler.
 
@@ -171,7 +171,7 @@ Agent Studio was deployed on 2026-10-03 as a 48h BNB trial (agent `01M401H27Z9Q8
 - Confirm `rwa/price` with `binanceChainId=56` (and `tokenContractAddress` if needed).
 - Ask what `priceImpactPct` measures (it falls as size grows on TSLAB). Unit is settled as a fraction.
 - Do not retry simulate or Address Portfolio until a documented path exists.
-- One signed `baw market-order swap` (`quote --sign`). Needs a funded agentic wallet.
+- Done 2026-10-10: one signed `baw market-order swap` (BNB to TSLAB, FINISHED).
 
 ---
 
@@ -591,3 +591,26 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 - What we hit: Buy USDT to NVDAon, then the Rotate sheet on `/t/NVDA#rotate`, MAX of NVDAon, MetaMask on BNB Chain.
 - What came back (first call): buy USDT 0.9926 to 0.004258 NVDAon confirmed at 02:14, tx `0x9446b7243acbbdd787cb3a60f43bf0ef5c14c34846df73c947d5e726fad2b441`. Rotate needed two wallet signatures, because NVDAon had no allowance for the Pancake router `0x2f68417A...cfF7`. Approve confirmed 02:17, tx `0xabaaafb86c80e01cc716967e585e16ce29e956d94197f2c582ae163a1ba4b76a`, network fee under $0.01. Rotate swap confirmed 02:17, tx `0x160d05c5ea2c347d70b5da4498ac254732f28554ade688008970478d20bbd8b7`, -0.004177 NVDAon, and the wallet then held 0.004176 NVDAB (about $0.96). Sheet quote was ~0.00417624 NVDAB, min received 0.00413448. MetaMask labelled the swap "Contract interaction", not "Swapped". Second Rotate with the fixed sheet, 03:16 WAT, tx `0x7a0b6cdf2d47f382529693522abc4dba6e7dde0927b3907712d2ad02aa0562f9`: no failure message.
 - What we changed because of it: the sheet showed "Swap failed on-chain, please try again" after the swap had already confirmed. `/api/swap/execute` answers `status: external` on the Pancake path and the sheet only accepted `success`. The sheet now fails only on a failed status or a reverted receipt, and waits for the approval receipt before the swap. The first-use cost is two signatures; with an existing allowance it is one.
+
+### 2026-10-10 — First signed `baw market-order swap`: 0.0027 BNB to TSLAB, FINISHED (Agentic Wallet)
+
+- Session: WEEKEND (Sat, order booked 10:43:47 WAT). Termux on a phone, `baw` 1.10.0, signed in (next block), wallet funded with BNB only.
+- What we hit: `python skills/streettape.py fill 0.0027 --in <native BNB> --out <TSLAB>`, which runs `baw market-order quote`, `/api/swap/order`, then `baw market-order swap`.
+- What came back:
+  - Quotes: `baw` and the API (`binance_web3`) both 0.005290324264957452 TSLAB, delta 0.00 bps. Native BNB (`0xEeee...EEeE`) was accepted as `--fromToken`.
+  - Order `26101000001954698071`, status `FINISHED`, tx `0x3f2e027a3c356783cb39be21b69cb0959d15fed3c2f13dfc09f79b4ba7d2161a`. `toTokenActualQty` 0.005290446631899607 TSLAB, within 1 bps of both quotes (the swap's own quote line said 0.005290130401679719). `bookTime` 10:43:47 and `updatedTime` 10:43:48.
+  - Wallet after: 0.00529 TSLAB; BNB 0.007086 to 0.004328.
+  - `baw` printed "Confirm in the Binance app", but no confirmation sheet reached the phone holding the wallet. The owner saw only a swap-success toast.
+  - Submit and total seconds were not recorded: `fill` crashed after the swap with `<urlopen error [Errno 7] No address associated with hostname>` (phone lost its connection during the `/api/board` session lookup). Status, id and hash above are from `baw market-order list --json`, and this block was written by hand.
+- What we changed because of it: `fill` now keeps going if the session lookup fails (label `?`).
+
+### 2026-10-10 — `baw auth signin` with the wallet on a different phone
+
+- Session: WEEKEND (Sat, about 09:40 to 10:40 WAT). `baw` 1.10.0 in Termux on one phone; the Binance account and Agentic Wallet on another phone, reached over a screen share.
+- What we hit: `baw market-order quote` signed out, then `baw auth signin` (plain, `--image`, `--json`), then `baw auth verify`.
+- What came back (first call of each):
+  - Quote signed out: `code 10003002`, `SESSION_EXPIRED`, `Please log in first.` The skill fell back to the API and printed `baw failed, using API`.
+  - `signin`: opened the login page on the same phone, which redirected to that phone's own Binance app, not the wallet owner's. `--image`: the QR image did not render (`Thumbnail not found`), so it could not be screenshotted. `--json`: returned `urlForWeb` and `pairingCode`; opening that link on the wallet owner's phone did not show the auth screen.
+  - A QR drawn in Termux with `qrencode` from the same `urlForWeb` and scanned from the screen share did get through to the wallet owner's phone, which then asked him to confirm.
+  - `baw auth verify` alone: `required option '--qrCodeId <id>' not specified`. With an id copied by hand some minutes later: `[10002004] QR code does not exist or expired, please try a new code or restart the log in process.` Signin, QR and `verify --qrCodeId` run as one command line: `Authorized, creating wallet...`, then `Login successful! Wallet created`. `baw wallet balance` then showed the funded wallet, BNB 0.007086 ($5.31) on chain 56.
+- What we changed because of it: nothing in code.
