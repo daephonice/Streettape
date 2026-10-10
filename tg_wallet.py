@@ -2,6 +2,7 @@
 Async only. Never subprocess.run inside the bot: it shares the FastAPI event loop."""
 import os
 import io
+import functools
 import json
 import shutil
 import asyncio
@@ -114,6 +115,17 @@ def get_wallet(chat_id: int):
         if w:
             db.expunge(w)
         return w
+    finally:
+        db.close()
+
+
+def linked_set(chat_ids) -> set[int]:
+    ids = [int(c) for c in chat_ids if int(c) > 0]
+    if not ids:
+        return set()
+    db = SessionLocal()
+    try:
+        return set(db.execute(select(TgWallet.chat_id).where(TgWallet.chat_id.in_(ids))).scalars().all())
     finally:
         db.close()
 
@@ -251,13 +263,13 @@ async def on_session_expired(bot, chat_id: int):
 
 def guarded(fn):
     """Wrap a callback/message handler: SessionExpired unlinks and shows 'link again'."""
+    @functools.wraps(fn)
     async def wrapper(event, *a, **kw):
         try:
             return await fn(event, *a, **kw)
         except SessionExpired:
             msg = getattr(event, "message", None) or event
             await on_session_expired(event.bot if hasattr(event, "bot") else msg.bot, msg.chat.id)
-    wrapper.__name__ = fn.__name__
     return wrapper
 
 

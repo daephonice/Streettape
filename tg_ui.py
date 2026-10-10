@@ -4,6 +4,7 @@ import os
 import re
 import logging
 
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, BufferedInputFile
 
 log = logging.getLogger("tg_ui")
@@ -69,6 +70,33 @@ async def edit(bot, chat_id: int, message_id: int, text: str, markup=None):
 async def say_photo(bot, chat_id: int, png: bytes, caption: str, markup=None):
     return await bot.send_photo(chat_id, BufferedInputFile(png, filename="link.png"),
                                 caption=clean(caption), reply_markup=markup)
+
+
+# One screen per chat edits the same message the live board uses. While a chat is in
+# `screens` the board loop skips it; back:board clears it (telegram_bot aliases this dict).
+screens: dict[int, int] = {}
+
+
+# Which typed reply a chat is expected to send: "usd" (custom buy) or "send" (address / amount).
+inputs: dict[int, str] = {}
+
+
+def clear_input(chat_id: int):
+    inputs.pop(int(chat_id), None)
+
+
+def hold(chat_id: int, message_id: int):
+    screens[int(chat_id)] = message_id
+
+
+async def show(cb, text: str, markup=None):
+    """Edit the tapped message into a new screen and pause the live board for this chat."""
+    try:
+        await edit(cb.bot, cb.message.chat.id, cb.message.message_id, text, markup)
+    except TelegramBadRequest as e:
+        if "not modified" not in str(e).lower():
+            raise
+    hold(cb.message.chat.id, cb.message.message_id)
 
 
 # ---- vocabulary (Step 7) ---------------------------------------------------
@@ -157,7 +185,8 @@ def linked_text(address: str, usdt: float | None, min_buy: float = 10) -> str:
 
 def linked_kb(address: str):
     return kb([link_btn("View address", scan_addr(address))],
-              [cb_btn(BOARD, "back:board"), cb_btn(BOOK, "book")])
+              [cb_btn(BOARD, "back:board"), cb_btn(BOOK, "book")],
+              [cb_btn(UNLINK, "link:off")])
 
 
 def unlinked_text() -> str:
@@ -182,3 +211,98 @@ def private_only_text() -> str:
 
 def need_link_kb():
     return kb([cb_btn(LINK, "link:go")])
+
+
+# ---- buy / sell copy (Steps 9-10) ------------------------------------------
+
+def tail_row(*extra):
+    return [*extra, cb_btn(BOOK, "book"), cb_btn(BOARD, "back:board")]
+
+
+def amount_text(u: str) -> str:
+    return f"<b>Buy {u}</b>\nHow many dollars? We pick the best version."
+
+
+def amount_kb(u: str):
+    a = [cb_btn(f"${n}", f"ba:{u}:{n}") for n in BUY_AMOUNTS]
+    return kb(a[:2], a[2:], [cb_btn(CUSTOM, f"bc:{u}")], [cb_btn(BACK, f"tok:{u}")])
+
+
+def custom_text() -> str:
+    return "Type a dollar amount, 1 to 1000."
+
+
+def refuse_kb(u: str, usd: float):
+    return kb([cb_btn(CHECK, f"chk:{u}:{usd:g}")], [cb_btn(BACK, f"tok:{u}")])
+
+
+def no_route_text() -> str:
+    return "No automatic route for this one."
+
+
+def finish_kb(sym: str, usd: float, u: str):
+    path = f"/t/{sym}#swap?pay=USDT&amt={usd:g}" if usd else f"/t/{sym}#swap"
+    return kb([link_btn("Finish in wallet", site(path))],
+              [cb_btn(BACK, f"tok:{u}")])
+
+
+def moved_text() -> str:
+    return "Price moved, try again."
+
+
+def funds_text(address: str, have: float, need: float) -> str:
+    return (f"Not enough USDT. Have <code>{have:,.2f}</code>, need <code>{need:,.2f}</code>.\n"
+            f"Deposit on BNB Smart Chain:\n<code>{address}</code>")
+
+
+def buy_confirm_text(u: str, usd: float, out: float, sym: str, n: int) -> str:
+    return (f"<b>Buy ${usd:g} of {u}</b>\n"
+            f"You get ≈ <code>{out:.4g}</code> {sym}\n"
+            f"Picked: cheapest of {n} versions\n"
+            "<i>Quote good for 60s</i>")
+
+
+def sell_amount_text(u: str, sym: str, shares: float) -> str:
+    return f"<b>Sell {u}</b>\nYou hold <code>{shares:.4g}</code> shares as {sym}. How much?"
+
+
+def sell_amount_kb(u: str):
+    return kb([cb_btn("25%", f"sp:{u}:25"), cb_btn("50%", f"sp:{u}:50"), cb_btn("All", f"sp:{u}:100")],
+              [cb_btn(BACK, f"tok:{u}")])
+
+
+def sell_confirm_text(u: str, pct: int, qty: float, sym: str, out: float, warn: str | None) -> str:
+    t = (f"<b>Sell {'all' if pct == 100 else str(pct) + '%'} of {u}</b>\n"
+         f"Sell <code>{qty:.6g}</code> {sym}\n"
+         f"You get ≈ $<code>{out:,.2f}</code>\n")
+    if warn:
+        t += f"{warn}\n"
+    return t + "<i>Quote good for 60s</i>"
+
+
+def sell_label(out: float, warn: bool) -> str:
+    return "Sell anyway" if warn else f"Confirm · ≈${out:,.2f}"
+
+
+def confirm_kb(label: str, pid: str, u: str):
+    return kb([cb_btn(label, f"go:{pid}"), cb_btn("Cancel", f"no:{pid}")])
+
+
+def cancelled_kb(u: str):
+    return kb([cb_btn(BACK, f"tok:{u}"), cb_btn(BOARD, "back:board")])
+
+
+def working_text(what: str) -> str:
+    return f"{what}…"
+
+
+def receipt_kb(tx: str | None):
+    return kb(tail_row(*([link_btn(VIEW_TX, scan_tx(tx))] if tx else [])))
+
+
+def no_holding_text(u: str) -> str:
+    return f"You hold no {u}."
+
+
+def not_open_text() -> str:
+    return "Ondo wrappers only trade while the US market is open."

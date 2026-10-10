@@ -36,6 +36,10 @@ import prices
 from database import SessionLocal
 from models import Watch
 import tg_wallet
+import tg_trade
+import tg_send
+import tg_book
+import tg_ui as ui
 
 log = logging.getLogger("telegram_bot")
 
@@ -171,13 +175,19 @@ def _live_board_text(rows: list[dict], chat_id: int | None = None, watched: set[
     return f"<b>StreetTape — live board</b>\n<code>{body}</code>"
 
 
-def _live_board_markup(rows: list[dict]) -> InlineKeyboardMarkup:
+def _live_board_markup(rows: list[dict], linked: bool = False) -> InlineKeyboardMarkup:
     """2 cols x 4 rows of tokenized stock symbols (same order as the price list),
-    plus BNB full-width as the CTA row. tok:SYMBOL opens that token's menu."""
+    BNB full-width, then Book / Send / Wallet. tok:SYMBOL opens that token's card."""
     buttons = [InlineKeyboardButton(text=r["symbol"], callback_data=f"tok:{r['symbol']}") for r in rows]
     kb: list[list[InlineKeyboardButton]] = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     kb.append([InlineKeyboardButton(text="BNB", callback_data="tok:BNB")])
+    kb.append([ui.cb_btn(ui.BOOK, "book"), ui.cb_btn(ui.SEND, "snd"),
+               ui.cb_btn(ui.LINKED if linked else ui.LINK, "link:go")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
+
+
+def _linked(chat_id: int) -> bool:
+    return bool(tg_wallet.linked_set([chat_id]))
 
 
 # chat_id -> message_id for the one active live board per chat. In-memory
@@ -187,7 +197,7 @@ _live_board_lock = asyncio.Lock()
 
 # chat_id -> message_id currently showing a token menu (not the live board).
 # The live board editor skips these chats until Back is pressed.
-_token_menus: dict[int, int] = {}
+_token_menus: dict[int, int] = ui.screens  # shared with tg_ui.show(): every trade/send/book screen holds the board loop
 _token_menus_lock = asyncio.Lock()
 
 
@@ -262,6 +272,7 @@ def _token_menu_text(symbol: str, chat_id: int | None = None) -> str | None:
     lines = [
         f"<b>{prefix}{row['symbol']}</b> — {row.get('name', '')}",
         f"Tape ${row['tokenPrice']:.2f} · Mark ${row['markPrice']:.2f} · {pct}",
+        f"<b>{ui.verdict(row['premium'])}</b>",
     ]
     fair = _fair_line(row).strip()
     if fair:
@@ -272,29 +283,46 @@ def _token_menu_text(symbol: str, chat_id: int | None = None) -> str | None:
     item = next((n for n in news.get_news() if n["symbol"].upper() == symbol_u), None)
     if item:
         lines.append(f"\n📰 {item['body']}")
-
-    jup_link = f"{PANCAKE_BASE}?chain=bsc&inputCurrency=USDT&outputCurrency={row['mint']}"
-    lines.append(f"\nSWAP ON PANCAKESWAP\n{jup_link}")
     return "\n".join(lines)
 
 
 def _token_menu_markup(chat_id: int, symbol: str) -> InlineKeyboardMarkup:
+    """Card layout (Step 7): Buy/Sell, Send/Watch, Price check/Open, Contract/Board."""
     symbol_u = symbol.upper()
-    watch_label = "Watching" if _is_watching(chat_id, symbol_u) else "Watch 👁️"
-    kb = [[
-        InlineKeyboardButton(text=watch_label, callback_data=f"watch:{symbol_u}"),
-        InlineKeyboardButton(text="Unwatch ❌", callback_data=f"unwatch:{symbol_u}"),
-    ]]
-    if symbol_u != "BNB":
-        kb.append([InlineKeyboardButton(text="Open on StreetTape", url=f"{WEB_PUBLIC_URL}/t/{symbol_u}")])
-    kb.append([InlineKeyboardButton(text="◀ Back", callback_data="back:board")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    watching = _is_watching(chat_id, symbol_u)
+    watch_btn = (ui.cb_btn("👁 Unwatch", f"unwatch:{symbol_u}") if watching
+                 else ui.cb_btn(ui.WATCH, f"watch:{symbol_u}"))
+    if symbol_u == "BNB":
+        return ui.kb([ui.cb_btn(ui.SEND, "snd:BNB"), watch_btn], [ui.cb_btn(ui.BOARD, "back:board")])
+    row = _row_for(symbol_u) or {}
+    u = row.get("underlying") or rwa.resolve_underlying(symbol_u) or symbol_u
+    rows = [
+        [ui.cb_btn(ui.BUY, f"buy:{u}"), ui.cb_btn(ui.SELL, f"sell:{u}")],
+        [ui.cb_btn(ui.SEND, f"snd:{symbol_u}"), watch_btn],
+        [ui.cb_btn(ui.CHECK, f"chk:{u}:10"), ui.link_btn(ui.OPEN_SITE, ui.site(f"/t/{symbol_u}"))],
+    ]
+    last = [ui.cb_btn(ui.BOARD, "back:board")]
+    if row.get("mint"):
+        last.insert(0, ui.link_btn("Contract", ui.scan_tok(row["mint"])))
+    rows.append(last)
+    return ui.kb(*rows)
+
+
+def _card_symbol(text: str) -> str:
+    """tok:X accepts a wrapper symbol, BNB, or an underlying (NVDA -> its first wrapper)."""
+    t = (text or "").upper()
+    if t == "BNB" or _row_for(t):
+        return t
+    u = rwa.resolve_underlying(t)
+    row = next((x for x in rwa.get_cached_snapshot().get("tokens", []) if x.get("underlying") == u), None)
+    return row["symbol"] if row else t
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("tok:"))
 async def on_token_tap(callback: CallbackQuery):
-    symbol = callback.data.split(":", 1)[1]
+    symbol = _card_symbol(callback.data.split(":", 1)[1])
     chat_id = callback.message.chat.id
+    ui.clear_input(chat_id)
     text = _token_menu_text(symbol, chat_id)
     if not text:
         await callback.answer()
@@ -313,13 +341,14 @@ async def on_token_tap(callback: CallbackQuery):
 @router.callback_query(lambda c: c.data == "back:board")
 async def on_back(callback: CallbackQuery):
     chat_id = callback.message.chat.id
+    ui.clear_input(chat_id)
     rows = _live_rows()
     if rows:
         text = (
             "StreetTape — mark vs tape for tokenized stocks.\n"
             "We show where the onchain price and the issuer mark disagree, and let you trade the gap.\n\n"
         ) + _live_board_text(rows, chat_id)
-        markup = _live_board_markup(rows)
+        markup = _live_board_markup(rows, _linked(chat_id))
     else:
         text = "Board is warming up — try again in a moment."
         markup = None
@@ -372,8 +401,10 @@ async def on_unwatch_cb(callback: CallbackQuery):
 @router.message(Command("start"))
 async def on_start(message: Message, command: CommandObject):
     payload = (command.args or "").strip()
+    ui.clear_input(message.chat.id)
     if payload:
         chat_id = message.chat.id
+        payload = _card_symbol(payload.lstrip("/"))
         text = _token_menu_text(payload, chat_id)
         if text:
             symbol_u = payload.upper().lstrip("/")
@@ -391,12 +422,14 @@ async def on_start(message: Message, command: CommandObject):
     rows = _live_rows()
     if rows:
         text += _live_board_text(rows, message.chat.id)
-        markup = _live_board_markup(rows)
+        markup = _live_board_markup(rows, _linked(message.chat.id))
     else:
         text += "Board is warming up — try again in a moment."
         markup = None
 
     sent = await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
+    async with _token_menus_lock:
+        _token_menus.pop(message.chat.id, None)
     async with _live_board_lock:
         _live_boards[message.chat.id] = sent.message_id
 
@@ -709,20 +742,20 @@ async def _run_live_board_pass(bot: Bot):
     rows = _live_rows()
     if not rows:
         return
-    markup = _live_board_markup(rows)
-
     async with _live_board_lock:
         targets = list(_live_boards.items())
     async with _token_menus_lock:
         on_token_menu = set(_token_menus.keys())
     targets = [(c, m) for c, m in targets if c not in on_token_menu]
     watched_by_chat = _watched_by_chat([c for c, _ in targets])
+    linked = tg_wallet.linked_set([c for c, _ in targets])
+    markups = {False: _live_board_markup(rows, False), True: _live_board_markup(rows, True)}
 
     dead: list[tuple[int, int]] = []  # (chat_id, message_id) pairs to drop
     for chat_id, message_id in targets:
         text = _live_board_text(rows, watched=watched_by_chat.get(chat_id, set()))
         try:
-            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=markup)
+            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=markups[chat_id in linked])
         except TelegramBadRequest as e:
             msg = str(e).lower()
             if "message is not modified" in msg:
@@ -768,7 +801,10 @@ async def _polling_loop():
     _bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     _dp = Dispatcher()
     _dp.include_router(tg_wallet.router)
-    _dp.include_router(router)
+    _dp.include_router(tg_trade.router)
+    _dp.include_router(tg_send.router)
+    _dp.include_router(tg_book.router)
+    _dp.include_router(router)  # last: holds the bare /symbol catch-all
 
     global _live_board_task, _digest_task, _keepalive_task
     if _keepalive_task is None or _keepalive_task.done():
