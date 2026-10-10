@@ -1,6 +1,6 @@
-# StreetTape — Developer Experience Report
+# StreetTape - Developer Experience Report
 
-Mid-build notes, last updated 2026-10-09. Written from live calls, not from the docs after the fact.
+Mid-build notes, last updated 2026-10-10. Written from live calls, not from the docs after the fact.
 
 This file lives in the repo so a Railway deploy cannot wipe it. The download at `GET /api/_devex` is a *different* file: it is whatever `devlog.py` wrote on that container, and it resets on every deploy. Do not treat `/api/_devex` as this report. When a feature is ready to test, download `/api/_devex`, cut it down to the new calls for that feature, and paste them under **Runtime log** at the bottom.
 
@@ -606,11 +606,11 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
 
 ### 2026-10-10 — `baw auth signin` with the wallet on a different phone
 
-- Session: WEEKEND (Sat, about 09:40 to 10:40 WAT). `baw` 1.10.0 in Termux on one phone; the Binance account and Agentic Wallet on another phone, reached over a screen share.
+- Session: WEEKEND (Sat, about 09:40 to 10:40 WAT). `baw` 1.10.0 in Termux on one phone; the Binance account and Agentic Wallet on another phone.
 - What we hit: `baw market-order quote` signed out, then `baw auth signin` (plain, `--image`, `--json`), then `baw auth verify`.
 - What came back (first call of each):
   - Quote signed out: `code 10003002`, `SESSION_EXPIRED`, `Please log in first.` The skill fell back to the API and printed `baw failed, using API`.
-  - `signin`: opened the login page on the same phone, which redirected to that phone's own Binance app, not the wallet owner's. `--image`: the QR image did not render (`Thumbnail not found`), so it could not be screenshotted. `--json`: returned `urlForWeb` and `pairingCode`; opening that link on the wallet owner's phone did not show the auth screen.
-  - A QR drawn in Termux with `qrencode` from the same `urlForWeb` and scanned from the screen share did get through to the wallet owner's phone, which then asked him to confirm.
+  - `signin`: opened the login page on the same phone, which redirected to that phone's own Binance app, not the other phone where the wallet is. `--image`: the QR image did not render (`Thumbnail not found`), so it could not be screenshotted. `--json`: returned `urlForWeb` and `pairingCode`; opening that link on the phone where the wallet is did not show the auth screen.
+  - A QR drawn in Termux with `qrencode` from the same `urlForWeb` and scanned from the screen share did get through to the wallet owner's phone, which then asked me to confirm.
   - `baw auth verify` alone: `required option '--qrCodeId <id>' not specified`. With an id copied by hand some minutes later: `[10002004] QR code does not exist or expired, please try a new code or restart the log in process.` Signin, QR and `verify --qrCodeId` run as one command line: `Authorized, creating wallet...`, then `Login successful! Wallet created`. `baw wallet balance` then showed the funded wallet, BNB 0.007086 ($5.31) on chain 56.
 - What we changed because of it: nothing in code.
