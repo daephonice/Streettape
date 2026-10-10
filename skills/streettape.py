@@ -224,7 +224,10 @@ def cmd_fill(a):
         r = baw_sign(*args)
     except Exception as e:
         r = {"status": "ERROR", "error": str(e)}
-    sess = (call("/api/board").get("session") or {}).get("label", "?")
+    try:
+        sess = (call("/api/board").get("session") or {}).get("label", "?")
+    except Exception:
+        sess = "?"
     now = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     ok = r.get("status") == "FINISHED"
     blk = (f"\n### {now[:10]} \u2014 Signed `baw market-order swap` {'filled' if ok else 'did not finish'} ({a.amount:g} of {a.input_mint[:8]}.. to {a.output_mint[:8]}..)\n\n"
