@@ -90,3 +90,30 @@ class ProposalProof(Base):
     net_bps = Column(Float, nullable=False)
     payload = Column(Text, nullable=False)  # canonical JSON that was hashed
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+
+class TgWallet(Base):
+    """Telegram chat linked to a Binance Agentic Wallet (private chats only)."""
+    __tablename__ = "tg_wallets"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, unique=True, index=True)
+    address = Column(String, nullable=False)  # agentic wallet BSC address
+    linked_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    session_end = Column(DateTime(timezone=True), nullable=True)  # signInMaxTime
+    last_alive = Column(DateTime(timezone=True), nullable=True)
+    reminded_for = Column(DateTime(timezone=True), nullable=True)  # session_end already warned about
+
+
+class TgRecipient(Base):
+    """Recent send addresses per chat."""
+    __tablename__ = "tg_recipients"
+
+    id = Column(Integer, primary_key=True)
+    chat_id = Column(BigInteger, nullable=False, index=True)
+    address = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    __table_args__ = (
+        Index("ix_tg_recipients_chat_addr", "chat_id", "address", unique=True),
+    )

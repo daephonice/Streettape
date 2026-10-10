@@ -35,6 +35,7 @@ import rwa
 import prices
 from database import SessionLocal
 from models import Watch
+import tg_wallet
 
 log = logging.getLogger("telegram_bot")
 
@@ -759,15 +760,19 @@ _dp: Dispatcher | None = None
 _task: asyncio.Task | None = None
 _live_board_task: asyncio.Task | None = None
 _digest_task: asyncio.Task | None = None
+_keepalive_task: asyncio.Task | None = None
 
 
 async def _polling_loop():
     global _bot, _dp
     _bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     _dp = Dispatcher()
+    _dp.include_router(tg_wallet.router)
     _dp.include_router(router)
 
-    global _live_board_task, _digest_task
+    global _live_board_task, _digest_task, _keepalive_task
+    if _keepalive_task is None or _keepalive_task.done():
+        _keepalive_task = asyncio.create_task(tg_wallet.keepalive_loop(_bot))
     if _live_board_task is None or _live_board_task.done():
         _live_board_task = asyncio.create_task(_live_board_loop(_bot))
     if _digest_task is None or _digest_task.done():
