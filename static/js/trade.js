@@ -31,6 +31,41 @@
 
   const BNB_RESERVE = 0.0002;
 
+  // Routing rules come from the server (routing_rules.py via /api/routing-rules); nothing is hard-coded here.
+  let RULES = null;
+  (async () => {
+    try {
+      const r = await fetch('/api/routing-rules');
+      if (r.ok) { RULES = await r.json(); if (S) render(); }
+    } catch (_) { /* server still enforces every rule */ }
+  })();
+  const platOf = (c, sym) => (((c.assets[sym] || {}).platform) || '').toLowerCase();
+  // Ondo pairs with USDC/USDT only; the rules list which pay tokens are locked for it (BNB).
+  function ondoLocked(c, a, b) {
+    const blocked = (RULES && RULES.ondoBlockedPay) || [];
+    return (platOf(c, a) === 'ondo' && blocked.includes(b)) || (platOf(c, b) === 'ondo' && blocked.includes(a));
+  }
+  // Mirror of routing_rules.site_route(): first provider tried, as a label. '' until the rules load.
+  function siteRoute(c, inSym, outSym, usd) {
+    if (!RULES) return '';
+    const fam = (s) => (RULES.stables.includes(s) ? 'stable' : platOf(c, s) || 'unknown');
+    const f = [fam(inSym), fam(outSym)];
+    const site = RULES.site;
+    if (site.rotatePancake && f.every((x) => RULES.wrappers.includes(x))) return 'Pancake';
+    if (f.some((x) => site.directPancake.includes(x))) return 'Pancake';
+    const small = usd > 0 && usd < RULES.minUsd;
+    if (f.includes('ondo')) return small ? 'Pancake' : 'Binance';
+    if (f.some((x) => site.binance.includes(x))) return 'Binance';
+    if (f.every((x) => x === 'stable')) return small ? 'Pancake' : 'Binance';
+    return 'Binance';
+  }
+  function noRouteNote(order, ondoPair) {
+    const tried = order.triedLabels || [];
+    const list = tried.length ? ` (${tried.join(', ')})` : '';
+    if (ondoPair && tried.includes('Binance Web3')) return 'No RFQ inventory and no Pancake route' + list;
+    return 'No route found' + list;
+  }
+
   const decimalsOf = (sym) => DECIMALS[sym] || 6;
 
   function fmtAmount(v) {
@@ -205,7 +240,7 @@
     R.tokBack.addEventListener('click', closeTokens);
     R.tokList.addEventListener('click', (e) => {
       const row = e.target.closest('[data-sym]');
-      if (row) selectToken(row.dataset.sym);
+      if (row && !row.disabled) selectToken(row.dataset.sym);
     });
     R.keys.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-key]');
@@ -274,13 +309,15 @@
       const row = document.createElement('button');
       row.type = 'button';
       row.dataset.sym = sym;
-      row.className = 'trd-tok-row' + (bal > 0 ? '' : ' empty') + (sym === (which === 'sell' ? S.sell : S.buy) ? ' active' : '');
+      const locked = ondoLocked(c, sym, other);
+      row.disabled = locked;
+      row.className = 'trd-tok-row' + (bal > 0 ? '' : ' empty') + (locked ? ' locked' : '') + (sym === (which === 'sell' ? S.sell : S.buy) ? ' active' : '');
       row.appendChild(logoEl(meta, 38));
       const main = document.createElement('span');
       main.className = 'trd-tok-main';
       main.innerHTML = '<b></b><small></small>';
       main.firstChild.textContent = sym;
-      main.lastChild.textContent = meta.name || sym;
+      main.lastChild.textContent = locked ? 'Not supported with this token' : (meta.name || sym);
       row.appendChild(main);
       const side = document.createElement('span');
       side.className = 'trd-tok-side';
@@ -397,8 +434,7 @@
     const outMint = (c.assets[sess.buy] || {}).mint;
     const amt = parseFloat(sess.sellRaw);
     if (!inMint || !outMint || !(amt > 0)) { sess.quoting = false; render(); return; }
-    const plat = (sym) => ((c.assets[sym] || {}).platform || '').toLowerCase();
-    if ((sess.sell === 'BNB' && plat(sess.buy) === 'ondo') || (sess.buy === 'BNB' && plat(sess.sell) === 'ondo')) {
+    if (ondoLocked(c, sess.sell, sess.buy)) {
       sess.quoting = false;
       sess.order = null;
       sess.note = "Swaps between this token and real-world assets aren't supported yet. Try using a different token.";
@@ -424,7 +460,7 @@
         }
       } else {
         sess.order = null;
-        sess.note = order.noRoute ? 'No route found (Binance, PancakeSwap, OpenOcean)' : '';
+        sess.note = order.noRoute ? noRouteNote(order, platOf(c, sess.sell) === 'ondo' || platOf(c, sess.buy) === 'ondo') : '';
       }
       render();
     } catch (err) {
@@ -440,16 +476,13 @@
   function tokenMeta(c, sym) { return c.assets[sym] || { name: sym }; }
 
   // RFQ vs AMM badge: reflects the live quote's executionMode. Before a quote
-  // exists, preview the expected mode from the buy token's platform so the
-  // row isn't blank while typing (xstocks -> AMM, ondo -> RFQ, bstocks -> API-defined, unknown).
+  // exists, preview the first provider the routing rules will try (Pancake or Binance).
   function modeLabel(c) {
     const exec = S.order && S.order.executionMode;
     if (exec === 'RFQ') return 'RFQ';
     if (exec === 'SWAP') return 'AMM';
-    const platform = (tokenMeta(c, S.buy).platform || tokenMeta(c, S.sell).platform || '').toLowerCase();
-    if (platform === 'xstocks') return 'AMM';
-    if (platform === 'ondo') return 'RFQ';
-    return '';
+    const px = c.prices[S.sell] ? c.prices[S.sell].price : 0;
+    return siteRoute(c, S.sell, S.buy, (parseFloat(S.sellRaw) || 0) * px);
   }
 
   function render() {
@@ -552,11 +585,7 @@
       R.modeChip.hidden = true;
     }
 
-    if (!S.swapping && !S.note && S.order && !S.order.uiOutAmount && mode === 'RFQ') {
-      R.note.textContent = 'No RFQ inventory. AMM still live on xStocks.';
-    } else {
-      R.note.textContent = S.swapping ? '' : (S.note || '');
-    }
+    R.note.textContent = S.swapping ? '' : (S.note || '');
 
     renderCta();
   }

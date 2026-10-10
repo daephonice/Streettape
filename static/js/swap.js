@@ -203,10 +203,38 @@
   }
 
   // ---- State helpers ----------------------------------------------------------
-  // Ondo assets on BSC only pair with stablecoins (live: code=40368), so no BNB leg for them.
-  const isOndo = (c, sym) => (((c.assets[sym] || {}).platform) || '').toLowerCase() === 'ondo';
-  // Live 2026-09-30: Ondo rejects USDC too (40368 "allowed stablecoin(s)"), so Ondo pays in USDT only.
-  const allowedPay = (c, sym) => PAY.filter((s) => s !== sym && !(isOndo(c, sym) && s !== 'USDT'));
+  // Routing rules come from the server (routing_rules.py via /api/routing-rules); nothing is hard-coded here.
+  let RULES = null;
+  (async () => {
+    try {
+      const r = await fetch('/api/routing-rules');
+      if (r.ok) { RULES = await r.json(); if (S) render(); }
+    } catch (_) { /* server still enforces every rule */ }
+  })();
+  const platOf = (c, sym) => (((c.assets[sym] || {}).platform) || '').toLowerCase();
+  const isOndo = (c, sym) => platOf(c, sym) === 'ondo';
+  // Ondo: BNB locked, USDC and USDT open. xStocks and bStocks: all three open.
+  const allowedPay = (c, sym) => PAY.filter((s) => s !== sym && !(isOndo(c, sym) && ((RULES && RULES.ondoBlockedPay) || []).includes(s)));
+  // Mirror of routing_rules.site_route(): first provider tried, as a label. '' until the rules load.
+  function siteRoute(c, inSym, outSym, usd) {
+    if (!RULES) return '';
+    const fam = (s) => (RULES.stables.includes(s) ? 'stable' : platOf(c, s) || 'unknown');
+    const f = [fam(inSym), fam(outSym)];
+    const site = RULES.site;
+    if (site.rotatePancake && f.every((x) => RULES.wrappers.includes(x))) return 'Pancake';
+    if (f.some((x) => site.directPancake.includes(x))) return 'Pancake';
+    const small = usd > 0 && usd < RULES.minUsd;
+    if (f.includes('ondo')) return small ? 'Pancake' : 'Binance';
+    if (f.some((x) => site.binance.includes(x))) return 'Binance';
+    if (f.every((x) => x === 'stable')) return small ? 'Pancake' : 'Binance';
+    return 'Binance';
+  }
+  function noRouteNote(order, ondoPair) {
+    const tried = order.triedLabels || [];
+    const list = tried.length ? ` (${tried.join(', ')})` : '';
+    if (ondoPair && tried.includes('Binance Web3')) return 'No RFQ inventory and no Pancake route' + list;
+    return 'No route found' + list;
+  }
   const payOptions = () => allowedPay(S.host.getCtx(), S.symbol);
   const price = (c, sym) => (c.prices[sym] ? c.prices[sym].price : 0);
 
@@ -356,8 +384,7 @@
       } else {
         sess.order = null;
         const c2 = sess.host.getCtx();
-        const platform = ((c2.assets[sess.symbol] || {}).platform || '').toLowerCase();
-        setNote(rotating ? 'No route' : platform === 'ondo' ? 'No RFQ inventory. AMM still live on xStocks.' : 'No route found (Binance, PancakeSwap, OpenOcean)');
+        setNote(noRouteNote(order, isOndo(c2, inSym) || isOndo(c2, outSym)));
       }
       render();
     } catch (err) {
@@ -447,15 +474,16 @@
   }
 
   // RFQ vs AMM badge: reflects the live quote's executionMode; before a quote
-  // exists, preview from the token's platform (xstocks -> AMM, ondo -> RFQ).
+  // exists, preview the first provider the routing rules will try (Pancake or Binance).
   function modeLabel(c) {
     const exec = S.order && S.order.executionMode;
     if (exec === 'RFQ') return 'RFQ';
     if (exec === 'SWAP') return 'AMM';
-    const platform = ((c.assets[S.symbol] || {}).platform || '').toLowerCase();
-    if (platform === 'xstocks') return 'AMM';
-    if (platform === 'ondo') return 'RFQ';
-    return '';
+    const buying = S.side === 'buy';
+    const inSym = buying ? S.cur : S.symbol;
+    const outSym = buying ? S.symbol : S.side === 'rotate' ? S.out : S.cur;
+    const amt = buying ? (parseFloat(S.raw) || 0) : sellCalcAmount();
+    return siteRoute(c, inSym, outSym, amt * price(c, inSym));
   }
 
   function fmtImpact(v) {
