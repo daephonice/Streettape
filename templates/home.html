@@ -75,6 +75,20 @@
     <p class="hm-quick-hint">Smallest order that clears the $5 minimum. Pick a stock, tap once, sign in your wallet.</p>
   </section>
 
+  <section class="hm-quick" id="hm-floor">
+    <div class="hm-quick-row">
+      <select id="fw-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
+      <div class="hm-quick-amts" id="fw-pcts">
+        <button type="button" data-pct="90">90%</button>
+        <button type="button" data-pct="95" class="on">95%</button>
+        <button type="button" data-pct="98">98%</button>
+      </div>
+    </div>
+    <button class="hm-quick-go" id="fw-go" type="button">Watch NVDA at 95% floor</button>
+    <p class="hm-quick-note" id="fw-note"></p>
+    <a class="tk-link" id="fw-link" href="#" hidden>Open sell sheet</a>
+  </section>
+
   <section class="hm-stocks" id="hm-stocks">
     <div class="hm-stocks-head">
       <h2 class="hm-news-title">Stocks</h2>
@@ -139,5 +153,6 @@
 <script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
 <script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
 <script src="/static/js/quickbuy.js?v={{ static_v('js/quickbuy.js') }}"></script>
+<script src="/static/js/floorwatch.js?v={{ static_v('js/floorwatch.js') }}"></script>
 <script src="/static/js/home.js?v={{ static_v('js/home.js') }}"></script>
 {% endblock %}
