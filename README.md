@@ -5,6 +5,7 @@ Same stock, three wrappers, on BSC. Tape is the pool. Official is Friday's print
 - Live: https://streettape.up.railway.app
 - Agent card: https://streettape.up.railway.app/agent-registration.json (ERC-8004 agent 360062)
 - Settled fill: https://bscscan.com/tx/0x6226e2e5e9d4fa646fc2546793dfbed6da085476de7a3115df014d2b8cd372b5
+- Settled Rotate Tx - Buy & Sell : https://bscscan.com/tx/0x160d05c5ea2c347d70b5da4498ac254732f28554ade688008970478d20bbd8b7
 - Report: DEVEX.md (not GET /api/_devex)
 
 Judge clicks: `/` and the four chips, `/basket/defensive`, `/t/NVDA`, the Rotate sheet at `/t/NVDA#rotate`, then DEVEX.md.
