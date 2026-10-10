@@ -276,6 +276,13 @@ def cmd_rotate(a):
     out(res)
 
 
+def cmd_floor(a):
+    addr = a.address or os.getenv("STREETTAPE_ADDRESS")
+    if not addr:
+        sys.exit(json.dumps({"error": "wallet address needed: --address or STREETTAPE_ADDRESS"}))
+    out(call("/api/agent/floor", {"address": addr, "underlying": a.underlying.upper(), "floor": a.pct / 100}))
+
+
 def cmd_alerts(a):
     report = call("/api/agent/scan", {"threshold": a.threshold})
     session = report.get("session") or {}
@@ -349,6 +356,8 @@ GRAMMAR = [
      lambda m: cmd_basket(argparse.Namespace(usd=float(m[1])))),
     (r"rotate into defensives when volatility spikes", "rotate into defensives when volatility spikes",
      lambda m: cmd_defensive(argparse.Namespace(usd=50.0))),
+    (r"watch " + _T + r" at " + _N + r"% floor", "watch NVDA at 95% floor",
+     lambda m: cmd_floor(argparse.Namespace(underlying=m[1].upper(), pct=float(m[2]), address=None))),
     (r"stand down " + _T + r" into usdt if earnings are inside " + _N + r"h", "stand down NVDA into USDT if earnings are inside 24h",
      lambda m: cmd_stand_down(m[1].upper(), float(m[2]))),
 ]
@@ -392,6 +401,8 @@ def main():
     bk = s.add_parser("basket"); bk.add_argument("--usd", type=float, default=50.0); bk.set_defaults(f=cmd_basket)
     df = s.add_parser("defensive"); df.add_argument("--usd", type=float, default=50.0); df.set_defaults(f=cmd_defensive)
     r = s.add_parser("rotate"); r.add_argument("underlying"); r.set_defaults(f=cmd_rotate)
+    fw = s.add_parser("floor"); fw.add_argument("underlying"); fw.add_argument("--pct", type=float, default=95.0)
+    fw.add_argument("--address"); fw.set_defaults(f=cmd_floor)
     al = s.add_parser("alerts"); al.add_argument("--threshold", type=float); al.set_defaults(f=cmd_alerts)
     sy = s.add_parser("say"); sy.add_argument("sentence", nargs="+"); sy.set_defaults(f=cmd_say)
     a = p.parse_args()
