@@ -85,6 +85,11 @@ def clear_input(chat_id: int):
     inputs.pop(int(chat_id), None)
 
 
+# chat -> (message_id, symbol) while that message shows a token card. Any other screen clears it,
+# so a late background edit (Switch button) never lands on the wrong screen.
+cards: dict[int, tuple[int, str]] = {}
+
+
 def hold(chat_id: int, message_id: int):
     screens[int(chat_id)] = message_id
 
@@ -96,6 +101,7 @@ async def show(cb, text: str, markup=None):
     except TelegramBadRequest as e:
         if "not modified" not in str(e).lower():
             raise
+    cards.pop(cb.message.chat.id, None)
     hold(cb.message.chat.id, cb.message.message_id)
 
 
@@ -116,6 +122,8 @@ BACK = "◀ Back"
 BUY_AMOUNTS = (10, 25, 50, 100)
 CUSTOM = "Custom"
 VIEW_TX = "View on BscScan"
+ROTATE = "🔁 Switch to cheaper version"
+PACK = "🧺 AI starter pack · $50"
 
 
 def confirm_label(usd: float) -> str:
@@ -306,3 +314,42 @@ def no_holding_text(u: str) -> str:
 
 def not_open_text() -> str:
     return "Ondo wrappers only trade while the US market is open."
+
+
+# ---- one-tap advanced (Step 13) --------------------------------------------
+
+def adv_confirm_kb(label: str, pid: str):
+    return kb([cb_btn(label, f"ax:{pid}"), cb_btn("Cancel", f"an:{pid}")])
+
+
+def rotate_none_text(u: str, why: str, min_usd: float = 5.0) -> str:
+    if why == "no_holding":
+        return no_holding_text(u)
+    if why == "small":
+        return f"Too small to switch. Minimum ${min_usd:g}."
+    if why == "costs":
+        return f"Costs eat the gap on {u} right now. No switch."
+    return f"No cheaper version of {u} right now."
+
+
+def rotate_confirm_text(u: str, sym: str, to: str, qty: float, out: float, buy: float | None,
+                        cost: float, gap: float) -> str:
+    t = (f"<b>Switch {sym} → {to}</b>\n"
+         f"Sell <code>{qty:.6g}</code> {sym} ≈ $<code>{out:,.2f}</code>\n")
+    if buy:
+        t += f"Buy ≈ <code>{buy:.4g}</code> {to}\n"
+    return (t + f"Costs ≈ $<code>{cost:,.2f}</code> · gap <code>{gap * 100:+.1f}%</code>\n"
+            f"Same {u} shares, cheaper version. Two swaps via USDT.\n<i>Quote good for 60s</i>")
+
+
+def pack_confirm_text(label: str, usd: float, legs: list[dict], skipped: list[tuple]) -> str:
+    rows = [f"{l['u']:<5} ${l['usd']:>6.2f} ≈ {l['out']:.4g} {l['sym']}" for l in legs]
+    rows += [f"{u:<5} skipped: {why}" for u, why in skipped]
+    t = f"<b>{label} starter pack · ${usd:g}</b>\n<code>" + "\n".join(rows) + "</code>\n"
+    if skipped:
+        t += "A skipped leg stays in USDT, never moved to another stock.\n"
+    return t + "Buys run in order.\n<i>Quote good for 60s</i>"
+
+
+def sw_error(e) -> str:
+    return (" " + str(e).replace("<", "").replace(">", "")[:100] + ".") if e else ""

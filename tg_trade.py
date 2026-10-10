@@ -7,6 +7,7 @@ import logging
 import secrets
 
 from aiogram import Router
+from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, Message
 
 import balances
@@ -116,21 +117,28 @@ async def _poll(chat_id: int, order_id, frm: str, to: str, qty: str, t0_ms: int)
     return None
 
 
-async def _run_swap(chat_id: int, frm: str, to: str, qty: float) -> dict:
-    """One signed swap, polled to a terminal state. Holds the chat lock end to end.
+async def _run_swap(chat_id: int, frm: str, to: str, qty: float, have_lock: bool = False) -> dict:
+    """One signed swap, polled to a terminal state. Holds the chat lock end to end
+    (have_lock=True: the caller already holds it, e.g. a two-leg rotate).
     Returns {"status": FINISHED|FAILED|PENDING, "row": dict|None, "error": str|None}."""
-    q = _qty(qty)
+    if have_lock:
+        return await _swap_body(chat_id, frm, to, qty)
     async with tw.lock(chat_id):
-        t0 = int((time.time() - 60) * 1000)
-        try:
-            d = await tw.baw(chat_id, "market-order", "swap", "--fromTokenQty", q, "--fromToken", frm,
-                             "--toToken", to, "--binanceChainId", CHAIN, "--slippage", "1")
-        except tw.BawError as e:
-            return {"status": "FAILED", "row": None, "error": str((e.err or {}).get("message") or e)[:140]}
-        oid = (d or {}).get("orderId") if isinstance(d, dict) else None
-        if not oid:
-            return {"status": "FAILED", "row": None, "error": "swap returned no order id"}
-        row = await _poll(chat_id, oid, frm, to, q, t0)
+        return await _swap_body(chat_id, frm, to, qty)
+
+
+async def _swap_body(chat_id: int, frm: str, to: str, qty: float) -> dict:
+    q = _qty(qty)
+    t0 = int((time.time() - 60) * 1000)
+    try:
+        d = await tw.baw(chat_id, "market-order", "swap", "--fromTokenQty", q, "--fromToken", frm,
+                         "--toToken", to, "--binanceChainId", CHAIN, "--slippage", "1")
+    except tw.BawError as e:
+        return {"status": "FAILED", "row": None, "error": str((e.err or {}).get("message") or e)[:140]}
+    oid = (d or {}).get("orderId") if isinstance(d, dict) else None
+    if not oid:
+        return {"status": "FAILED", "row": None, "error": "swap returned no order id"}
+    row = await _poll(chat_id, oid, frm, to, q, t0)
     if row is None:
         return {"status": "PENDING", "row": None, "error": None}
     return {"status": row["status"], "row": row, "error": None}
@@ -183,13 +191,16 @@ async def _prepare_buy(chat_id: int, wallet, u: str, usd: float):
     return ui.buy_confirm_text(u, usd, out, sym, n), ui.confirm_kb(ui.confirm_label(usd), pid, u)
 
 
-async def _holding(wallet, u: str):
-    """The held wrapper of `u` with the most shares: (sym, amount, shares, mint) or None."""
+async def _holding(wallet, u: str, only: str | None = None):
+    """The held wrapper of `u` with the most shares: (sym, amount, shares, mint) or None.
+    `only` pins one wrapper symbol (flatten sells exactly the wrapper that was flagged)."""
     bal = (await balances.get_balances(wallet.address)).get("holdings") or {}
     best = None
     for sym, amt in bal.items():
         a = prices.get_asset(sym)
         if not a or a.get("kind") != "stock" or a.get("underlying") != u or not amt or amt <= 0:
+            continue
+        if only and sym.upper() != only.upper():
             continue
         sh = amt * share_ratio(sym)
         if best is None or sh > best[2]:
@@ -197,8 +208,8 @@ async def _holding(wallet, u: str):
     return best
 
 
-async def _prepare_sell(chat_id: int, wallet, u: str, pct: int):
-    h = await _holding(wallet, u)
+async def _prepare_sell(chat_id: int, wallet, u: str, pct: int, only: str | None = None):
+    h = await _holding(wallet, u, only)
     if not h:
         return ui.no_holding_text(u), ui.cancelled_kb(u)
     sym, amt, _, mint = h
@@ -220,7 +231,7 @@ async def _prepare_sell(chat_id: int, wallet, u: str, pct: int):
     warn = None
     if sc and sc.get("warn"):
         warn = f"Heads up: {sc.get('reason') or 'output looks low vs the tape'}."
-    pid = _store(kind="sell", chat=chat_id, u=u, sym=sym, mint=mint, qty=qty, out=out, pct=pct)
+    pid = _store(kind="sell", chat=chat_id, u=u, sym=sym, mint=mint, qty=qty, out=out, pct=pct, only=only)
     return (ui.sell_confirm_text(u, pct, qty, sym, out, warn),
             ui.confirm_kb(ui.sell_label(out, bool(warn)), pid, u))
 
@@ -253,6 +264,36 @@ async def _execute(cb: CallbackQuery, wallet, p: dict):
 
 
 # ---- callbacks -------------------------------------------------------------
+
+@router.message(Command("buy"))
+@tw.guarded
+async def on_buy_cmd(message: Message, command: CommandObject):
+    """/buy NVDA 50 -> straight to the Step 9 confirm screen."""
+    chat_id, bot = message.chat.id, message.bot
+    parts = (command.args or "").split()
+    u = rwa.resolve_underlying(parts[0]) if parts else None
+    try:
+        usd = float(parts[1].lstrip("$")) if len(parts) > 1 else 10.0
+    except ValueError:
+        usd = 0.0
+    if not u or not 1 <= usd <= 1000:
+        await ui.say(bot, chat_id, "Usage: /buy NVDA 50 (1 to 1000 dollars).")
+        return
+    if chat_id <= 0:
+        await ui.say(bot, chat_id, ui.private_only_text())
+        return
+    w = tw.get_wallet(chat_id)
+    if not w:
+        await ui.say(bot, chat_id, ui.link_intro_text(), ui.link_intro_kb())
+        return
+    if tw.lock(chat_id).locked():
+        await ui.say(bot, chat_id, "Another action is running.")
+        return
+    m = await ui.say(bot, chat_id, ui.working_text("Checking prices"))
+    ui.hold(chat_id, m.message_id)
+    text, markup = await _prepare_buy(chat_id, w, u, usd)
+    await ui.edit(bot, chat_id, m.message_id, text, markup)
+
 
 @router.callback_query(lambda c: c.data and c.data.startswith("buy:"))
 async def on_buy_open(cb: CallbackQuery):
@@ -372,7 +413,7 @@ async def on_go(cb: CallbackQuery):
         if p["kind"] == "buy":
             text, markup = await _prepare_buy(chat_id, w, p["u"], p["usd"])
         else:
-            text, markup = await _prepare_sell(chat_id, w, p["u"], p["pct"])
+            text, markup = await _prepare_sell(chat_id, w, p["u"], p["pct"], p.get("only"))
         await ui.show(cb, text, markup)
         return
     await _execute(cb, w, p)

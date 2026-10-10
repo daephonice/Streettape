@@ -75,6 +75,7 @@ def _mark_alerted(watch_id, premium):
 async def fire_due_alerts():
     """Called by telegram_bot so we reuse the live bot instance."""
     import telegram_bot
+    import tg_ui as ui
     if not telegram_bot.BOT_TOKEN:
         return 0
     report = scan_gaps()
@@ -106,13 +107,14 @@ async def fire_due_alerts():
                 continue
         group = groups_by_und.get(underlying)
         cheapest_sym = group.get("cheapest") if group else None
-        cta = ""
+        cta, cheap_btn = "", None
         if cheapest_sym and cheapest_sym.upper() != hit["symbol"].upper():
             cheap = by_sym.get(cheapest_sym.upper()) or next(
                 (t for t in siblings if t["symbol"].upper() == cheapest_sym.upper()), None
             )
-            if cheap and cheap.get("url"):
-                cta = f"\nCheaper wrapper: {cheap['symbol']} {rwa.format_premium(cheap['premium'])} — {cheap['url']}"
+            if cheap:
+                cta = f"\nCheaper wrapper: {cheap['symbol']} {rwa.format_premium(cheap['premium'])}"
+                cheap_btn = ui.cb_btn(f"Cheaper: {cheap['symbol']}", f"tok:{cheap['symbol'].upper()}")
         import earnings
         e = earnings.info(underlying)
         earn = (f"\n⚠ {underlying} reports in {e['hoursUntil']:.0f}h — desk proposes selling into USDT before the print"
@@ -121,11 +123,12 @@ async def fire_due_alerts():
             f"StreetTape alert · {report['session'].get('label')}\n"
             f"<b>{hit['symbol']}</b> {rwa.format_premium(hit['premium'])} vs mark\n"
             f"Tape ${hit['tokenPrice']:.2f} · Mark ${hit['markPrice']:.2f}\n"
-            f"{telegram_bot.WEB_PUBLIC_URL}/t/{underlying}"
             f"{cta}{earn}"
         )
+        buttons = ui.kb([x for x in (ui.link_btn(ui.OPEN_SITE, ui.site(f"/t/{underlying}")), cheap_btn) if x],
+                        [ui.cb_btn(ui.BOARD, "back:board")])
         try:
-            await telegram_bot.send_alert(w.chat_id, text)
+            await telegram_bot.send_alert(w.chat_id, text, buttons)
             _mark_alerted(w.id, hit["premium"])
             sent += 1
         except Exception:
@@ -443,7 +446,6 @@ async def arb_text(underlying: str | None = None) -> str | None:
     """Telegram /agent body: best cross-wrapper gap across the whole board
     (or just `underlying` if given), net of estimated costs. None if nothing
     clears the threshold right now."""
-    import telegram_bot
     hits = check_cross_arb(underlying)
     if not hits:
         return None
@@ -460,7 +462,6 @@ async def arb_text(underlying: str | None = None) -> str | None:
         f"{gap_vs_line(priced)}"
         f"{_arb_line('SELL', priced['richSymbol'], priced['sellLeg'], priced['sizeUsd'])}\n"
         f"{_arb_line('BUY', priced['cheapSymbol'], priced['buyLeg'], priced['sizeUsd'])}\n"
-        f"{telegram_bot.WEB_PUBLIC_URL}/t/{priced['underlying']}"
         f"{note}\n"
         f"Not auto-executed — confirm and sign in your own wallet."
     )
@@ -504,7 +505,6 @@ async def flatten_text(underlying: str | None = None) -> str | None:
     """Sunday 18:00-18:59 UTC body: every wrapper >2% rich, sell quotes. None if
     nothing clears the bar right now (used by both the weekly loop and any
     manual check)."""
-    import telegram_bot
     hits = flatten_candidates(underlying)
     if not hits:
         return None
@@ -513,9 +513,20 @@ async def flatten_text(underlying: str | None = None) -> str | None:
     return (
         "Weekly flatten · wrappers >2% rich\n"
         + "\n".join(lines)
-        + f"\n{telegram_bot.WEB_PUBLIC_URL}/board\n"
-        + "Not auto-executed — confirm and sign in your own wallet."
+        + "\nNot auto-executed — nothing sells until you confirm."
     )
+
+
+def agent_markup(underlying: str | None = None):
+    """Buttons for the /agent reply: site card (or board), the cheaper wrapper's card, Board. No links in text."""
+    import tg_ui as ui
+    hits = check_cross_arb(underlying)
+    u = underlying or (hits[0]["underlying"] if hits else None)
+    row = [ui.link_btn(ui.OPEN_SITE, ui.site(f"/t/{u}" if u else "/board"))]
+    if hits:
+        sym = hits[0]["cheap"]["symbol"]
+        row.append(ui.cb_btn(f"Cheaper: {sym}", f"tok:{sym.upper()}"))
+    return ui.kb(row, [ui.cb_btn(ui.BOARD, "back:board")])
 
 
 async def agent_text(underlying: str | None = None) -> str | None:
@@ -535,6 +546,8 @@ async def fire_flatten() -> int:
     """Sunday 18:00 UTC window, once per ISO week (in-memory guard, no DB)."""
     global _last_flatten_week
     import telegram_bot
+    import tg_adv
+    import tg_ui as ui
     if not telegram_bot.BOT_TOKEN:
         return 0
     now = datetime.now(timezone.utc)
@@ -551,9 +564,13 @@ async def fire_flatten() -> int:
         return 0
 
     sent = 0
+    cands = flatten_candidates()
     for chat_id in _flatten_chat_ids():
         try:
-            await telegram_bot.send_alert(chat_id, text)
+            sells = await tg_adv.flatten_buttons(chat_id, cands)
+            buttons = ui.kb(*[sells[i:i + 2] for i in range(0, len(sells), 2)],
+                            [ui.link_btn(ui.OPEN_SITE, ui.site("/board")), ui.cb_btn(ui.BOARD, "back:board")])
+            await telegram_bot.send_alert(chat_id, text, buttons)
             sent += 1
         except Exception:
             log.warning("agent: flatten send failed chat=%s", chat_id, exc_info=True)

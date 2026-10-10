@@ -15,7 +15,8 @@ Commands (spec §2.2):
 Watches currently just mean "included in the hourly digest" (not sent yet).
 No premium-threshold alert loop.
 
-Bot never touches wallets or signs anything — swap only happens on the site.
+Trading goes through the user's Binance Agentic Wallet (tg_* modules). No URL ever appears in message
+text: links are inline buttons only.
 """
 import os
 import asyncio
@@ -25,7 +26,7 @@ from datetime import datetime, timezone
 from aiogram import Bot, Dispatcher, Router
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import BotCommand, CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.client.default import DefaultBotProperties
 
 from sqlalchemy import select
@@ -39,13 +40,12 @@ import tg_wallet
 import tg_trade
 import tg_send
 import tg_book
+import tg_adv
 import tg_ui as ui
 
 log = logging.getLogger("telegram_bot")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-WEB_PUBLIC_URL = os.getenv("WEB_PUBLIC_URL", "").rstrip("/")
-PANCAKE_BASE = "https://pancakeswap.finance/swap"
 
 router = Router()
 
@@ -67,17 +67,6 @@ def _fair_line(row: dict) -> str:
     if row.get("fairPrice") and not session.get("cashOpen"):
         out += f" · Fair ${row['fairPrice']:.2f} ({rwa.format_premium(row.get('premiumToFair'))})"
     return out + "\n"
-
-
-def _card_text(row: dict) -> str:
-    pct = rwa.format_premium(row["premium"])
-    return (
-        f"<b>{row['symbol']}</b> — {row.get('name', '')}\n"
-        f"{pct} vs mark\n"
-        f"Tape ${row['tokenPrice']:.2f} · Mark ${row['markPrice']:.2f}\n"
-        f"{_fair_line(row)}"
-        f"{WEB_PUBLIC_URL}/t/{row['symbol']}"
-    )
 
 
 def _live_rows() -> list[dict]:
@@ -177,10 +166,11 @@ def _live_board_text(rows: list[dict], chat_id: int | None = None, watched: set[
 
 def _live_board_markup(rows: list[dict], linked: bool = False) -> InlineKeyboardMarkup:
     """2 cols x 4 rows of tokenized stock symbols (same order as the price list),
-    BNB full-width, then Book / Send / Wallet. tok:SYMBOL opens that token's card."""
+    BNB full-width, the AI pack, then Book / Send / Wallet. tok:SYMBOL opens that token's card."""
     buttons = [InlineKeyboardButton(text=r["symbol"], callback_data=f"tok:{r['symbol']}") for r in rows]
     kb: list[list[InlineKeyboardButton]] = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
     kb.append([InlineKeyboardButton(text="BNB", callback_data="tok:BNB")])
+    kb.append([ui.cb_btn(ui.PACK, "pk:ai:50")])
     kb.append([ui.cb_btn(ui.BOOK, "book"), ui.cb_btn(ui.SEND, "snd"),
                ui.cb_btn(ui.LINKED if linked else ui.LINK, "link:go")])
     return InlineKeyboardMarkup(inline_keyboard=kb)
@@ -286,7 +276,7 @@ def _token_menu_text(symbol: str, chat_id: int | None = None) -> str | None:
     return "\n".join(lines)
 
 
-def _token_menu_markup(chat_id: int, symbol: str) -> InlineKeyboardMarkup:
+def _token_menu_markup(chat_id: int, symbol: str, rotate=None) -> InlineKeyboardMarkup:
     """Card layout (Step 7): Buy/Sell, Send/Watch, Price check/Open, Contract/Board."""
     symbol_u = symbol.upper()
     watching = _is_watching(chat_id, symbol_u)
@@ -301,6 +291,8 @@ def _token_menu_markup(chat_id: int, symbol: str) -> InlineKeyboardMarkup:
         [ui.cb_btn(ui.SEND, f"snd:{symbol_u}"), watch_btn],
         [ui.cb_btn(ui.CHECK, f"chk:{u}:10"), ui.link_btn(ui.OPEN_SITE, ui.site(f"/t/{symbol_u}"))],
     ]
+    if rotate:
+        rows.append([rotate])
     last = [ui.cb_btn(ui.BOARD, "back:board")]
     if row.get("mint"):
         last.insert(0, ui.link_btn("Contract", ui.scan_tok(row["mint"])))
@@ -316,6 +308,33 @@ def _card_symbol(text: str) -> str:
     u = rwa.resolve_underlying(t)
     row = next((x for x in rwa.get_cached_snapshot().get("tokens", []) if x.get("underlying") == u), None)
     return row["symbol"] if row else t
+
+
+_bg: set[asyncio.Task] = set()
+
+
+async def _attach_rotate(bot: Bot, chat_id: int, mid: int, symbol: str) -> None:
+    """Background: add [Switch to cheaper version] to a card that is still on screen, once the quotes say it nets positive."""
+    try:
+        row = _row_for(symbol)
+        u = row and (row.get("underlying") or rwa.resolve_underlying(symbol))
+        if not u:
+            return
+        btn = await asyncio.wait_for(tg_adv.rotate_btn(chat_id, u), 25)
+        if not btn or ui.cards.get(chat_id) != (mid, symbol):
+            return
+        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=mid,
+                                            reply_markup=_token_menu_markup(chat_id, symbol, rotate=btn))
+    except Exception:
+        log.debug("telegram_bot: rotate button not attached", exc_info=True)
+
+
+def _arm(bot: Bot, chat_id: int, mid: int, symbol: str) -> None:
+    ui.cards[chat_id] = (mid, symbol)
+    if chat_id > 0 and _row_for(symbol):
+        t = asyncio.create_task(_attach_rotate(bot, chat_id, mid, symbol))
+        _bg.add(t)
+        t.add_done_callback(_bg.discard)
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("tok:"))
@@ -335,6 +354,7 @@ async def on_token_tap(callback: CallbackQuery):
             raise
     async with _token_menus_lock:
         _token_menus[chat_id] = callback.message.message_id
+    _arm(callback.bot, chat_id, callback.message.message_id, symbol)
     await callback.answer()
 
 
@@ -342,6 +362,7 @@ async def on_token_tap(callback: CallbackQuery):
 async def on_back(callback: CallbackQuery):
     chat_id = callback.message.chat.id
     ui.clear_input(chat_id)
+    ui.cards.pop(chat_id, None)
     rows = _live_rows()
     if rows:
         text = (
@@ -375,6 +396,7 @@ async def _refresh_token_menu(callback: CallbackQuery, symbol: str) -> None:
     except TelegramBadRequest as e:
         if "message is not modified" not in str(e).lower():
             raise
+    _arm(callback.bot, chat_id, callback.message.message_id, symbol)
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("watch:"))
@@ -413,6 +435,7 @@ async def on_start(message: Message, command: CommandObject):
             )
             async with _token_menus_lock:
                 _token_menus[chat_id] = sent.message_id
+            _arm(message.bot, chat_id, sent.message_id, symbol_u)
             return
 
     text = (
@@ -456,22 +479,32 @@ async def on_board(message: Message):
         return
     lines = [_group_line(g) for g in groups]
     text = "<code>" + "\n".join(lines) + "</code>"
-    await message.answer(text)
+    await message.answer(text, reply_markup=ui.kb([ui.link_btn(ui.OPEN_SITE, ui.site("/board"))]))
+
+
+async def _send_card(message: Message, symbol: str) -> bool:
+    """Token card with its buttons (no link lines). Same card as tapping the symbol on the board."""
+    chat_id = message.chat.id
+    sym = _card_symbol(symbol)
+    text = _token_menu_text(sym, chat_id)
+    if not text:
+        return False
+    ui.clear_input(chat_id)
+    sent = await message.answer(text, reply_markup=_token_menu_markup(chat_id, sym), disable_web_page_preview=True)
+    async with _token_menus_lock:
+        _token_menus[chat_id] = sent.message_id
+    _arm(message.bot, chat_id, sent.message_id, sym)
+    return True
 
 
 @router.message(Command("t"))
 async def on_t(message: Message, command: CommandObject):
     symbol = (command.args or "").strip()
     if not symbol:
-        await message.answer("Usage: /t SPACEX")
+        await message.answer("Usage: /t NVDAB")
         return
-    row = _row_for(symbol)
-    if not row:
+    if not await _send_card(message, symbol):
         await message.answer(f"Unknown symbol: {symbol}")
-        return
-    jup_link = f"{PANCAKE_BASE}?chain=bsc&inputCurrency=USDT&outputCurrency={row['mint']}"
-    text = _card_text(row) + f"\nTrade: {WEB_PUBLIC_URL}/t/{row['symbol']}#swap\nPancakeSwap: {jup_link}"
-    await message.answer(text, disable_web_page_preview=True)
 
 
 @router.message(Command("watch"))
@@ -535,38 +568,6 @@ async def on_session(message: Message):
     await message.answer(text)
 
 
-@router.message(Command("buy"))
-async def on_buy(message: Message, command: CommandObject):
-    import basket
-    parts = (command.args or "").split()
-    if not parts:
-        await message.answer("Usage: /buy NVDA 50")
-        return
-    u = rwa.resolve_underlying(parts[0])
-    if not u:
-        await message.answer(f"Unknown symbol: {parts[0]}")
-        return
-    try:
-        usd = float(parts[1].lstrip("$")) if len(parts) > 1 else 10.0
-    except ValueError:
-        await message.answer("Usage: /buy NVDA 50")
-        return
-    if not 1 <= usd <= 1000:
-        await message.answer("Dollars must be 1 to 1000.")
-        return
-    r = await basket.quick_pick(u, usd)
-    lines = basket.pick_lines(r)
-    if r.get("mark"):
-        lines.insert(0, f"{u} cash print ${r['mark']:,.2f}, band +/-{r['bandBps']:.0f} bps, ${usd:g}")
-    if not r.get("ok"):
-        lines.append(r.get("reason") or "Not available right now")
-        await message.answer("<code>" + "\n".join(lines) + "</code>")
-        return
-    link = f"{WEB_PUBLIC_URL}/t/{r['symbol']}#swap?pay=USDT&amt={usd:g}"
-    scan = f"https://bscscan.com/token/{r['contract']}"
-    await message.answer("<code>" + "\n".join(lines) + f"</code>\nBuy {r['symbol']}, you sign in your wallet. Open in your wallet's dApp browser and connect first, the Buy sheet opens after connect (Telegram's in-app browser has no wallet):\n{link}\nContract: {scan}", disable_web_page_preview=True)
-
-
 @router.message(Command("agent"))
 async def on_agent(message: Message, command: CommandObject):
     import agent
@@ -583,22 +584,17 @@ async def on_agent(message: Message, command: CommandObject):
         if underlying else
         "Nothing to act on — wrappers are within 1% of each other and none is >2% rich."
     )
-    await message.answer(text or fallback, disable_web_page_preview=True)
+    await message.answer(text or fallback, reply_markup=agent.agent_markup(underlying) if text else None,
+                         disable_web_page_preview=True)
 
 
 @router.message()
 async def on_symbol_shortcut(message: Message):
-    """Bare /spacex style shortcut per spec §2.2."""
+    """Bare /nvda or /nvdab: the token card."""
     text = (message.text or "").strip()
     if not text.startswith("/"):
         return
-    symbol = text[1:].split("@")[0]
-    row = _row_for(symbol)
-    if not row:
-        return
-    jup_link = f"{PANCAKE_BASE}?chain=bsc&inputCurrency=USDT&outputCurrency={row['mint']}"
-    reply = _card_text(row) + f"\nTrade: {WEB_PUBLIC_URL}/t/{row['symbol']}#swap\nPancakeSwap: {jup_link}"
-    await message.answer(reply, disable_web_page_preview=True)
+    await _send_card(message, text[1:].split("@")[0])
 
 
 # ---------------------------------------------------------------------------
@@ -804,8 +800,10 @@ async def _polling_loop():
     _dp.include_router(tg_trade.router)
     _dp.include_router(tg_send.router)
     _dp.include_router(tg_book.router)
+    _dp.include_router(tg_adv.router)
     _dp.include_router(router)  # last: holds the bare /symbol catch-all
 
+    await _set_profile(_bot)
     global _live_board_task, _digest_task, _keepalive_task
     if _keepalive_task is None or _keepalive_task.done():
         _keepalive_task = asyncio.create_task(tg_wallet.keepalive_loop(_bot))
@@ -830,18 +828,43 @@ async def _polling_loop():
 
 
 
-_bot_ref = None
+COMMANDS = [
+    ("start", "Open the board"),
+    ("board", "Tape vs mark, every stock"),
+    ("book", "Your holdings"),
+    ("buy", "Buy in one line: /buy NVDA 50"),
+    ("send", "Send BNB, USDT or a stock"),
+    ("t", "Token card: /t NVDAB"),
+    ("agent", "Rotate and flatten ideas"),
+    ("watch", "Watch a stock: /watch NVDA"),
+    ("unwatch", "Stop watching a stock"),
+    ("watches", "Your watch list"),
+    ("session", "Market hours and NY close"),
+]
+DESCRIPTION = ("StreetTape: tokenized stocks on BNB Chain, made simple. Link a Binance Agentic Wallet once, "
+               "then buy, sell and send in a few taps. We show tape vs mark and pick the cheapest version for you.")
+SHORT_DESCRIPTION = "Buy, sell and send tokenized stocks on BNB Chain. Tape vs mark, one tap."
 
-async def send_alert(chat_id: int, text: str) -> None:
-    """Used by agent.py. Requires the bot loop to have started."""
-    token = BOT_TOKEN
-    if not token:
-        return
-    from aiogram import Bot
-    from aiogram.client.default import DefaultBotProperties
-    bot = Bot(token=token, default=DefaultBotProperties(parse_mode="HTML"))
+
+async def _set_profile(bot: Bot) -> None:
     try:
-        await bot.send_message(chat_id, text, disable_web_page_preview=True)
+        await bot.set_my_commands([BotCommand(command=c, description=d) for c, d in COMMANDS])
+        await bot.set_my_description(DESCRIPTION)
+        await bot.set_my_short_description(SHORT_DESCRIPTION)
+    except Exception:
+        log.warning("telegram_bot: could not set command menu / descriptions", exc_info=True)
+
+
+async def send_alert(chat_id: int, text: str, buttons: InlineKeyboardMarkup | None = None) -> None:
+    """Used by agent.py. Reuses the polling bot; a one-shot Bot is the fallback before polling starts."""
+    if _bot is not None:
+        await ui.say(_bot, chat_id, text, buttons)
+        return
+    if not BOT_TOKEN:
+        return
+    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
+    try:
+        await ui.say(bot, chat_id, text, buttons)
     finally:
         await bot.session.close()
 
