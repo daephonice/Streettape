@@ -3,7 +3,7 @@
   const $ = (id) => document.getElementById(id);
   const sym = $('qb-sym'), amts = $('qb-amts'), go = $('qb-go'), note = $('qb-note');
   if (!sym || !go) return;
-  const st = { usd: 10, busy: false, prices: {}, assets: {}, holdings: {} };
+  const st = { usd: 5, busy: false, prices: {}, assets: {}, holdings: {} };
   const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
   async function getJSON(url) {
