@@ -342,6 +342,19 @@ def rotate_confirm_text(u: str, sym: str, to: str, qty: float, out: float, buy: 
             f"Same {u} shares, cheaper version. Two swaps via USDT.\n<i>Quote good for 60s</i>")
 
 
+def _clock(sec: float) -> str:
+    m, s = divmod(int(max(sec, 0)), 60)
+    return f"{m}:{s:02d}"
+
+
+def rotate_progress_text(sym: str, to: str, step: int, elapsed: float, est: float) -> str:
+    frm, dst = (sym, "USDT") if step == 1 else ("USDT", to)
+    return ("⏳ <b>Transaction processing</b>\n"
+            f"Step {step}/2: {frm} → {dst}\n"
+            f"Time <code>{_clock(elapsed)}</code> · est. <code>~{_clock(est)}</code>\n"
+            "<b>DON'T CLOSE THIS MESSAGE</b>")
+
+
 def pack_confirm_text(label: str, usd: float, legs: list[dict], skipped: list[tuple]) -> str:
     rows = [f"{l['u']:<5} ${l['usd']:>6.2f} ≈ {l['out']:.4g} {l['sym']}" for l in legs]
     rows += [f"{u:<5} skipped: {why}" for u, why in skipped]

@@ -3,15 +3,18 @@ Read-only reuse of agent.net_arb_quote, basket.build/_cheapest and the tg_trade 
 Buy/Sell pipeline: baw quote cross-check, confirm screen, 60 s expiry, one tap consumes the id, chat lock held
 end to end, one baw swap + poll per leg. Floor, defensive and earnings stand-down stay on the site."""
 import time
+import asyncio
 import logging
 
 from aiogram import Router
+from aiogram.exceptions import TelegramRetryAfter
 from aiogram.types import CallbackQuery
 
 import agent
 import balances
 import basket
 import prices
+import routing_rules
 import rwa
 import tg_trade as tt
 import tg_ui as ui
@@ -20,7 +23,9 @@ import tg_wallet as tw
 log = logging.getLogger("tg_adv")
 
 router = Router()
-ROTATE_MIN_USD = 5.0        # Ondo RFQ rejects under $5 (code 40375)
+ROTATE_EST_S = 60           # shown as the estimate; two baw legs settle in about this long
+TICK_S = 2                  # progress message refresh
+BACK_STOCKS = "Back to stocks"
 _BAW_ERR = (tw.BawError, KeyError, TypeError, ValueError)
 
 
@@ -38,6 +43,13 @@ def _kb_tx(*rows_tx):
 
 # ---- rotate ---------------------------------------------------------------
 
+def _bot_cheapest(g: dict | None, hw: dict | None):
+    """Cheapest wrapper the bot can rotate into (Ondo <-> bStocks only), or None."""
+    ws = [x for x in (g or {}).get("wrappers") or []
+          if routing_rules.bot_rotate_ok((hw or {}).get("platform"), x.get("platform"))]
+    return basket._cheapest({"wrappers": ws}) if ws else None
+
+
 async def _plan(w, u: str):
     """(plan, None) when the held wrapper of `u` can switch to a cheaper one at a positive net, else (None, why)."""
     h = await tt._holding(w, u)
@@ -45,7 +57,7 @@ async def _plan(w, u: str):
         return None, "no_holding"
     sym, amt, _, mint = h
     g, hw = tt.find(sym)
-    cheap = basket._cheapest(g)
+    cheap = _bot_cheapest(g, hw)
     if not (g and hw and cheap) or cheap["symbol"].upper() == sym.upper():
         return None, "none"
     px, ratio = hw.get("tokenPrice"), tt.share_ratio(sym)
@@ -56,7 +68,7 @@ async def _plan(w, u: str):
         return None, "none"
     qty = tt._floor8(amt)
     usd = qty * px
-    if usd < ROTATE_MIN_USD:
+    if usd < routing_rules.BOT_ROTATE_MIN_USD:
         return None, "small"
     gap = held_ps / cheap_ps - 1
     hit = {"underlying": u, "rich": hw, "cheap": cheap, "gap": gap, "normalized": True,
@@ -87,7 +99,7 @@ async def rotate_btn(chat_id: int, u: str):
 async def _prepare_rotate(chat_id: int, w, u: str):
     p, why = await _plan(w, u)
     if not p:
-        return ui.rotate_none_text(u, why, ROTATE_MIN_USD), ui.cancelled_kb(u)
+        return ui.rotate_none_text(u, why, routing_rules.BOT_ROTATE_MIN_USD), ui.cancelled_kb(u)
     try:
         out = await _bq(chat_id, p["mint"], rwa.USDT, p["qty"])
     except tw.SessionExpired:
@@ -110,40 +122,69 @@ async def _prepare_rotate(chat_id: int, w, u: str):
     return text, ui.adv_confirm_kb("Confirm · Switch", pid)
 
 
+async def _tick(cb: CallbackQuery, p: dict, st: dict):
+    """Edit the progress message in place every TICK_S. The timer changes the text, so every edit is real.
+    Harmless edit errors (not modified, transient) are swallowed; Telegram throttling is waited out."""
+    chat_id, mid = cb.message.chat.id, cb.message.message_id
+    while True:
+        await asyncio.sleep(TICK_S)
+        text = ui.rotate_progress_text(p["sym"], p["to"], st["step"], time.monotonic() - st["t0"], ROTATE_EST_S)
+        try:
+            await ui.edit(cb.bot, chat_id, mid, text)
+        except TelegramRetryAfter as e:
+            await asyncio.sleep(e.retry_after)
+        except Exception:
+            log.debug("tg_adv: progress edit skipped", exc_info=True)
+
+
 async def _exec_rotate(cb: CallbackQuery, w, p: dict):
     chat_id = cb.message.chat.id
-    await ui.show(cb, ui.working_text("Switching"))
+    st = {"step": 1, "t0": time.monotonic()}
+    await ui.show(cb, ui.rotate_progress_text(p["sym"], p["to"], 1, 0, ROTATE_EST_S))
+    ticker = asyncio.create_task(_tick(cb, p, st))
     b = None
-    async with tw.lock(chat_id):
-        s = await tt._run_swap(chat_id, p["mint"], rwa.USDT, p["qty"], have_lock=True)
-        if s["status"] == "FINISHED":
-            got = tt._num((s["row"] or {}).get("toTokenActualQty"), p["out"] * 0.99)
-            try:
-                b = await tt._run_swap(chat_id, rwa.USDT, p["to_mint"], tt._floor8(got), have_lock=True)
-            except tw.SessionExpired:
-                b = {"status": "FAILED", "row": None, "error": "wallet session ended"}
+    try:
+        async with tw.lock(chat_id):
+            s = await tt._run_swap(chat_id, p["mint"], rwa.USDT, p["qty"], have_lock=True)
+            if s["status"] == "FINISHED":     # leg 2 starts by itself, with the USDT actually received
+                got = tt._floor8(tt._num((s["row"] or {}).get("toTokenActualQty"), p["out"] * 0.99))
+                st["step"] = 2
+                ok, why = routing_rules.bot_allowed(rwa.USDT, p["to_mint"], got)
+                if not ok:
+                    b = {"status": "FAILED", "row": None, "error": why}
+                else:
+                    try:
+                        b = await tt._run_swap(chat_id, rwa.USDT, p["to_mint"], got, have_lock=True)
+                    except tw.SessionExpired:
+                        b = {"status": "FAILED", "row": None, "error": "wallet session ended"}
+    finally:
+        ticker.cancel()
+        await asyncio.gather(ticker, return_exceptions=True)
     balances.invalidate(w.address)
-    await ui.show(cb, *_rotate_receipt(p, s, b))
+    await ui.show(cb, *_rotate_receipt(p, s, b, time.monotonic() - st["t0"]))
 
 
-def _rotate_receipt(p: dict, s: dict, b: dict | None):
+def _rot_kb(*rows_tx, extra=()):
+    tx = [ui.link_btn(label, ui.scan_tx(h)) for label, h in rows_tx if h]
+    return ui.kb(tx, [*extra], [ui.cb_btn(BACK_STOCKS, "stk")])
+
+
+def _rotate_receipt(p: dict, s: dict, b: dict | None, secs: float = 0.0):
     tx_s = tt._tx(s["row"])
     if s["status"] == "FAILED":
-        return f"Switch failed at the sell. Nothing changed.{ui.sw_error(s.get('error'))}", _kb_tx(("Sell tx", tx_s))
+        return f"Switch failed at the sell. Nothing changed.{ui.sw_error(s.get('error'))}", _rot_kb(("Sell tx", tx_s))
     if s["status"] == "PENDING":
-        return "Sell still confirming. No buy was sent. Check Book in a minute.", ui.kb(ui.tail_row())
+        return "Sell still confirming. No buy was sent. Check Book in a minute.", _rot_kb()
     got = tt._num((s["row"] or {}).get("toTokenActualQty"), p["out"])
     sold = f"Sold <code>{p['qty']:.6g}</code> {p['sym']} for $<code>{got:,.2f}</code> USDT."
-    tx_b = tt._tx((b or {}).get("row"))
     if b["status"] == "FINISHED":
         bought = tt._num(b["row"].get("toTokenActualQty"), 0.0)
-        return (f"Switched. {sold}\nBought <code>{bought:.4g}</code> {p['to']}.",
-                _kb_tx(("Sell tx", tx_s), ("Buy tx", tx_b)))
+        return (f"✅ <b>Transaction successful</b>\n{sold}\nBought <code>{bought:.4g}</code> {p['to']}.\n"
+                f"Time <code>{ui._clock(secs)}</code>"), ui.kb([ui.cb_btn(BACK_STOCKS, "stk")])
     if b["status"] == "PENDING":
-        return f"{sold}\nBuy still confirming. Check Book in a minute.", _kb_tx(("Sell tx", tx_s))
-    kb = ui.kb([ui.link_btn("Sell tx", ui.scan_tx(tx_s))] if tx_s else [],
-               [ui.cb_btn(ui.BUY + f" {p['u']}", f"buy:{p['u']}")], ui.tail_row())
-    return f"{sold}\nBuy failed.{ui.sw_error(b.get('error'))} The USDT is in your wallet.", kb
+        return f"{sold}\nBuy still confirming. Check Book in a minute.", _rot_kb(("Sell tx", tx_s))
+    return (f"{sold}\nBuy failed.{ui.sw_error(b.get('error'))} The USDT is in your wallet.",
+            _rot_kb(("Sell tx", tx_s), extra=[ui.cb_btn(ui.BUY + f" {p['u']}", f"buy:{p['u']}")]))
 
 
 # ---- AI starter pack ---------------------------------------------------------

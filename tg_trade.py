@@ -13,6 +13,7 @@ from aiogram.types import CallbackQuery, Message
 import balances
 import basket
 import prices
+import routing_rules
 import rwa
 import swap
 import tg_ui as ui
@@ -165,10 +166,13 @@ def _num(v, default=None):
 
 async def _prepare_buy(chat_id: int, wallet, u: str, usd: float):
     """Returns (text, markup). Stores a pending confirm when everything passes."""
-    r = await basket.quick_pick(u, usd)
+    r = await basket.quick_pick(u, usd, skip=routing_rules.BOT_PICK_SKIP)
     if not r.get("ok"):
         return (r.get("reason") or "Not available right now."), ui.refuse_kb(u, usd)
     sym, mint = r["symbol"], r["contract"]
+    ok, why = routing_rules.bot_allowed(rwa.USDT, mint, usd)
+    if not ok:     # before any baw call
+        return why, ui.kb([ui.cb_btn(ui.BACK, f"tok:{u}")])
     try:
         q = await tw.baw(chat_id, "market-order", "quote", "--fromTokenQty", _qty(usd), "--fromToken", rwa.USDT,
                          "--toToken", mint, "--binanceChainId", CHAIN)
@@ -216,6 +220,9 @@ async def _prepare_sell(chat_id: int, wallet, u: str, pct: int, only: str | None
     qty = _floor8(amt if pct >= 100 else amt * pct / 100)
     if qty <= 0:
         return ui.no_holding_text(u), ui.cancelled_kb(u)
+    ok, why = routing_rules.bot_allowed(mint, rwa.USDT, routing_rules.usd_value(mint, qty))
+    if not ok:     # before any baw call
+        return why, ui.cancelled_kb(u)
     try:
         q = await tw.baw(chat_id, "market-order", "quote", "--fromTokenQty", _qty(qty), "--fromToken", mint,
                          "--toToken", rwa.USDT, "--binanceChainId", CHAIN)

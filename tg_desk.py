@@ -15,6 +15,7 @@ import balances
 import basket
 import news
 import prices
+import routing_rules
 import rwa
 import swap
 import tg_adv
@@ -31,7 +32,8 @@ FLOW_TTL = 1800.0
 BUY_USD = (10, 25, 50)
 PCTS = (25, 50, 75, 100)
 BUY_MIN_USD, BUY_MAX_USD = 1.0, 1000.0
-ONDO_MIN_USD = tg_adv.ROTATE_MIN_USD
+ONDO_MIN_USD = routing_rules.MIN_USD
+ROT_MIN_USD = routing_rules.BOT_ROTATE_MIN_USD
 BNB_RESERVE = 0.0002            # kept back for gas, same as the site's sheet
 COINS = ("BNB", "USDC", "USDT")
 COIN_MINT = {"BNB": rwa.NATIVE, "USDC": rwa.USDC, "USDT": rwa.USDT}
@@ -100,12 +102,8 @@ def _is_ondo(w: dict | None) -> bool:
 
 
 def _lock_reason(coin: str, w: dict | None) -> str | None:
-    """Ondo wrappers never pair with BNB, and the site pays them in USDT only (USDC is rejected, code 40368)."""
-    if _is_ondo(w) and coin == "BNB":
-        return "BNB can't be swapped with Ondo wrappers."
-    if _is_ondo(w) and coin == "USDC":
-        return "Ondo wrappers pay in USDT only."
-    return None
+    """Bot locks (routing_rules): xStocks entirely, BNB with Ondo. USDC and USDT stay open for Ondo."""
+    return routing_rules.bot_lock((w or {}).get("platform"), coin)
 
 
 def _fmt_impact(v) -> str:
@@ -399,12 +397,14 @@ def _flow_buttons(fl: dict, wl: list[dict]):
     sel = next((w for w in wl if w["platform"] == fl["wrap"]), None)
     rows = []
     if side in ("buy", "sell"):
-        rows.append([ui.cb_btn(("✅ " if w["platform"] == fl["wrap"] else "") + ("" if _has_tape(w) else "🔒 ") + w["symbol"],
+        rows.append([ui.cb_btn(("✅ " if w["platform"] == fl["wrap"] else "") + ("🔒 " if (not _has_tape(w) or routing_rules.bot_lock(w["platform"])) else "") + w["symbol"],
                                f"fw:{PCODE.get(w['platform'], 'x')}") for w in wl])
         rows.append([ui.cb_btn(("✅ " if fl["coin"] == c else "") + ("🔒 " if _lock_reason(c, sel) else "") + c, f"fc:{c}")
                      for c in COINS])
     pick = (lambda n: f"${n}") if side == "buy" else (lambda n: "Max" if n == 100 else f"{n}%")
     vals = BUY_USD if side == "buy" else PCTS
+    if side == "buy" and _is_ondo(sel):
+        vals = tuple(n for n in vals if n >= ONDO_MIN_USD)
     amts = [ui.cb_btn(("✅ " if (not fl["custom"] and fl["amt"] == n) else "") + pick(n), f"fa:{n}") for n in vals]
     custom = ui.cb_btn(_amt_label(fl) if fl["custom"] else "✏️ Custom", "fx")
     if side == "buy":
@@ -446,11 +446,13 @@ async def _flow_view(chat_id: int, w):
         return "Not available right now.", ui.kb([ui.cb_btn(ui.BACK, "stk")])
     wl = _wrap_list(g)
     hold = await _hold(w)
+    sel = next((x for x in wl if x["platform"] == fl.get("wrap")), None)
+    mn = f"\n<i>Ondo minimum ${ONDO_MIN_USD:g}.</i>" if _is_ondo(sel) else ""
     if side == "buy":
-        head = (f"🟢 <b>Buy {u}</b>\nPick a wrapper, a coin to pay with, and an amount.\n\n"
+        head = (f"🟢 <b>Buy {u}</b>\nPick a wrapper, a coin to pay with, and an amount.{mn}\n\n"
                 f"<b>Your coins</b>\n{_holdings_block(hold)}")
     elif side == "sell":
-        head = (f"🔴 <b>Sell {u}</b>\nPick the wrapper, the coin you want to receive, and how much.\n\n"
+        head = (f"🔴 <b>Sell {u}</b>\nPick the wrapper, the coin you want to receive, and how much.{mn}\n\n"
                 f"<b>Your holdings</b>\n{_holdings_block(hold, wl, coins=False)}")
     else:
         frm = next((x for x in wl if x["symbol"] == fl["from"]), None)
@@ -459,7 +461,7 @@ async def _flow_view(chat_id: int, w):
         head = (f"🔁 <b>Rotate {u}</b>\n{fl['from']} → {fl['to']} · gap {fl['gap'] * 100:.1f}%\n\n"
                 f"<b>You hold</b>\n<code>{_tok(amt)} {fl['from']}" + (f" ≈ {_usd(amt * px)}" if px else "") + "</code>\n\n"
                 f"Same stock, cheaper wrapper. We sell {fl['from']} to USDT, then buy {fl['to']} with it. "
-                "Never traded against a frozen print.\n\nHow much?")
+                f"Never traded against a frozen print. Minimum ${ROT_MIN_USD:g}.\n\nHow much?")
     return head, ui.kb(*_flow_buttons(fl, wl))
 
 
@@ -489,11 +491,15 @@ async def on_open(cb: CallbackQuery):
     hold = await _hold(w)
     if side == "buy":
         win, _ = await _route_rows(u, g)
-        pre = next((x for x in wl if x["symbol"] == win), None) or next((x for x in wl if _has_tape(x)), None)
+        pre = (next((x for x in wl if x["symbol"] == win and not routing_rules.bot_lock(x["platform"])), None)
+               or next((x for x in wl if _has_tape(x) and not routing_rules.bot_lock(x["platform"])), None)
+               or next((x for x in wl if _has_tape(x)), None))
     else:
         held = [x for x in wl if _held(hold, x["symbol"]) > 0]
-        held.sort(key=lambda x: -(_held(hold, x["symbol"]) * (x.get("tokenPrice") or 0)))
-        pre = held[0] if held else next((x for x in wl if _has_tape(x)), None)
+        held.sort(key=lambda x: (bool(routing_rules.bot_lock(x["platform"])),
+                                 -(_held(hold, x["symbol"]) * (x.get("tokenPrice") or 0))))
+        pre = held[0] if held else (next((x for x in wl if _has_tape(x) and not routing_rules.bot_lock(x["platform"])), None)
+                                    or next((x for x in wl if _has_tape(x)), None))
     await cb.answer()
     _new_flow(chat_id, side, u, cb.message.message_id, wrap=(pre or {}).get("platform"))
     await ui.show(cb, *(await _flow_view(chat_id, w)))
@@ -506,7 +512,7 @@ async def _rot_plan(w, u: str, size_usd: float | None = None):
         return None, "no_holding"
     sym, amt, _, mint = h
     g, hw = tt.find(sym)
-    cheap = basket._cheapest(g)
+    cheap = tg_adv._bot_cheapest(g, hw)
     if not (g and hw and cheap) or cheap["symbol"].upper() == sym.upper():
         return None, "none"
     px, ratio = hw.get("tokenPrice"), tt.share_ratio(sym)
@@ -517,7 +523,7 @@ async def _rot_plan(w, u: str, size_usd: float | None = None):
         return None, "none"
     qty_full = tt._floor8(amt)
     usd = size_usd if size_usd is not None else qty_full * px
-    if usd < ONDO_MIN_USD:
+    if usd < ROT_MIN_USD:
         return None, "small"
     gap = held_ps / cheap_ps - 1
     hit = {"underlying": u, "rich": hw, "cheap": cheap, "gap": gap, "normalized": True,
@@ -531,7 +537,7 @@ async def _rot_plan(w, u: str, size_usd: float | None = None):
 
 
 _WHY = {"no_holding": "you hold no {u} to rotate.", "none": "no cheaper wrapper right now.",
-        "small": f"too small, minimum ${ONDO_MIN_USD:g}.", "costs": "costs eat the gap right now."}
+        "small": f"too small, minimum ${ROT_MIN_USD:g}.", "costs": "costs eat the gap right now."}
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("ro:"))
@@ -585,6 +591,10 @@ async def on_wrap(cb: CallbackQuery):
     sel = next((x for x in _wrap_list(g or {}) if x["platform"] == plat), None)
     if not sel or not _has_tape(sel):
         await cb.answer("No tape for this wrapper yet.", show_alert=True)
+        return
+    lock = routing_rules.bot_lock(plat)
+    if lock:
+        await cb.answer(lock, show_alert=True)
         return
     fl["wrap"] = plat
     if _lock_reason(fl["coin"], sel):
@@ -860,8 +870,8 @@ async def _quote_rot(chat_id: int, w, fl: dict):
     px = (hw or {}).get("tokenPrice")
     qty = _sell_qty(fl, held, px)
     usd = qty * (px or 0)
-    if usd < ONDO_MIN_USD:
-        return f"Too small to rotate. Minimum ${ONDO_MIN_USD:g}.", ui.kb([ui.cb_btn(ui.BACK, "fq")])
+    if usd < ROT_MIN_USD:
+        return f"Too small to rotate. Minimum ${ROT_MIN_USD:g}.", ui.kb([ui.cb_btn(ui.BACK, "fq")])
     plan, why = await _rot_plan(w, u, size_usd=usd)
     if not plan:
         reason = _WHY.get(why, "not available.").format(u=u)
@@ -922,11 +932,19 @@ async def on_continue(cb: CallbackQuery):
         if why:
             await cb.answer(why, show_alert=True)
             return
-        if fl["side"] == "buy" and _is_ondo(sel) and fl["amt"] < ONDO_MIN_USD:
-            await cb.answer(f"Ondo minimum is ${ONDO_MIN_USD:g}.", show_alert=True)
-            return
-        if fl["side"] == "sell" and _held(await _hold(w), sel["symbol"]) <= 0:
-            await cb.answer(f"You hold no {sel['symbol']}.", show_alert=True)
+        if fl["side"] == "buy":
+            frm, to, usd = COIN_MINT[fl["coin"]], sel["mint"], (fl["amt"] if fl["kind"] == "usd" else None)
+        else:
+            held = _held(await _hold(w), sel["symbol"])
+            if held <= 0:
+                await cb.answer(f"You hold no {sel['symbol']}.", show_alert=True)
+                return
+            px = sel.get("tokenPrice")
+            usd = _sell_qty(fl, held, px) * px if px else None
+            frm, to = sel["mint"], COIN_MINT[fl["coin"]]
+        ok, why = routing_rules.bot_allowed(frm, to, usd)
+        if not ok:
+            await cb.answer(why, show_alert=True)
             return
     if tw.lock(chat_id).locked():
         await cb.answer("Another action is running.")
@@ -948,6 +966,11 @@ async def on_quote_back(cb: CallbackQuery):
         return
     await cb.answer()
     await ui.show(cb, *(await _flow_view(cb.message.chat.id, w)))
+
+
+@router.callback_query(lambda c: c.data == "lk:x")
+async def on_locked_wrapper(cb: CallbackQuery):
+    await cb.answer(routing_rules.XSTOCKS_LOCK_MSG, show_alert=True)
 
 
 @router.callback_query(lambda c: c.data == "fn")

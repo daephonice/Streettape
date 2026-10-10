@@ -19,6 +19,10 @@ WRAPPER_FAMILIES = ("xstocks", "ondo", "bstocks")
 SITE_DIRECT_PANCAKE = ("xstocks",)       # always Pancake, Binance never tried
 SITE_BINANCE = ("bstocks",)              # always Binance first, fallback on error
 SITE_THRESHOLD = ("ondo", "stable")      # < MIN_USD Pancake directly, >= MIN_USD Binance first
+BOT_ROTATE_FAMILIES = ("ondo", "bstocks")   # xStocks have no baw liquidity, so the bot never rotates them
+BOT_PICK_SKIP = ("xstocks",)             # quick_pick never offers these to the bot
+XSTOCKS_LOCK_MSG = "xStocks are locked in the bot (no Binance liquidity). Use the site."
+ONDO_BNB_MSG = "BNB can't be swapped with Ondo. Use USDC or USDT."
 ONDO_BLOCKED_PAY = ("BNB",)              # BNB <-> Ondo is not swappable (swap.unsupported_pair enforces it)
 
 _STABLE_ADDRS = {rwa.NATIVE.lower(), rwa.WBNB.lower(), rwa.USDC.lower(), rwa.USDT.lower()}
@@ -67,10 +71,10 @@ def bot_allowed(from_: str, to: str, usd) -> tuple[bool, str | None]:
     a, b = family(from_), family(to)
     fams = {a, b}
     if "xstocks" in fams:
-        return False, "xStocks are locked in the bot (no Binance liquidity). Use the site."
+        return False, XSTOCKS_LOCK_MSG
     if "ondo" in fams:
         if any(rwa.is_bnb(x) or (x or "").upper() == "BNB" for x in (from_, to)):
-            return False, "BNB can't be swapped with Ondo. Use USDC or USDT."
+            return False, ONDO_BNB_MSG
         if usd is not None and usd < MIN_USD:
             return False, f"Minimum is ${MIN_USD:g} for Ondo."
         return True, None
@@ -79,6 +83,21 @@ def bot_allowed(from_: str, to: str, usd) -> tuple[bool, str | None]:
     if fams == {"stable"} and usd is not None and usd < MIN_USD:
         return False, f"Minimum is ${MIN_USD:g} for this swap."
     return True, None
+
+
+def bot_lock(platform: str | None, coin: str | None = None) -> str | None:
+    """Why a wrapper (with an optional pay/receive coin) is locked in the bot, None when open. For button locks."""
+    if platform == "xstocks":
+        return XSTOCKS_LOCK_MSG
+    if platform == "ondo" and (coin or "").upper() == "BNB":
+        return ONDO_BNB_MSG
+    return None
+
+
+def bot_rotate_ok(from_platform: str | None, to_platform: str | None) -> bool:
+    """Bot Rotate runs Ondo <-> bStocks only."""
+    return (from_platform in BOT_ROTATE_FAMILIES and to_platform in BOT_ROTATE_FAMILIES
+            and from_platform != to_platform)
 
 
 def site_allowed(from_: str, to: str) -> tuple[bool, str | None]:

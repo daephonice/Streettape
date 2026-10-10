@@ -34,6 +34,7 @@ from sqlalchemy import select
 import news
 import rwa
 import prices
+import routing_rules
 from database import SessionLocal
 from models import Watch
 import tg_wallet
@@ -218,8 +219,10 @@ def _token_menu_markup(chat_id: int, symbol: str, rotate=None) -> InlineKeyboard
         return ui.kb([ui.cb_btn(ui.SEND, "snd:BNB"), watch_btn], [ui.cb_btn(ui.BOARD, "back:board")])
     row = _row_for(symbol_u) or {}
     u = row.get("underlying") or rwa.resolve_underlying(symbol_u) or symbol_u
+    locked = routing_rules.bot_lock(row.get("platform") or routing_rules.family(symbol_u))
     rows = [
-        [ui.cb_btn(ui.BUY, f"buy:{u}"), ui.cb_btn(ui.SELL, f"sell:{u}")],
+        ([ui.cb_btn("🔒 " + ui.BUY, "lk:x"), ui.cb_btn("🔒 " + ui.SELL, "lk:x")] if locked
+         else [ui.cb_btn(ui.BUY, f"buy:{u}"), ui.cb_btn(ui.SELL, f"sell:{u}")]),
         [ui.cb_btn(ui.SEND, f"snd:{symbol_u}"), watch_btn],
         [ui.cb_btn(ui.CHECK, f"chk:{u}:10"), ui.link_btn(ui.OPEN_SITE, ui.site(f"/t/{symbol_u}"))],
     ]

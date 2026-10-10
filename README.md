@@ -15,6 +15,8 @@ Spot only. Nothing auto-executes.
 
 Rotate is its own sheet, not Sell then Buy. Heading is `ROTATE {rich} to {cheap}`. Size is 25 / 50 / 75 / MAX of the rich wrapper. The button says Connect wallet until a wallet is in, then Rotate. One quote, rich mint to cheap mint, one signature once the wrapper has an allowance (first use adds an approve). BNB against Ondo stays blocked. Sell and Buy stay cash sheets.
 
+Routing rules live in `routing_rules.py` (the site reads them from `GET /api/routing-rules`). Site: xStocks go straight to Pancake; Ondo and BNB/USDC/USDT swaps go to Pancake under $5 and to the Binance route from $5 (Pancake only on error); bStocks use the Binance route; Rotate is Pancake, no minimum. Telegram bot (baw, Binance route only): xStocks locked, Ondo $5 minimum with BNB locked (USDC and USDT open), bStocks no minimum, Rotate is Ondo <-> bStocks via USDT with a $6 minimum.
+
 ## Run
 
 ```bash

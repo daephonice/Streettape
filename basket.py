@@ -220,7 +220,7 @@ def _candidate(w: dict, mark: float | None) -> dict:
     return c
 
 
-async def quick_pick(underlying: str, usd: float = 10.0) -> dict:
+async def quick_pick(underlying: str, usd: float = 10.0, skip: tuple = ()) -> dict:
     """Score every wrapper of one underlying against the cash print, drop any outside the band,
     quote survivors cheapest first, return the winner plus all candidates with reasons. Quote only."""
     u = underlying.upper()
@@ -230,7 +230,7 @@ async def quick_pick(underlying: str, usd: float = 10.0) -> dict:
         return {"ok": False, "underlying": u, "usd": usd, "candidates": [], "reason": "not on the board"}
     mark = g.get("markPrice")
     wmap = {w.get("symbol"): w for w in g.get("wrappers") or []}
-    cands = [_candidate(w, mark) for w in wmap.values()]
+    cands = [_candidate(w, mark) for w in wmap.values() if w.get("platform") not in skip]
     base = {"underlying": u, "usd": usd, "mark": mark, "bandBps": QUICKBUY_BAND_BPS, "candidates": cands}
     if not mark:
         return {**base, "ok": False, "reason": "no cash print to check against"}
