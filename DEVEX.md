@@ -614,3 +614,29 @@ Already written up in Findings. Not pasted again. Counts from that container, fo
   - A QR drawn in Termux with `qrencode` from the same `urlForWeb` and scanned from the screen share did get through to the wallet owner's phone, which then asked me to confirm.
   - `baw auth verify` alone: `required option '--qrCodeId <id>' not specified`. With an id copied by hand some minutes later: `[10002004] QR code does not exist or expired, please try a new code or restart the log in process.` Signin, QR and `verify --qrCodeId` run as one command line: `Authorized, creating wallet...`, then `Login successful! Wallet created`. `baw wallet balance` then showed the funded wallet, BNB 0.007086 ($5.31) on chain 56.
 - What we changed because of it: nothing in code.
+
+### 2026-10-10 — `baw market-order quote`: Ondo takes USDT and USDC from $5, refuses $1 and BNB (Agentic Wallet, TSLAon)
+
+- Session: WEEKEND (Sat, cash shut). Telegram bot `/probe`, the linked Agentic Wallet, quote only, nothing signed. BNB $750.82 (from the 0.01 BNB to USDT quote).
+- What we hit: USDT, USDC and BNB to TSLAon at $1, $5 and $10; then TSLAon back to the stable at $5 and $10 (sell size is the buy's out-amount, so a failed buy has no sell quote).
+- What came back (first call of each):
+  - BNB, all three sizes: `103 SERVICE_ERROR Unsupported token pair for Ondo trading, one side must be a supported stablecoin ({0}).` The `{0}` is unfilled, so the allowed stablecoins are not named. A third wording of the BNB refusal (API `40368`; the 2026-10-03 "real-world assets" text).
+  - $1 USDT and $1 USDC: `315008 SERVICE_ERROR From token value greater than 5 USD`. $5 and $10 both quoted, so exactly $5 passes despite "greater than". The API-side code for the same floor was `40375`.
+  - USDC was accepted: 5 USDC to 0.0128682447 TSLAon. The 2026-09-30 and 2026-10-01 API calls with a taker returned `40368` for USDC. Not explained.
+  - Round trip, $5: USDT 5 to 0.0130368233 TSLAon to 4.9799003718 USDT; USDC 5 to 0.0128682447 to 4.8431057821 USDC. $10: USDT 9.9794273689, USDC 9.8603423077.
+  - HTTP status and latency were not recorded.
+- What we changed because of it: nothing yet.
+
+### 2026-10-10 — `baw market-order quote`: TSLAx has no liquidity from BNB, USDT or USDC (Agentic Wallet)
+
+- Session: WEEKEND (Sat, cash shut). Same `/probe` run, quote only.
+- What we hit: BNB, USDT and USDC to TSLAx at $1, $5 and $10 (9 quotes).
+- What came back: all 9 returned `100 SERVICE_ERROR No liquidity available, please try again later.` Same code and text for every input and size. The API returned `40370 xStock token only supports trading with: USDT, USDC` for BNB (2026-10-02), so the stablecoin legs are refused here too, with a different message. One ticker only. HTTP status and latency were not recorded.
+- What we changed because of it: nothing yet.
+
+### 2026-10-10 — `baw market-order quote`: bStocks buy and sell clean with BNB, USDT, USDC; all six BNB/stable pairs quote (Agentic Wallet, TSLAB)
+
+- Session: WEEKEND (Sat, cash shut). Same `/probe` run, quote only.
+- What we hit: BNB, USDT and USDC to TSLAB and back at $1, $5, $10; BNB, USDT and USDC against each other in all six directions at the same sizes.
+- What came back: every one of the 18 TSLAB quotes and 18 stable quotes returned OK, none refused at $1. First recorded sell-side bStock quotes. Round trip at $5: TSLAB to USDT 4.9966146835, to USDC 4.9964973831. Stables at $1: USDT to USDC 0.9992345855, USDC to USDT 1.0007797004. HTTP status and latency were not recorded.
+- What we changed because of it: nothing yet.
