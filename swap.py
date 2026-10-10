@@ -18,6 +18,7 @@ import prices
 import rwa
 import rpc
 import devlog
+import routing_rules
 
 log = logging.getLogger("swap")
 
@@ -554,11 +555,12 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                 "provider": None, "routes": [], "sim": None}
     if ui_amount <= 0:
         return _no_route("amount<=0", [])
-    ondo = _is_ondo(input_mint) or _is_ondo(output_mint)
-    steps = [("binance_web3", lambda: _binance_quote(input_mint, output_mint, ui_amount, taker)),
-             ("pancake", lambda: _pancake_quote(input_mint, output_mint, ui_amount, taker))]
-    if not ondo:
-        steps.append(("openocean", lambda: _openocean_quote(input_mint, output_mint, ui_amount, taker)))
+    usd = routing_rules.usd_value(input_mint, ui_amount)
+    route = routing_rules.site_route(input_mint, output_mint, usd)
+    fns = {"binance_web3": lambda: _binance_quote(input_mint, output_mint, ui_amount, taker),
+           "pancake": lambda: _pancake_quote(input_mint, output_mint, ui_amount, taker),
+           "openocean": lambda: _openocean_quote(input_mint, output_mint, ui_amount, taker)}
+    steps = [(n, fns[n]) for n in routing_rules.site_providers(input_mint, output_mint, usd)]
     attempts: list = []
     for name, fn in steps:
         try:
@@ -574,8 +576,10 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
                     res["priceImpactPct"] = loss
             res["shareCheck"] = share_check(input_mint, output_mint, ui_amount, res)
             res["checkProof"] = check_proof(input_mint, output_mint, ui_amount, res)
-            res["routeLabel"] = ROUTE_LABELS[name] + (f" · {res['routes'][0]}" if res.get("routes") else "")
+            base = ROUTE_LABELS[name]
+            res["routeLabel"] = base + (f" · {res['routes'][0]}" if res.get("routes") and res["routes"][0] != base else "")
             res["attempts"] = attempts
+            res["route"] = route
             if attempts:
                 res["fallbackReason"] = attempts[0]["error"]
                 res["fallbackFrom"] = ROUTE_LABELS[attempts[0]["provider"]]
@@ -585,6 +589,8 @@ async def quote(input_mint: str, output_mint: str, ui_amount: float, taker: str 
             attempts.append({"provider": name, "error": f"{type(e).__name__}: {str(e)[:200]}"})
     reason = "; ".join(f"{a['provider']}: {a['error']}" for a in attempts)
     nr = _no_route(reason, attempts)
+    nr["route"] = route
+    nr["triedLabels"] = [ROUTE_LABELS[a["provider"]] for a in attempts]
     if attempts and all("empty quote" in a["error"] for a in attempts):
         sc = share_check(input_mint, output_mint, ui_amount, {"uiOutAmount": 0})
         if sc and sc["blocked"]:

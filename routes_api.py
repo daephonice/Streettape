@@ -14,6 +14,7 @@ import prices
 import send
 import news
 import swap as swap_mod
+import routing_rules
 import agent
 import market_stats
 import rwa_api
@@ -186,6 +187,11 @@ async def api_prices():
 @router.get("/assets")
 async def api_assets():
     return prices.get_assets()
+
+
+@router.get("/routing-rules")
+async def api_routing_rules():
+    return routing_rules.public_rules()
 
 
 @router.get("/balances/{address}")
@@ -398,9 +404,9 @@ class SwapOrderRequest(BaseModel):
 async def swap_order(body: SwapOrderRequest):
     if body.uiAmount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
-    blocked = swap_mod.unsupported_pair(body.inputMint, body.outputMint)
-    if blocked:
-        raise HTTPException(status_code=400, detail=blocked)
+    ok, why = routing_rules.site_allowed(body.inputMint, body.outputMint)
+    if not ok:
+        raise HTTPException(status_code=400, detail=why)
     return await swap_mod.quote(body.inputMint, body.outputMint, body.uiAmount, body.taker)
 
 
