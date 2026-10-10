@@ -227,7 +227,7 @@ def cmd_fill(a):
     sess = (call("/api/board").get("session") or {}).get("label", "?")
     now = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())
     ok = r.get("status") == "FINISHED"
-    blk = (f"\n### {now[:10]} \u2014 Signed `baw market-order swap` {'filled' if ok else 'did not finish'} (USDT to TSLAB, ${a.amount:g})\n\n"
+    blk = (f"\n### {now[:10]} \u2014 Signed `baw market-order swap` {'filled' if ok else 'did not finish'} ({a.amount:g} of {a.input_mint[:8]}.. to {a.output_mint[:8]}..)\n\n"
            f"- Session: {sess} ({now}).\n"
            f"- What we hit: `baw market-order quote`, then `/api/swap/order` (delta {d:.2f} bps), then `baw market-order swap`, polled with `market-order list`.\n"
            f"- What came back:\n"
