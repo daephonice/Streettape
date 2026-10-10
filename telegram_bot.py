@@ -39,6 +39,7 @@ from models import Watch
 import tg_wallet
 import tg_trade
 import tg_send
+import tg_probe
 import tg_book
 import tg_adv
 import tg_desk
@@ -640,6 +641,7 @@ async def _polling_loop():
     _dp.include_router(tg_desk.router)
     _dp.include_router(tg_trade.router)
     _dp.include_router(tg_send.router)
+    _dp.include_router(tg_probe.router)
     _dp.include_router(tg_book.router)
     _dp.include_router(tg_adv.router)
     _dp.include_router(router)  # last: holds the bare /symbol catch-all
