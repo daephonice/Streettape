@@ -1,6 +1,7 @@
 """StreetTape bot: Send flow (Step 11). Each screen answers one question.
-Transfer command is NOT assumed: set BAW_SEND_CMD (e.g. "wallet transfer") after reading `baw wallet --help`.
-Unset = Send shows an Open-StreetTape button instead. Never faked."""
+Transfer is `baw wallet send --recipient --tokenAddress --amount --binanceChainId` (Binance send.md).
+The recipient must already be in the user's Binance App address book; baw rejects anything else.
+BAW_SEND_CMD / BAW_SEND_FLAGS override the defaults. Empty BAW_SEND_CMD = Open-StreetTape button."""
 import os
 import time
 import shlex
@@ -29,8 +30,8 @@ router = Router()
 
 DAILY_USD = float(os.getenv("TG_SEND_DAILY_USD", "200"))
 GAS_RESERVE = float(os.getenv("TG_BNB_GAS_RESERVE", "0.002"))
-SEND_CMD = shlex.split(os.getenv("BAW_SEND_CMD", ""))
-SEND_FLAGS = os.getenv("BAW_SEND_FLAGS", "--toAddress {to} --token {token} --amount {amount} --binanceChainId {chain}")
+SEND_CMD = shlex.split(os.getenv("BAW_SEND_CMD", "wallet send"))
+SEND_FLAGS = os.getenv("BAW_SEND_FLAGS", "--recipient {to} --tokenAddress {token} --amount {amount} --binanceChainId {chain}")
 TTL = 60.0
 STATE_TTL = 300.0
 RATE_SECONDS = 10.0
@@ -151,7 +152,7 @@ def _pick_asset_screen(holdings: dict):
 def _to_screen(chat_id: int, sym: str, recent: list[str]):
     rows = [[ui.cb_btn(ui.short_addr(a), f"snr:{i}")] for i, a in enumerate(recent)]
     rows.append([ui.cb_btn(ui.BACK, "snd")])
-    return f"<b>Send {sym}</b>\nPaste the BSC address.", ui.kb(*rows)
+    return f"<b>Send {sym}</b>\nPaste the BSC address. It must be in your Binance App address book (Wallet, Settings, Address Book).", ui.kb(*rows)
 
 
 def _amt_screen(sym: str, bal: float):
@@ -254,7 +255,9 @@ async def _execute(cb: CallbackQuery, w, pid: str, p: dict):
             data = await tw.baw(chat_id, *SEND_CMD, *flags, timeout=120)
     except tw.BawError as e:
         msg = str((e.err or {}).get("message") or e)[:140]
-        await ui.show(cb, f"Send failed. Nothing moved.\n<code>{msg}</code>", ui.kb(ui.tail_row()))
+        hint = "\nAdd the address in Binance App, Wallet, Settings, Address Book, then try again." \
+            if "address" in msg.lower() and "book" in msg.lower() else ""
+        await ui.show(cb, f"Send failed. Nothing moved.\n<code>{msg}</code>{hint}", ui.kb(ui.tail_row()))
         return
     tx = _pick(data, "txHash", "hash", "transactionHash")
     ok = None
