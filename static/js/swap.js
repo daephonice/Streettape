@@ -619,7 +619,8 @@
         }
       } else {
         if (sess.order.approval) {
-          await window.MarktapeWallet.signTransactionForSend(sess.order.approval);
+          const ap = await window.MarktapeWallet.signTransactionForSend(sess.order.approval);
+          await waitReceipt(ap && ap.signature);
         }
         let signed;
         try {
@@ -637,9 +638,10 @@
             requestId: sess.order.requestId,
             provider: sess.order.provider || 'binance_web3',
           });
-          if (res.status && res.status !== 'Success' && res.status !== 'success') {
+          if (res.status && /^(failed|expired|cancelled|error)$/i.test(res.status)) {
             throw new Error('Swap failed on-chain, please try again');
           }
+          await waitReceipt(signed.signature);
         }
       }
 
@@ -652,6 +654,21 @@
       sess.busy = false;
       setNote((err && err.message) || 'Swap failed, try again');
       render();
+    }
+  }
+
+  // Wallet returns the hash on broadcast, not on confirmation. Throws only on a mined revert; a timeout is not a failure.
+  async function waitReceipt(hash) {
+    const prov = window.MarktapeWallet && window.MarktapeWallet.getProvider && window.MarktapeWallet.getProvider();
+    if (!hash || !prov) return;
+    for (let i = 0; i < 45; i++) {
+      let r = null;
+      try { r = await prov.request({ method: 'eth_getTransactionReceipt', params: [hash] }); } catch (_) {}
+      if (r) {
+        if (r.status === '0x0' || r.status === 0) throw new Error('Swap failed on-chain, please try again');
+        return;
+      }
+      await new Promise((ok) => setTimeout(ok, 2000));
     }
   }
 
