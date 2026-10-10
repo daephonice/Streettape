@@ -58,7 +58,7 @@ async def render(w):
     for _, u, _, _ in stocks:
         if u and u not in seen:
             seen.add(u)
-            sells.append(ui.cb_btn(f"Sell {u}", f"sell:{u}"))
+            sells.append(ui.cb_btn(f"Sell {u}", f"se:{u}"))
     rows = [sells[i:i + 2] for i in range(0, len(sells), 2)]
     rows.append([ui.cb_btn(ui.SEND, "snd"), ui.cb_btn(ui.BOARD, "back:board")])
     return text, ui.kb(*rows)

@@ -41,6 +41,7 @@ import tg_trade
 import tg_send
 import tg_book
 import tg_adv
+import tg_desk
 import tg_ui as ui
 
 log = logging.getLogger("telegram_bot")
@@ -114,76 +115,7 @@ def _watched_symbols(chat_id: int | None) -> set[str]:
         db.close()
 
 
-def _watched_by_chat(chat_ids: list[int]) -> dict[int, set[str]]:
-    if not chat_ids:
-        return {}
-    db = SessionLocal()
-    try:
-        rows = db.execute(
-            select(Watch.chat_id, Watch.symbol).where(Watch.chat_id.in_(chat_ids))
-        ).all()
-    finally:
-        db.close()
-    out: dict[int, set[str]] = {}
-    for chat_id, symbol in rows:
-        out.setdefault(chat_id, set()).add(symbol)
-    return out
 
-
-def _live_line(row: dict, watched: set[str]) -> str:
-    mark = "👁" if row["symbol"].upper() in watched else " "
-    price = f"${row['price']:.2f}" if row["price"] is not None else "—"
-    if row["change24h"] is not None:
-        sign = "+" if row["change24h"] > 0 else ""
-        pct = f"{sign}{row['change24h']:.1f}%"
-    else:
-        pct = rwa.format_premium(row["premium"])
-    return f"{mark}{row['symbol']:<10} {price:>10}   {pct:>7}"
-
-
-def _bnb_line(watched: set[str]) -> str | None:
-    live = prices.get_prices()
-    sol = (live or {}).get("prices", {}).get("BNB")
-    if not sol or sol.get("price") is None:
-        return None
-    mark = "👁" if "BNB" in watched else " "
-    price = f"${sol['price']:.2f}"
-    chg = sol.get("change24h")
-    pct = f"{'+' if chg and chg > 0 else ''}{chg:.1f}%" if chg is not None else "—"
-    return f"{mark}{'BNB':<10} {price:>10}   {pct:>7}"
-
-
-def _live_board_text(rows: list[dict], chat_id: int | None = None, watched: set[str] | None = None) -> str:
-    if watched is None:
-        watched = _watched_symbols(chat_id)
-    lines = [_live_line(r, watched) for r in rows]
-    bnb_line = _bnb_line(watched)
-    if bnb_line:
-        lines.append(bnb_line)
-    body = "\n".join(lines)
-    return f"<b>StreetTape — live board</b>\n<code>{body}</code>"
-
-
-def _live_board_markup(rows: list[dict], linked: bool = False) -> InlineKeyboardMarkup:
-    """2 cols x 4 rows of tokenized stock symbols (same order as the price list),
-    BNB full-width, the AI pack, then Book / Send / Wallet. tok:SYMBOL opens that token's card."""
-    buttons = [InlineKeyboardButton(text=r["symbol"], callback_data=f"tok:{r['symbol']}") for r in rows]
-    kb: list[list[InlineKeyboardButton]] = [buttons[i:i + 2] for i in range(0, len(buttons), 2)]
-    kb.append([InlineKeyboardButton(text="BNB", callback_data="tok:BNB")])
-    kb.append([ui.cb_btn(ui.PACK, "pk:ai:50")])
-    kb.append([ui.cb_btn(ui.BOOK, "book"), ui.cb_btn(ui.SEND, "snd"),
-               ui.cb_btn(ui.LINKED if linked else ui.LINK, "link:go")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-
-def _linked(chat_id: int) -> bool:
-    return bool(tg_wallet.linked_set([chat_id]))
-
-
-# chat_id -> message_id for the one active live board per chat. In-memory
-# only (spec: no DB). A new /start (no payload) replaces the old target.
-_live_boards: dict[int, int] = {}
-_live_board_lock = asyncio.Lock()
 
 # chat_id -> message_id currently showing a token menu (not the live board).
 # The live board editor skips these chats until Back is pressed.
@@ -342,6 +274,13 @@ async def on_token_tap(callback: CallbackQuery):
     symbol = _card_symbol(callback.data.split(":", 1)[1])
     chat_id = callback.message.chat.id
     ui.clear_input(chat_id)
+    if symbol != "BNB":
+        u = (_row_for(symbol) or {}).get("underlying") or rwa.resolve_underlying(symbol)
+        v = await tg_desk.stock_view(chat_id, u) if u else None
+        if v:
+            await ui.show(callback, *v)
+            await callback.answer()
+            return
     text = _token_menu_text(symbol, chat_id)
     if not text:
         await callback.answer()
@@ -363,30 +302,17 @@ async def on_back(callback: CallbackQuery):
     chat_id = callback.message.chat.id
     ui.clear_input(chat_id)
     ui.cards.pop(chat_id, None)
-    rows = _live_rows()
-    if rows:
-        text = (
-            "StreetTape — mark vs tape for tokenized stocks.\n"
-            "We show where the onchain price and the issuer mark disagree, and let you trade the gap.\n\n"
-        ) + _live_board_text(rows, chat_id)
-        markup = _live_board_markup(rows, _linked(chat_id))
-    else:
-        text = "Board is warming up — try again in a moment."
-        markup = None
-    try:
-        await callback.message.edit_text(text, reply_markup=markup, disable_web_page_preview=True)
-    except TelegramBadRequest as e:
-        if "message is not modified" not in str(e).lower():
-            raise
-    async with _token_menus_lock:
-        _token_menus.pop(chat_id, None)
-    async with _live_board_lock:
-        _live_boards[chat_id] = callback.message.message_id
     await callback.answer()
+    await ui.show(callback, *(await tg_desk.home(chat_id)))
 
 
 async def _refresh_token_menu(callback: CallbackQuery, symbol: str) -> None:
     chat_id = callback.message.chat.id
+    u = None if symbol.upper() == "BNB" else (rwa.resolve_underlying(symbol) or None)
+    v = await tg_desk.stock_view(chat_id, u) if u else None
+    if v:
+        await ui.show(callback, *v)
+        return
     text = _token_menu_text(symbol, chat_id)
     if not text:
         return
@@ -423,38 +349,17 @@ async def on_unwatch_cb(callback: CallbackQuery):
 @router.message(Command("start"))
 async def on_start(message: Message, command: CommandObject):
     payload = (command.args or "").strip()
-    ui.clear_input(message.chat.id)
+    chat_id = message.chat.id
+    ui.clear_input(chat_id)
+    ui.screens.pop(chat_id, None)
     if payload:
-        chat_id = message.chat.id
-        payload = _card_symbol(payload.lstrip("/"))
-        text = _token_menu_text(payload, chat_id)
-        if text:
-            symbol_u = payload.upper().lstrip("/")
-            sent = await message.answer(
-                text, reply_markup=_token_menu_markup(chat_id, symbol_u), disable_web_page_preview=True
-            )
-            async with _token_menus_lock:
-                _token_menus[chat_id] = sent.message_id
-            _arm(message.bot, chat_id, sent.message_id, symbol_u)
+        u = rwa.resolve_underlying(payload.lstrip("/"))
+        v = await tg_desk.stock_view(chat_id, u) if u else None
+        if v:
+            await message.answer(v[0], reply_markup=v[1], disable_web_page_preview=True)
             return
-
-    text = (
-        "StreetTape — mark vs tape for tokenized stocks.\n"
-        "We show where the onchain price and the issuer mark disagree, and let you trade the gap.\n\n"
-    )
-    rows = _live_rows()
-    if rows:
-        text += _live_board_text(rows, message.chat.id)
-        markup = _live_board_markup(rows, _linked(message.chat.id))
-    else:
-        text += "Board is warming up — try again in a moment."
-        markup = None
-
-    sent = await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
-    async with _token_menus_lock:
-        _token_menus.pop(message.chat.id, None)
-    async with _live_board_lock:
-        _live_boards[message.chat.id] = sent.message_id
+    text, markup = await tg_desk.home(chat_id)
+    await message.answer(text, reply_markup=markup, disable_web_page_preview=True)
 
 
 def _wrapper_tag(platform: str) -> str:
@@ -483,17 +388,14 @@ async def on_board(message: Message):
 
 
 async def _send_card(message: Message, symbol: str) -> bool:
-    """Token card with its buttons (no link lines). Same card as tapping the symbol on the board."""
+    """Stock page for a ticker or any wrapper symbol (/t NVDAB, /nvda)."""
     chat_id = message.chat.id
-    sym = _card_symbol(symbol)
-    text = _token_menu_text(sym, chat_id)
-    if not text:
+    u = rwa.resolve_underlying(symbol)
+    v = await tg_desk.stock_view(chat_id, u) if u else None
+    if not v:
         return False
     ui.clear_input(chat_id)
-    sent = await message.answer(text, reply_markup=_token_menu_markup(chat_id, sym), disable_web_page_preview=True)
-    async with _token_menus_lock:
-        _token_menus[chat_id] = sent.message_id
-    _arm(message.bot, chat_id, sent.message_id, sym)
+    await message.answer(v[0], reply_markup=v[1], disable_web_page_preview=True)
     return True
 
 
@@ -720,74 +622,12 @@ async def _digest_loop(bot: Bot):
         await asyncio.sleep(15)
 
 
-# ---------------------------------------------------------------------------
-# Live board loop — edits each chat's /start message every 5s.
-# ---------------------------------------------------------------------------
 
-LIVE_BOARD_INTERVAL = 5
-
-_DEAD_MESSAGE_MARKERS = (
-    "message to edit not found",
-    "message to be edited not found",
-    "message can't be found",
-    "chat not found",
-)
-
-
-async def _run_live_board_pass(bot: Bot):
-    rows = _live_rows()
-    if not rows:
-        return
-    async with _live_board_lock:
-        targets = list(_live_boards.items())
-    async with _token_menus_lock:
-        on_token_menu = set(_token_menus.keys())
-    targets = [(c, m) for c, m in targets if c not in on_token_menu]
-    watched_by_chat = _watched_by_chat([c for c, _ in targets])
-    linked = tg_wallet.linked_set([c for c, _ in targets])
-    markups = {False: _live_board_markup(rows, False), True: _live_board_markup(rows, True)}
-
-    dead: list[tuple[int, int]] = []  # (chat_id, message_id) pairs to drop
-    for chat_id, message_id in targets:
-        text = _live_board_text(rows, watched=watched_by_chat.get(chat_id, set()))
-        try:
-            await bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=markups[chat_id in linked])
-        except TelegramBadRequest as e:
-            msg = str(e).lower()
-            if "message is not modified" in msg:
-                continue
-            if any(marker in msg for marker in _DEAD_MESSAGE_MARKERS):
-                dead.append((chat_id, message_id))
-            else:
-                log.warning("telegram_bot: live board edit failed for chat %s: %s", chat_id, e)
-        except TelegramForbiddenError:
-            # Bot was blocked / chat gone.
-            dead.append((chat_id, message_id))
-        except Exception:
-            log.warning("telegram_bot: live board edit failed for chat %s", chat_id, exc_info=True)
-
-    if dead:
-        async with _live_board_lock:
-            for chat_id, message_id in dead:
-                # Only drop if it's still pointing at the message we just
-                # failed on — a fresh /start may have replaced it since.
-                if _live_boards.get(chat_id) == message_id:
-                    del _live_boards[chat_id]
-
-
-async def _live_board_loop(bot: Bot):
-    while True:
-        try:
-            await _run_live_board_pass(bot)
-        except Exception:
-            log.exception("telegram_bot: live board loop iteration failed")
-        await asyncio.sleep(LIVE_BOARD_INTERVAL)
 
 
 _bot: Bot | None = None
 _dp: Dispatcher | None = None
 _task: asyncio.Task | None = None
-_live_board_task: asyncio.Task | None = None
 _digest_task: asyncio.Task | None = None
 _keepalive_task: asyncio.Task | None = None
 
@@ -797,6 +637,7 @@ async def _polling_loop():
     _bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
     _dp = Dispatcher()
     _dp.include_router(tg_wallet.router)
+    _dp.include_router(tg_desk.router)
     _dp.include_router(tg_trade.router)
     _dp.include_router(tg_send.router)
     _dp.include_router(tg_book.router)
@@ -804,11 +645,9 @@ async def _polling_loop():
     _dp.include_router(router)  # last: holds the bare /symbol catch-all
 
     await _set_profile(_bot)
-    global _live_board_task, _digest_task, _keepalive_task
+    global _digest_task, _keepalive_task
     if _keepalive_task is None or _keepalive_task.done():
         _keepalive_task = asyncio.create_task(tg_wallet.keepalive_loop(_bot))
-    if _live_board_task is None or _live_board_task.done():
-        _live_board_task = asyncio.create_task(_live_board_loop(_bot))
     if _digest_task is None or _digest_task.done():
         _digest_task = asyncio.create_task(_digest_loop(_bot))
 
@@ -829,12 +668,12 @@ async def _polling_loop():
 
 
 COMMANDS = [
-    ("start", "Open the board"),
+    ("start", "Open StreetTape"),
     ("board", "Tape vs mark, every stock"),
     ("book", "Your holdings"),
     ("buy", "Buy in one line: /buy NVDA 50"),
     ("send", "Send BNB, USDT or a stock"),
-    ("t", "Token card: /t NVDAB"),
+    ("t", "Stock page: /t NVDA"),
     ("agent", "Rotate and flatten ideas"),
     ("watch", "Watch a stock: /watch NVDA"),
     ("unwatch", "Stop watching a stock"),
