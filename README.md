@@ -15,7 +15,7 @@ Spot only. Nothing auto-executes.
 
 Rotate is its own sheet, not Sell then Buy. Heading is `ROTATE {rich} to {cheap}`. Size is 25 / 50 / 75 / MAX of the rich wrapper. The button says Connect wallet until a wallet is in, then Rotate. One quote, rich mint to cheap mint, one signature once the wrapper has an allowance (first use adds an approve). BNB against Ondo stays blocked. Sell and Buy stay cash sheets.
 
-Routing rules live in `routing_rules.py` (the site reads them from `GET /api/routing-rules`). Site: xStocks go straight to Pancake; Ondo and BNB/USDC/USDT swaps go to Pancake under $5 and to the Binance route from $5 (Pancake only on error); bStocks use the Binance route; Rotate is Pancake, no minimum. Telegram bot (baw, Binance route only): xStocks locked, Ondo $5 minimum with BNB locked (USDC and USDT open), bStocks no minimum, Rotate is Ondo <-> bStocks via USDT with a $6 minimum.
+Routing rules live in `routing_rules.py` (the site reads them from `GET /api/routing-rules`). Site: xStocks go straight to Pancake; Ondo and BNB/USDC/USDT swaps go to Pancake under $5 and to the Binance route from $5 (Pancake only on error); bStocks use the Binance route; Rotate is Pancake, no minimum. Telegram bot (baw, Binance route only): xStocks locked, Ondo $5 minimum with USDC or USDT, bStocks no minimum, Rotate is Ondo <-> bStocks via USDT with a $6 minimum. BNB <-> Ondo and wrapper <-> wrapper run in the bot as two swaps via USDT ($6 minimum, see Telegram Swap).
 
 ## Run
 
@@ -37,3 +37,16 @@ Official skill: `npx skills add https://github.com/binance/binance-skills-hub/tr
 
 - `GET /api/agent/studio/tick` returns the same scan as the internal 60s loop (header `X-Studio-Token: $AGENT_STUDIO_TOKEN`). Proposal-only. Optional `arb_threshold` (default 0.01) and `underlying` (adds `answers.rotate` and `answers.earnings` for that name; `answers.richVsFriday` and `answers.earningsInside24h` are always present). Studio status is in `/agent-registration.json` under `studioRuntime` (driven by `STUDIO_DEPLOYED`, `STUDIO_JOB_ID`, `STUDIO_BAG_ERROR`).
 - Identity file: `/agent-registration.json`. Register on the ERC-8004 Identity Registry with `register("<WEB_PUBLIC_URL>/agent-registration.json")`, then set `ERC8004_IDENTITY_REGISTRY=0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`, `ERC8004_AGENT_ID=360062`, `ERC8004_CHAIN_ID=56`. The card then carries a `registrations` block. `x402Support` stays false: there is no paid endpoint.
+
+## Telegram Swap (bot only)
+
+Swap on the home screen: pick the coin to swap from (USDT, USDC, BNB or a wrapper you hold), then the coin to receive, then an amount (25 / 50 / 75 / Max or Custom), then a quote, then Confirm.
+
+- The list is the site's swap list: Ondo and bStocks wrappers with a live price, plus USDT, USDC, BNB. xStocks are never listed: `baw` returns a no-liquidity error for them.
+- Why two swaps: the Binance route cannot do BNB <-> Ondo or wrapper <-> wrapper in one swap, and the bot does not take stock-to-stock. So those pairs run `X -> USDT -> Y` with the Rotate engine. Leg 2 starts by itself with the USDT actually received from leg 1, so the user taps once instead of swapping twice by hand. Slower than one swap, faster than doing both swaps manually.
+- Quote: pairs `baw` accepts directly (stable <-> stable, USDT/USDC/BNB <-> wrapper) show the `baw` quote, which is what executes. Two-swap pairs show our calculation: leg 1 `baw` quote to USDT, leg 2 priced on that USDT. Leg 2 is re-priced when it runs.
+- Minimums: $6 for two-swap pairs (a $1 buffer so leg 1's USDT never lands under the $5 Binance minimum), otherwise the existing rules ($5 Ondo and stable swaps, none for bStocks).
+- Buy and Sell on a stock page now accept BNB for Ondo through the same two-swap path (BNB -> USDT -> Ondo, Ondo -> USDT -> BNB). The site still blocks BNB <-> Ondo.
+- If leg 2 fails, the USDT stays in the wallet and the receipt says so.
+- Code: `tg_swap.py` (flow and the two-swap executor), `routing_rules.needs_two_leg()` and `bot_allowed()` (the rules).
+

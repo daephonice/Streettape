@@ -42,6 +42,7 @@ import tg_trade
 import tg_send
 import tg_book
 import tg_adv
+import tg_swap
 import tg_desk
 import tg_ui as ui
 
@@ -645,6 +646,7 @@ async def _polling_loop():
     _dp.include_router(tg_send.router)
     _dp.include_router(tg_book.router)
     _dp.include_router(tg_adv.router)
+    _dp.include_router(tg_swap.router)
     _dp.include_router(router)  # last: holds the bare /symbol catch-all
 
     await _set_profile(_bot)

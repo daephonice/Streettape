@@ -20,9 +20,10 @@ SITE_DIRECT_PANCAKE = ("xstocks",)       # always Pancake, Binance never tried
 SITE_BINANCE = ("bstocks",)              # always Binance first, fallback on error
 SITE_THRESHOLD = ("ondo", "stable")      # < MIN_USD Pancake directly, >= MIN_USD Binance first
 BOT_ROTATE_FAMILIES = ("ondo", "bstocks")   # xStocks have no baw liquidity, so the bot never rotates them
+BOT_TWO_LEG_MIN_USD = BOT_ROTATE_MIN_USD    # any bot pair that runs as two swaps via USDT
 BOT_PICK_SKIP = ("xstocks",)             # quick_pick never offers these to the bot
 XSTOCKS_LOCK_MSG = "xStocks are locked in the bot (no Binance liquidity). Use the site."
-ONDO_BNB_MSG = "BNB can't be swapped with Ondo. Use USDC or USDT."
+ONDO_BNB_MSG = "BNB can't be swapped with Ondo. Use USDC or USDT."   # site only; the bot runs BNB <-> Ondo as two swaps
 ONDO_BLOCKED_PAY = ("BNB",)              # BNB <-> Ondo is not swappable (swap.unsupported_pair enforces it)
 
 _STABLE_ADDRS = {rwa.NATIVE.lower(), rwa.WBNB.lower(), rwa.USDC.lower(), rwa.USDT.lower()}
@@ -66,15 +67,27 @@ def usd_value(mint: str, ui_amount: float):
     return (px * ui_amount) if px and ui_amount else None
 
 
+def needs_two_leg(from_: str, to: str) -> bool:
+    """Bot pairs baw cannot do in one swap, run as X -> USDT -> Y: BNB <-> Ondo and wrapper <-> wrapper."""
+    a, b = family(from_), family(to)
+    if "xstocks" in (a, b) or "unknown" in (a, b):
+        return False
+    if "ondo" in (a, b) and any(rwa.is_bnb(x) or (x or "").upper() == "BNB" for x in (from_, to)):
+        return True
+    return a in BOT_ROTATE_FAMILIES and b in BOT_ROTATE_FAMILIES
+
+
 def bot_allowed(from_: str, to: str, usd) -> tuple[bool, str | None]:
     """Telegram bot (baw, Binance route only). Table 1A."""
     a, b = family(from_), family(to)
     fams = {a, b}
     if "xstocks" in fams:
         return False, XSTOCKS_LOCK_MSG
+    if needs_two_leg(from_, to):
+        if usd is not None and usd < BOT_TWO_LEG_MIN_USD:
+            return False, f"Minimum is ${BOT_TWO_LEG_MIN_USD:g} for this swap (two swaps via USDT)."
+        return True, None
     if "ondo" in fams:
-        if any(rwa.is_bnb(x) or (x or "").upper() == "BNB" for x in (from_, to)):
-            return False, ONDO_BNB_MSG
         if usd is not None and usd < MIN_USD:
             return False, f"Minimum is ${MIN_USD:g} for Ondo."
         return True, None
@@ -86,11 +99,9 @@ def bot_allowed(from_: str, to: str, usd) -> tuple[bool, str | None]:
 
 
 def bot_lock(platform: str | None, coin: str | None = None) -> str | None:
-    """Why a wrapper (with an optional pay/receive coin) is locked in the bot, None when open. For button locks."""
+    """Why a wrapper is locked in the bot, None when open. BNB with Ondo is open (two swaps via USDT)."""
     if platform == "xstocks":
         return XSTOCKS_LOCK_MSG
-    if platform == "ondo" and (coin or "").upper() == "BNB":
-        return ONDO_BNB_MSG
     return None
 
 

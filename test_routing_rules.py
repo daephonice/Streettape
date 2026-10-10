@@ -16,8 +16,9 @@ def fams(monkeypatch):
     ("USDT", "NVDAx", 100, False), ("NVDAx", "USDC", 100, False),          # xStocks locked
     ("USDT", "NVDAon", 4.99, False), ("USDT", "NVDAon", 5, True),          # Ondo $5, buy
     ("NVDAon", "USDT", 4.99, False), ("NVDAon", "USDT", 5, True),          # Ondo $5, sell
-    ("USDC", "NVDAon", 5, True), ("BNB", "NVDAon", 50, False),             # BNB locked for Ondo
-    ("NVDAon", "BNB", 50, False),
+    ("USDC", "NVDAon", 5, True), ("BNB", "NVDAon", 50, True),              # BNB <-> Ondo: two swaps
+    ("BNB", "NVDAon", 5.99, False), ("BNB", "NVDAon", 6, True), ("NVDAon", "BNB", 5.99, False),
+    ("NVDAon", "NVDAB", 5.99, False), ("NVDAon", "NVDAB", 6, True),   # wrapper <-> wrapper: two swaps
     ("USDT", "NVDAB", 1, True), ("BNB", "NVDAB", 1, True), ("USDC", "NVDAB", 1, True),   # bStocks open
     ("BNB", "USDC", 4, False), ("USDC", "USDT", 5, True),                  # stable swaps $5
 ])
@@ -26,8 +27,15 @@ def test_bot_allowed(a, b, usd, ok):
 
 
 def test_bot_locks():
-    assert rr.bot_lock("xstocks") and rr.bot_lock("ondo", "BNB")
-    assert not rr.bot_lock("ondo", "USDC") and not rr.bot_lock("bstocks", "BNB")
+    assert rr.bot_lock("xstocks")
+    assert not rr.bot_lock("ondo", "BNB") and not rr.bot_lock("ondo", "USDC") and not rr.bot_lock("bstocks", "BNB")
+
+
+def test_two_leg():
+    assert rr.needs_two_leg("BNB", "NVDAon") and rr.needs_two_leg("NVDAon", "BNB")
+    assert rr.needs_two_leg("NVDAon", "NVDAB") and rr.needs_two_leg("NVDAB", "NVDAB")
+    assert not rr.needs_two_leg("BNB", "NVDAB") and not rr.needs_two_leg("USDT", "NVDAon")
+    assert not rr.needs_two_leg("NVDAx", "NVDAon") and not rr.needs_two_leg("BNB", "USDT")
 
 
 def test_rotate_pairs():

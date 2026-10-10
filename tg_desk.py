@@ -19,6 +19,7 @@ import routing_rules
 import rwa
 import swap
 import tg_adv
+import tg_swap
 import tg_trade as tt
 import tg_ui as ui
 import tg_wallet as tw
@@ -334,11 +335,6 @@ async def on_home(cb: CallbackQuery):
     await ui.show(cb, *(await home(chat_id)))
 
 
-@router.callback_query(lambda c: c.data == "swp")
-async def on_swap_soon(cb: CallbackQuery):
-    await cb.answer("Swap is coming soon.", show_alert=True)
-
-
 @router.callback_query(lambda c: c.data == "stk")
 async def on_stocks(cb: CallbackQuery):
     chat_id = cb.message.chat.id
@@ -447,7 +443,10 @@ async def _flow_view(chat_id: int, w):
     wl = _wrap_list(g)
     hold = await _hold(w)
     sel = next((x for x in wl if x["platform"] == fl.get("wrap")), None)
-    mn = f"\n<i>Ondo minimum ${ONDO_MIN_USD:g}.</i>" if _is_ondo(sel) else ""
+    mn = ""
+    if _is_ondo(sel):
+        mn = (f"\n<i>Ondo minimum ${ROT_MIN_USD:g} with BNB (two swaps via USDT), ${ONDO_MIN_USD:g} with USDC or USDT.</i>"
+              if fl.get("coin") == "BNB" else f"\n<i>Ondo minimum ${ONDO_MIN_USD:g}.</i>")
     if side == "buy":
         head = (f"🟢 <b>Buy {u}</b>\nPick a wrapper, a coin to pay with, and an amount.{mn}\n\n"
                 f"<b>Your coins</b>\n{_holdings_block(hold)}")
@@ -736,6 +735,10 @@ async def _quotes(chat_id: int, w, frm: str, to: str, qty: float):
 def _details(o: dict | None) -> str:
     if not o:
         return ""
+    if o.get("two"):    # BNB <-> Ondo, wrapper <-> wrapper: X -> USDT -> Y
+        return (f"Route      {html.escape(o['label'])}\n"
+                f"Via        ≈ {_usd(o['usdt'])} USDT\n"
+                f"Time       ~{tg_adv.ROTATE_EST_S}s, 2 swaps\n")
     return (f"Route      {html.escape(str(o.get('routeLabel') or 'Binance Agentic Wallet'))}\n"
             f"Impact     {_fmt_impact(o.get('priceImpactPct'))}\n"
             f"Fees       {_fmt_fees(o)}\n")
@@ -768,7 +771,11 @@ async def _quote_buy(chat_id: int, w, fl: dict):
     need = qty + (BNB_RESERVE if coin == "BNB" else 0.0)
     short = have < need
     frm, to = COIN_MINT[coin], sel["mint"]
-    bout, sq = await _quotes(chat_id, w, frm, to, qty)
+    two = routing_rules.needs_two_leg(frm, to)
+    if two:
+        bout, sq = await tg_swap.two_leg_quote(chat_id, w, frm, to, qty, coin, sel["symbol"])
+    else:
+        bout, sq = await _quotes(chat_id, w, frm, to, qty)
     out = bout if bout is not None else (sq or {}).get("uiOutAmount")
     if out is None:
         session = rwa.get_cached_snapshot().get("session") or rwa.session_now()
@@ -802,7 +809,8 @@ async def _quote_buy(chat_id: int, w, fl: dict):
         return text, _qkb("🔒 Confirm", None)
     pid = secrets.token_urlsafe(4)
     _pend[pid] = {"kind": "buy", "chat": chat_id, "u": fl["u"], "sym": sel["symbol"], "frm": frm, "to": to,
-                  "qty": qty, "out": out, "usd": usd, "coin": coin, "at": time.monotonic()}
+                  "qty": qty, "out": out, "usd": usd, "coin": coin, "two": two, "fs": coin, "ts": sel["symbol"],
+                  "usdt": (sq or {}).get("usdt"), "at": time.monotonic()}
     return text + "\n<i>Quote good for 60s</i>", _qkb(f"✅ Confirm · {_usd(usd)}", pid)
 
 
@@ -824,7 +832,11 @@ async def _quote_sell(chat_id: int, w, fl: dict):
     qty = _sell_qty(fl, held, sel.get("tokenPrice"))
     short = qty > held + 1e-12 or held <= 0
     frm, to = sel["mint"], COIN_MINT[coin]
-    bout, sq = await _quotes(chat_id, w, frm, to, qty)
+    two = routing_rules.needs_two_leg(frm, to)
+    if two:
+        bout, sq = await tg_swap.two_leg_quote(chat_id, w, frm, to, qty, sym, coin)
+    else:
+        bout, sq = await _quotes(chat_id, w, frm, to, qty)
     out = bout if bout is not None else (sq or {}).get("uiOutAmount")
     if out is None:
         session = rwa.get_cached_snapshot().get("session") or rwa.session_now()
@@ -856,7 +868,8 @@ async def _quote_sell(chat_id: int, w, fl: dict):
         return text, _qkb("🔒 Confirm", None)
     pid = secrets.token_urlsafe(4)
     _pend[pid] = {"kind": "sell", "chat": chat_id, "u": fl["u"], "sym": sym, "frm": frm, "to": to, "qty": qty,
-                  "out": out, "coin": coin, "at": time.monotonic()}
+                  "out": out, "coin": coin, "two": two, "fs": sym, "ts": coin,
+                  "usdt": (sq or {}).get("usdt"), "at": time.monotonic()}
     label = "Sell anyway" if (sc and sc.get("warn")) else f"✅ Confirm · ≈ {out:.4g} {coin}"
     return text + "\n<i>Quote good for 60s</i>", _qkb(label, pid)
 
@@ -1024,6 +1037,10 @@ async def on_confirm(cb: CallbackQuery):
         return
     if p["kind"] == "rot":
         await tg_adv._exec_rotate(cb, w, p)
+        _flows.pop(chat_id, None)
+        return
+    if p.get("two"):                # BNB <-> Ondo: X -> USDT -> Y, leg 2 starts by itself
+        await tg_swap.exec_two_leg(cb, w, p)
         _flows.pop(chat_id, None)
         return
     await ui.show(cb, ui.working_text("Buying" if p["kind"] == "buy" else "Selling"))
