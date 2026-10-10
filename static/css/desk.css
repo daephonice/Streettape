@@ -1063,3 +1063,5 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bk-def p { margin: 0 0 6px; font-size: 14px; line-height: 1.45; color: var(--hm-text); }
 .bk-def .bk-w { display: block; margin-top: 8px; }
 .bk-title { margin: 12px 0 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
+
+.hm-quick-hint { margin: 6px 0 0; font-size: 12px; color: var(--hm-muted); }
