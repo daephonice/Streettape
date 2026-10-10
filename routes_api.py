@@ -19,6 +19,7 @@ import market_stats
 import rwa_api
 import basket
 import defensive
+import floor as floor_mod
 import devlog
 
 log = logging.getLogger("routes_api")
@@ -282,6 +283,21 @@ async def api_agent_studio_tick(request: Request, size_usd: float = 50.0, thresh
         body=(f"top: {top.get('underlying')} netBps={top.get('netBps')} viable={top.get('viable')}" if top else "no arbs"),
     )
     return out
+
+
+@router.get("/agent/floor")
+async def api_agent_floor(address: str, underlying: str, floor: float = 0.95, buffer: float = floor_mod.BUFFER,
+                          ref: float | None = None):
+    """Proposal-only floor watch on held wrappers. floor 0.5-1.0, buffer 0.001-0.2, ref = per-share USD (default: official mark)."""
+    if not balances.valid_address(address):
+        raise HTTPException(status_code=400, detail="Invalid address")
+    if not (0.5 <= floor <= 1.0 and 0.001 <= buffer <= 0.2 and (ref is None or ref > 0)):
+        raise HTTPException(status_code=400, detail="floor 0.5-1, buffer 0.001-0.2, ref > 0")
+    try:
+        return await floor_mod.watch(address, underlying, floor, buffer, ref)
+    except Exception:
+        log.warning("floor watch failed %s %s", address, underlying, exc_info=True)
+        raise HTTPException(status_code=502, detail="Floor watch failed")
 
 
 @router.get("/agent/identity")
