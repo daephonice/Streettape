@@ -100,7 +100,7 @@ def _rotate_tx():
 
 @router.get("/", response_class=HTMLResponse)
 async def board_page(request: Request):
-    return templates.TemplateResponse(request, "board.html", {**_board_context(), "nav": "board"})
+    return templates.TemplateResponse(request, "home.html", {**_board_context(), "nav": "board"})
 
 
 @router.get("/session", response_class=HTMLResponse)
@@ -130,7 +130,7 @@ async def board_redirect():
 
 @router.get("/wallet", response_class=HTMLResponse)
 async def wallet_page(request: Request):
-    return templates.TemplateResponse(request, "home.html", {"nav": "wallet"})
+    return templates.TemplateResponse(request, "wallet.html", {"nav": "wallet"})
 
 
 @router.get("/stocks")
