@@ -10,14 +10,14 @@
     const w = lastSnap && lastSnap.bookWidest;
     return 'Cash is open, so tape and official agree. ' + (w ? 'Widest gap while cash was shut: ' + w.line + '. ' : 'No shut-session tape stored yet. ');
   };
-  const COPY_SHUT = 'At 4pm the stock freezes; the token keeps trading. A frozen print is not a market, so we never trade a wrapper against it: rotate only swaps one wrapper for another.';
+  const COPY_SHUT = 'The cash market freezes. The token keeps trading. Rotate the rich one into the cheap one.';
   async function refreshNow() {
     try {
       const r = await fetch('/', { cache: 'no-store' });
       if (!r.ok) return;
       const doc = new DOMParser().parseFromString(await r.text(), 'text/html');
       const fresh = doc.getElementById('bd-now'), cur = $('bd-now');
-      if (fresh && cur) { cur.innerHTML = fresh.innerHTML; cur.hidden = fresh.hidden; }
+      if (fresh && cur) { cur.innerHTML = fresh.innerHTML; fillNums(); }
     } catch (err) { console.warn('now block refresh failed', err); }
   }
 
@@ -29,6 +29,7 @@
   let session = null;
   let bookNames = []; // underlyings in Weekend Book order
   let arbMap = {};   // underlying -> Clears book row (from /api/agent/scan)
+  let bookMap = {};  // underlying -> any book row (clears or refused)
 
   function el(tag, cls, text) {
     const n = document.createElement(tag);
@@ -46,103 +47,100 @@
   }
   const tone = (p) => (p > 0 ? 'pos' : p < 0 ? 'neg' : 'flat');
 
-  function badge(p) {
-    return el('span', 'bd-badge ' + tone(p), fmtPremium(p));
-  }
-
-  function px(label, value, cls, src) {
-    const r = el('div', 'bd-px' + (cls ? ' ' + cls : ''));
-    r.appendChild(el('span', 'bd-px-l', label));
-    r.appendChild(el('b', null, value));
-    if (src) r.appendChild(el('small', 'bd-px-src bd-src-' + src.key, src.text));
-    return r;
-  }
   const usd2 = (v) => '$' + Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const pm = (p, title) => { const n = el('span', 'hp-pm ' + tone(p), fmtPremium(p)); if (title) n.title = title; return n; };
 
-  // ---- Cards ---------------------------------------------------------------
+  // ---- Board (compact rows) ------------------------------------------------
   function orderWrappers(list) {
     const rank = (w) => { const i = ORDER.indexOf(w.platform); return i === -1 ? ORDER.length : i; };
     return list.slice().sort((a, b) => rank(a) - rank(b));
   }
 
-  function buildWrapper(g, t, cashOpen) {
-    const showFair = !cashOpen && !g.noYahoo && !!g.markPrice && !!t.fairPrice;
+  function buildRow(g, t, cashOpen, fairCol) {
     const split = g.cheapest && g.richest && g.cheapest !== g.richest && !t.thin;
-    const w = el('div', 'bd-w' + (split && t.symbol === g.cheapest ? ' is-cheap' : split && t.symbol === g.richest ? ' is-rich' : ''));
-    w.dataset.symbol = t.symbol;
-    const top = el('div', 'bd-w-top');
-    top.appendChild(el('span', 'bd-w-sym', t.symbol));
-    w.appendChild(top);
-    const SRC = { binance: 'From Binance' };
-    const src = t.markSource && SRC[t.markSource] && t.markPrice != null ? { key: t.markSource, text: SRC[t.markSource] } : null;
-    const pxs = el('div', 'bd-pxs');
-    pxs.appendChild(px('Tape', t.hasTape ? money(t.tokenPrice) : '—'));
-    pxs.appendChild(px('Official', money(t.markPrice), '', src));
-    if (showFair) pxs.appendChild(px('Fair', money(t.fairPrice), 'bd-px-fair'));
-    w.appendChild(pxs);
-    const facts = el('div', 'bd-facts', (t.platformLabel || t.platform || '') +
-      (t.tokenToShareRatio ? ' \u00b7 ' + Number(t.tokenToShareRatio).toFixed(4) + ' sh/token' : '') +
+    const row = el('div', 'hp-row' + (split && t.symbol === g.cheapest ? ' is-cheap' : split && t.symbol === g.richest ? ' is-rich' : ''));
+    row.dataset.symbol = t.symbol;
+    row.title = (t.platformLabel || t.platform || '') +
+      (t.tokenToShareRatio ? ' \u00b7 tokenToShareRatio ' + t.tokenToShareRatio : '') +
       ' \u00b7 cash ' + (t.cashState && t.cashState.open ? 'open' : 'shut') +
-      (t.cashState && t.cashState.code ? ' \u00b7 feed ' + t.cashState.code : ''));
-    if (t.tokenToShareRatio) facts.title = 'tokenToShareRatio ' + t.tokenToShareRatio;
-    w.appendChild(facts);
-    if (t.markPrice != null && t.markSource !== 'binance') {
-      w.appendChild(el('div', 'bd-nomark', 'Last cash print. RWA price endpoint returned no mark on this deploy.'));
+      (t.cashState && t.cashState.code ? ' \u00b7 feed ' + t.cashState.code : '');
+
+    const sym = el('div', 'hp-c hp-sym');
+    sym.appendChild(el('b', null, t.symbol));
+    if (t.tokenToShareRatio) sym.appendChild(el('small', null, Number(t.tokenToShareRatio).toFixed(4) + ' sh'));
+    if (t.thin && t.hasTape) {
+      const tg = el('i', 'hp-tag', 'thin' + (t.liquidityUsd != null ? ' \u00b7 ' + usd2(t.liquidityUsd) : ''));
+      tg.title = 'Stale price, not a real gap.';
+      sym.appendChild(tg);
     }
+    row.appendChild(sym);
+
+    const tape = el('div', 'hp-c');
+    tape.appendChild(el('span', 'hp-v', t.hasTape ? money(t.tokenPrice) : '\u2014'));
     if (t.hasTape) {
-      const badges = el('div', 'bd-badges');
-      badges.appendChild(el('span', 'bd-bl', 'vs off'));
-      badges.appendChild(badge(t.premiumToOfficial));
-      if (showFair) {
-        badges.appendChild(el('span', 'bd-bl', 'vs fair'));
-        badges.appendChild(badge(t.premiumToFair));
-      }
-      if (t.thin) {
-        const tb = el('span', 'bd-thin', 'thin pool' + (t.liquidityUsd != null ? ' · ' + usd2(t.liquidityUsd) : ''));
-        tb.title = 'Stale price, not a real gap.';
-        badges.appendChild(tb);
-      }
-      w.appendChild(badges);
+      tape.appendChild(pm(t.premiumToOfficial, 'vs official'));
       if (t.cheapVsPrint && !cashOpen) {
-        w.appendChild(el('div', 'bd-mirror', 'Cheap versus the last print. This is the weekend exposure a floor would insure. StreetTape does not sell the insurance. It shows the gap and the cheaper wrapper.'));
+        const m = el('i', 'hp-tag', 'cheap vs print');
+        m.title = 'Cheap versus the last print. This is the weekend exposure a floor would insure. StreetTape does not sell the insurance. It shows the gap and the cheaper wrapper.';
+        tape.appendChild(m);
       }
     }
+    row.appendChild(tape);
+
+    const off = el('div', 'hp-c');
+    off.appendChild(el('span', 'hp-v', money(t.markPrice)));
+    if (t.markPrice != null) {
+      if (t.markSource === 'binance') off.appendChild(el('small', 'hp-mu', 'Binance'));
+      else { const lp = el('small', 'hp-mu', 'last print'); lp.title = 'Last cash print. RWA price endpoint returned no mark on this deploy.'; off.appendChild(lp); }
+    }
+    row.appendChild(off);
+
+    if (fairCol) {
+      const f = el('div', 'hp-c');
+      if (t.fairPrice) {
+        f.appendChild(el('span', 'hp-v hp-fair', money(t.fairPrice)));
+        if (t.hasTape) f.appendChild(pm(t.premiumToFair, 'vs fair'));
+      } else f.appendChild(el('span', 'hp-v hp-mu', '\u2014'));
+      row.appendChild(f);
+    }
+
     if (t.hasTape) {
       const rot = arbMap[g.underlying];
-      const a = el('a', 'bd-trade', rot ? 'Rotate' : 'Trade');
+      const a = el('a', 'hp-tb', rot ? 'Rotate' : 'Trade');
       a.href = rot
         ? '/t/' + encodeURIComponent(g.underlying) + '#rotate'
         : '/t/' + encodeURIComponent(t.symbol) + '#swap';
-      w.appendChild(a);
+      row.appendChild(a);
     } else {
-      const s = el('span', 'bd-trade bd-trade-off', 'no tape');
-      s.setAttribute('aria-disabled', 'true');
-      w.appendChild(s);
+      const o = el('span', 'hp-tb off', 'no tape');
+      o.setAttribute('aria-disabled', 'true');
+      row.appendChild(o);
     }
-    return w;
+    return row;
   }
 
   function buildGroup(g, cashOpen) {
-    const art = el('article', 'hm-card bd-group');
+    const ws = orderWrappers(g.wrappers || []);
+    const fairCol = !cashOpen && !g.noYahoo && !!g.markPrice && ws.some((t) => t.fairPrice);
+    const art = el('article', 'hp-board' + (fairCol ? '' : ' hp-nf'));
     art.dataset.underlying = g.underlying;
     art.dataset.name = (g.name || '').toLowerCase();
-    const head = el('header', 'bd-g-head');
-    const title = el('a', 'bd-g-title');
+    const head = el('header', 'hp-board-h');
+    const title = el('a', 'hp-board-t');
     title.href = '/t/' + encodeURIComponent(g.underlying);
     title.appendChild(el('b', null, g.underlying));
     title.appendChild(el('span', null, g.name));
     head.appendChild(title);
     if (g.crossSpread !== null && g.crossSpread !== undefined) {
-      const sp = el('span', 'bd-g-spread', 'x-wrapper ' + fmtPremium(g.crossSpread));
+      const sp = el('span', 'hp-spread', 'x-wrapper ' + fmtPremium(g.crossSpread));
       sp.title = 'Richest wrapper vs cheapest';
       head.appendChild(sp);
     }
     art.appendChild(head);
-    const cols = el('div', 'bd-cols');
-    const ws = orderWrappers(g.wrappers || []);
-    cols.style.setProperty('--n', String(ws.length || 1));
-    ws.forEach((t) => cols.appendChild(buildWrapper(g, t, cashOpen)));
-    art.appendChild(cols);
+    const hd = el('div', 'hp-row hp-head');
+    ['', 'Tape', 'Official'].concat(fairCol ? ['Fair'] : [], ['']).forEach((c) => hd.appendChild(el('span', null, c)));
+    art.appendChild(hd);
+    ws.forEach((t) => art.appendChild(buildRow(g, t, cashOpen, fairCol)));
     return art;
   }
 
@@ -152,7 +150,7 @@
     const groups = lastSnap.groups || [];
     groupsEl.textContent = '';
     if (!groups.length) {
-      groupsEl.appendChild(el('p', 'bd-empty', 'Tape is warming up. First print any moment.'));
+      groupsEl.appendChild(el('p', 'hp-empty', 'Tape is warming up. First print any moment.'));
       return;
     }
     groups.forEach((g) => groupsEl.appendChild(buildGroup(g, cashOpen)));
@@ -160,13 +158,14 @@
   }
 
   function renderLast() {
-    const box = $('bd-last'), rows = $('bd-last-rows'), empty = $('bd-last-empty');
+    const box = $('bd-last'), rows = $('bd-last-rows'), empty = $('bd-last-empty'), sum = $('bd-last-sum');
     if (!box || !rows || !empty) return;
     const list = (lastSnap && lastSnap.lastSession) || [];
     box.hidden = !(session && session.cashOpen);
     rows.textContent = '';
-    list.forEach((r) => rows.appendChild(el('p', 'bd-last-row', r.line)));
+    list.forEach((r) => rows.appendChild(el('p', 'hp-last-row', r.line)));
     empty.hidden = list.length > 0;
+    if (sum) sum.textContent = list.length ? list.length + ' rows' : 'none yet';
   }
 
   async function refreshBoard() {
@@ -187,40 +186,64 @@
 
   // ---- Weekend book (same payload as GET /api/agent/scan) ------------------
   const bps = (v) => Math.round(v) + ' bps';
+  const sgn = (v) => (v > 0 ? '+' : '') + Math.round(v) + ' bps';
   function bookRow(r) {
     const clears = r.state === 'clears';
-    const row = el('div', 'bd-bk-row ' + (clears ? 'is-clears' : 'is-refused'));
-    const head = el('div', 'bd-bk-head');
-    const t = el('a', 'bd-bk-name', r.underlying);
+    const row = el('div', 'hp-bk-row ' + (clears ? 'is-clears' : 'is-refused'));
+    const n = el('div', 'hp-bk-n');
+    const t = el('a', null, r.underlying);
     t.href = '/t/' + encodeURIComponent(r.underlying);
-    head.appendChild(t);
-    head.appendChild(el('span', 'bd-bk-state', clears ? 'Clears' : 'Refused'));
-    row.appendChild(head);
-    row.appendChild(el('p', 'bd-bk-legs',
-      'Sell ' + r.richSymbol + ' ' + money(r.richSharePrice) + ' → buy ' + r.cheapSymbol + ' ' + money(r.cheapSharePrice) + ' per share'));
+    n.appendChild(t);
+    n.appendChild(el('span', 'hp-badge ' + (clears ? 'up' : 'down'), clears ? 'CLEARS' : 'REFUSED'));
+    row.appendChild(n);
+    const d = el('div', 'hp-bk-d');
+    d.appendChild(el('p', null, 'Sell ' + r.richSymbol + ' ' + money(r.richSharePrice) + ' \u2192 buy ' + r.cheapSymbol + ' ' + money(r.cheapSharePrice) + ' per share'));
     if (clears) {
-      row.appendChild(el('p', 'bd-bk-line', 'gap ' + bps(r.gapBps) + ' · cost ' + bps(r.costBps) + ' · net +' + bps(r.netBps) + ' at $' + Math.round(r.sizeUsd || 50)));
-      const a = el('a', 'bd-bk-btn', 'Rotate');
+      const l = el('p', null, 'gap ' + bps(r.gapBps) + ' \u00b7 cost ' + bps(r.costBps) + ' \u00b7 net ');
+      l.appendChild(el('span', 'up', '+' + bps(r.netBps)));
+      l.appendChild(document.createTextNode(' at $' + Math.round(r.sizeUsd || 50)));
+      d.appendChild(l);
+    } else {
+      d.appendChild(el('p', null, 'gap ' + bps(r.gapBps) + ' \u00b7 ' +
+        (r.costBps === null || r.costBps === undefined ? r.reason : 'cost ' + bps(r.costBps)) + ' \u00b7 refused'));
+    }
+    row.appendChild(d);
+    if (clears) {
+      const a = el('a', 'hp-go', 'Rotate');
       a.href = '/t/' + encodeURIComponent(r.underlying) + '#rotate';
       row.appendChild(a);
-    } else {
-      row.appendChild(el('p', 'bd-bk-line dim', 'gap ' + bps(r.gapBps) + ' · ' +
-        (r.costBps === null || r.costBps === undefined ? r.reason : 'cost ' + bps(r.costBps)) + ' · refused'));
-    }
+    } else row.appendChild(el('span', 'hp-go off', '\u2014'));
     return row;
+  }
+  // Hero gap card numbers: the same Weekend-book row as the card's underlying.
+  function fillNums() {
+    const box = document.querySelector('#bd-now .hp-nums');
+    if (!box) return;
+    const r = bookMap[box.dataset.u];
+    const set = (id, v, cls) => { const n = $(id); if (!n) return; n.textContent = v; n.parentElement.className = cls || ''; };
+    if (!r) return;
+    const net = r.netBps != null ? r.netBps : (r.gapBps != null && r.costBps != null ? r.gapBps - r.costBps : null);
+    set('gp-gap', r.gapBps == null ? '\u2014' : sgn(r.gapBps), r.gapBps > 0 ? 'up' : r.gapBps < 0 ? 'down' : '');
+    set('gp-cost', r.costBps == null ? '\u2014' : bps(r.costBps), '');
+    set('gp-net', net == null ? '\u2014' : sgn(net), net > 0 ? 'up' : net < 0 ? 'down' : '');
   }
   function renderBook(scan) {
     const rows = scan.book || [];
-    arbMap = {};
+    arbMap = {}; bookMap = {};
     bookNames = rows.map((r) => r.underlying);
-    rows.forEach((r) => { if (r.state === 'clears') arbMap[r.underlying] = r; });
-    const box = $('bd-book-rows'), empty = $('bd-book-empty');
+    rows.forEach((r) => { bookMap[r.underlying] = r; if (r.state === 'clears') arbMap[r.underlying] = r; });
+    const box = $('bd-book-rows'), empty = $('bd-book-empty'), sum = $('bd-book-sum');
     if (box && empty) {
       box.textContent = '';
       rows.forEach((r) => box.appendChild(bookRow(r)));
       empty.textContent = 'No name has two live ratio-backed wrapper tapes right now.';
       empty.hidden = rows.length > 0;
     }
+    if (sum) {
+      const c = rows.filter((r) => r.state === 'clears').length;
+      sum.textContent = rows.length ? c + ' clear \u00b7 ' + (rows.length - c) + ' refused' : 'none live';
+    }
+    fillNums();
     renderBoard();
   }
   async function refreshBook() {
@@ -240,20 +263,20 @@
 
   // ---- Command chips (closed grammar; each chip is one existing endpoint, the panel prints the result) ----
   const out = $('bd-cmd-out');
-  const chips = document.querySelectorAll('.bd-chip');
+  const chips = document.querySelectorAll('.hp-tool');
   const pct = (v) => (v === null || v === undefined || !isFinite(v) ? '—' : (v > 0 ? '+' : '') + (v * 100).toFixed(2) + '%');
   const num = (v, d) => (v === null || v === undefined || !isFinite(v) ? '—' : Number(v).toFixed(d));
   const NOTE = 'Not auto-executed. Confirm and sign in your own wallet.';
 
-  function line(text, cls) { return el('p', 'bd-o-line' + (cls ? ' ' + cls : ''), text); }
+  function line(text, cls) { return el('p', 'hp-o-line' + (cls ? ' ' + cls : ''), text); }
   function show(title, nodes, sessLabel) {
     out.textContent = '';
-    const h = el('div', 'bd-o-head');
+    const h = el('div', 'hp-o-head');
     h.appendChild(el('b', null, title));
-    if (sessLabel) h.appendChild(el('span', 'bd-o-sess', sessLabel));
+    if (sessLabel) h.appendChild(el('span', 'hp-o-sess', sessLabel));
     out.appendChild(h);
     nodes.forEach((n) => out.appendChild(n));
-    out.appendChild(el('p', 'bd-o-note', NOTE));
+    out.appendChild(el('p', 'hp-o-note', NOTE));
     out.hidden = false;
   }
   async function getJSON(url, opts) {
@@ -271,17 +294,17 @@
     const snap = await getJSON('/api/board');
     const toks = (snap.tokens || []).filter((t) => t.hasTape && t.premium != null)
       .sort((a, b) => Math.abs(b.premium) - Math.abs(a.premium)).slice(0, 12);
-    const tbl = el('div', 'bd-o-tbl');
-    const hd = el('div', 'bd-o-row bd-o-th');
+    const tbl = el('div', 'hp-o-tbl');
+    const hd = el('div', 'hp-o-row hp-o-th');
     ['symbol', 'tape', 'official', 'fair', 'premium'].forEach((c) => hd.appendChild(el('span', null, c)));
     tbl.appendChild(hd);
     toks.forEach((t) => {
-      const r = el('div', 'bd-o-row');
+      const r = el('div', 'hp-o-row');
       r.appendChild(el('span', null, t.symbol));
       r.appendChild(el('span', null, money(t.tokenPrice)));
       r.appendChild(el('span', null, money(t.markPrice)));
       r.appendChild(el('span', null, money(t.fairPrice)));
-      r.appendChild(el('span', 'bd-o-p ' + tone(t.premium), fmtPremium(t.premium)));
+      r.appendChild(el('span', 'hp-o-p ' + tone(t.premium), fmtPremium(t.premium)));
       tbl.appendChild(r);
     });
     show("what's rich vs Friday", toks.length ? [tbl] : [line('No tape yet.', 'dim')], (snap.session || {}).label);
@@ -323,16 +346,16 @@
       const noRt = (l) => !l || l.noRoute || l.uiOutAmount == null;
       const why = (l) => String((l && l.fallbackReason) || '').replace(/\s+/g, ' ').trim().slice(0, 220);
       if (noRt(a.sellLeg)) {
-        n.push(line('No route selling ' + a.richSymbol + '. Refused.', 'bd-o-warn'));
+        n.push(line('No route selling ' + a.richSymbol + '. Refused.', 'hp-o-warn'));
         if (why(a.sellLeg)) n.push(line(why(a.sellLeg), 'dim'));
       } else if (noRt(a.buyLeg)) {
-        n.push(line('No route buying ' + a.cheapSymbol + '. Refused.', 'bd-o-warn'));
+        n.push(line('No route buying ' + a.cheapSymbol + '. Refused.', 'hp-o-warn'));
         if (why(a.buyLeg)) n.push(line(why(a.buyLeg), 'dim'));
       } else {
-        n.push(line('Costs eat the gap.', 'bd-o-warn'));
+        n.push(line('Costs eat the gap.', 'hp-o-warn'));
       }
     }
-    n.push(el('a', 'bd-bk-btn', 'Open rotate sheet'));
+    n.push(el('a', 'hp-go', 'Open rotate sheet'));
     n[n.length - 1].href = '/t/' + encodeURIComponent(u) + '#rotate';
     show(title, n, sess);
   }
@@ -388,39 +411,44 @@
     show('flatten anything richer than 2% while cash is shut', n, sess.label);
   }
 
-  // ---- Live defensive card (GET /api/agent/defensive) ------------------------
+  // ---- Live defensive panel (GET /api/agent/defensive) -----------------------
   const defEl = $('bd-def');
   let defBusy = false;
   function renderDefensive(d) {
     defEl.textContent = '';
     const trig = !!d.triggered;
-    defEl.className = 'bd-def ' + (trig ? 'is-on' : 'is-off');
-    const head = el('div', 'bd-def-head');
-    head.appendChild(el('b', null, 'Defensive rotation'));
-    head.appendChild(el('span', 'bd-def-state', trig ? 'TRIGGERED' : 'NOT TRIGGERED'));
-    defEl.appendChild(head);
+    const fold = $('bd-def-fold'), sum = $('bd-def-sum');
+    if (fold) fold.classList.toggle('is-trig', trig);
+    if (sum) sum.textContent = trig ? 'triggered' : 'not triggered';
     const mv = d.qqqMove;
-    defEl.appendChild(el('p', 'bd-def-move ' + (mv == null ? 'flat' : tone(mv)),
-      mv == null ? d.qqqSymbol + ' no tape on both sides of the Friday close'
-        : d.qqqSymbol + ' ' + (mv > 0 ? '+' : '') + Math.round(mv * 10000) + ' bps since ' + sinceET(d.since)));
-    defEl.appendChild(el('p', 'bd-def-sub', 'Threshold ±' + Math.round(d.threshold * 10000) + ' bps'
-      + (trig ? ' · viable ' + d.viable : ' · ' + (d.reason || 'move under threshold') + ' · no quotes')));
-    if (trig) {
-      ((d.sell || {}).legs || []).forEach((l) => defEl.appendChild(l.filled
-        ? legLine('Sell ' + l.symbol + ' $' + num(l.amountUsd, 2), l)
-        : line('Sell ' + l.underlying + ' unfilled: ' + (l.reason || 'no route'), 'dim')));
-      const b = d.buy || {};
-      defEl.appendChild(b.filled
-        ? legLine('Buy ' + (b.symbol || d.qqqSymbol) + ' $' + num(b.amountUsd, 2), b)
-        : line('Buy ' + (b.underlying || 'QQQ') + ' unfilled: ' + (b.reason || 'no route'), 'dim'));
-      if (d.priceImpactPct != null) defEl.appendChild(line('Worst leg impact ' + num(d.priceImpactPct, 4), 'dim'));
+    const mvTxt = mv == null ? d.qqqSymbol + ' no tape on both sides of the Friday close'
+      : d.qqqSymbol + ' ' + (mv > 0 ? '+' : '') + Math.round(mv * 10000) + ' bps since ' + sinceET(d.since);
+    const subTxt = 'Threshold \u00b1' + Math.round(d.threshold * 10000) + ' bps'
+      + (trig ? ' \u00b7 viable ' + d.viable : ' \u00b7 ' + (d.reason || 'move under threshold') + ' \u00b7 no quotes');
+    if (!trig) {
+      defEl.appendChild(el('p', 'hp-mute', mvTxt + '. ' + subTxt + '.'));
+      return;
     }
-    defEl.hidden = false;
+    const box = el('div', 'hp-alert');
+    box.appendChild(el('p', 'hp-alert-h', 'TRIGGERED \u00b7 ' + mvTxt));
+    box.appendChild(el('p', 'hp-alert-s', subTxt));
+    ((d.sell || {}).legs || []).forEach((l) => box.appendChild(l.filled
+      ? legLine('Sell ' + l.symbol + ' $' + num(l.amountUsd, 2), l)
+      : line('Sell ' + l.underlying + ' unfilled: ' + (l.reason || 'no route'), 'dim')));
+    const b = d.buy || {};
+    box.appendChild(b.filled
+      ? legLine('Buy ' + (b.symbol || d.qqqSymbol) + ' $' + num(b.amountUsd, 2), b)
+      : line('Buy ' + (b.underlying || 'QQQ') + ' unfilled: ' + (b.reason || 'no route'), 'dim'));
+    if (d.priceImpactPct != null) box.appendChild(line('Worst leg impact ' + num(d.priceImpactPct, 4), 'dim'));
+    defEl.appendChild(box);
   }
   async function refreshDefensive() {
     if (!defEl || document.hidden || defBusy) return;
     defBusy = true;
-    try { renderDefensive(await getJSON('/api/agent/defensive?usd=50')); } catch (e) { if (defEl.hidden) { defEl.className = 'bd-def is-off'; defEl.textContent = ''; defEl.appendChild(line('Defensive rotation: state unavailable (' + e.message + ')', 'dim')); defEl.hidden = false; } } finally { defBusy = false; }
+    try { renderDefensive(await getJSON('/api/agent/defensive?usd=50')); } catch (e) {
+      const sum = $('bd-def-sum'); if (sum) sum.textContent = 'unavailable';
+      defEl.textContent = ''; defEl.appendChild(el('p', 'hp-mute', 'State unavailable (' + e.message + ')'));
+    } finally { defBusy = false; }
   }
 
   const CMDS = { rich: cmdRich, rotate: cmdRotate, defensive: cmdDefensive, flatten: cmdFlatten };
@@ -429,17 +457,17 @@
     out.hidden = false;
     out.textContent = '';
     out.appendChild(line('Running…', 'dim'));
-    try { await CMDS[c.dataset.cmd](); } catch (e) { out.textContent = ''; out.appendChild(line('Request failed: ' + e.message, 'bd-o-warn')); }
+    try { await CMDS[c.dataset.cmd](); } catch (e) { out.textContent = ''; out.appendChild(line('Request failed: ' + e.message, 'hp-o-warn')); }
   }));
 
   // ---- Search --------------------------------------------------------------
   function applySearch(raw) {
     const q = (raw || '').trim().toLowerCase();
-    const cards = document.querySelectorAll('.bd-group');
+    const cards = document.querySelectorAll('.hp-board');
     let visible = 0;
     cards.forEach((c) => {
       const match = !q || c.dataset.underlying.toLowerCase().includes(q) || c.dataset.name.includes(q)
-        || Array.from(c.querySelectorAll('.bd-w')).some((w) => w.dataset.symbol.toLowerCase().includes(q));
+        || Array.from(c.querySelectorAll('.hp-row[data-symbol]')).some((w) => w.dataset.symbol.toLowerCase().includes(q));
       c.hidden = !match;
       if (match) visible += 1;
     });
@@ -493,6 +521,12 @@
       console.warn('session refresh failed', err);
     }
   }
+
+  // ---- Panels (closed by default) -------------------------------------------
+  document.querySelectorAll('.hp-fold-h').forEach((h) => h.addEventListener('click', () => {
+    const open = h.parentElement.classList.toggle('open');
+    h.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }));
 
   // ---- Boot ----------------------------------------------------------------
   const hero0 = $('bd-hero');
