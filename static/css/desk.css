@@ -1358,3 +1358,11 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .bk-tot strong { color: var(--hp-text); font-variant-numeric: tabular-nums; }
 .bk-tot .up { color: var(--hp-up); }
 .bk-tot .down { color: var(--hp-down); }
+
+/* Basket link colours: beat body.hm a { color: inherit } */
+body.hp .bk-cta { color: var(--hp-ink); }
+body.hp .bk-cta.off { color: var(--hp-mute); }
+body.hp .bk-back { color: var(--hp-dim); }
+body.hp .bk-back:hover { color: var(--hp-text); }
+body.hp .bk-pills a { color: var(--hp-dim); }
+body.hp .bk-pills a.on { color: var(--hp-ink); }
