@@ -2,6 +2,7 @@
 (function () {
   const LIST_MAX = 5;
   const STK_MAX = 4;
+  const PLAT_LBL = { xstocks: 'x', ondo: 'Ondo', bstocks: 'b' };
   const PLAT = { xstocks: 'xStocks', ondo: 'Ondo', bstocks: 'bStocks' };
   const SESS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
   const $ = (id) => document.getElementById(id);
@@ -103,26 +104,46 @@
     el.all.textContent = st.open ? 'View less' : 'View all';
   }
 
-  function stockRow(g) {
-    const ws = g.wrappers || [];
-    const w = ws.find((x) => x.symbol === g.cheapest) || ws.find((x) => x.hasTape && x.tokenPrice);
-    const row = h('a', 'wl-row');
-    row.href = '/t/' + encodeURIComponent(g.underlying);
+  const perShare = (w) => (w && w.tokenPrice && w.tokenToShareRatio ? w.tokenPrice / w.tokenToShareRatio : null);
+
+  function wrapCard(plat, w) {
+    const c = h('div', 'wl-w');
+    c.appendChild(h('div', 'wl-wl', PLAT_LBL[plat]));
+    const ps = perShare(w);
+    if (w && w.tokenPrice) {
+      c.appendChild(h('div', 'wl-wv', fmtPrice(ps !== null ? ps : w.tokenPrice) + (ps !== null ? ' /sh' : '')));
+      const info = pct(w.premium == null ? null : w.premium * 100);
+      c.appendChild(h('div', 'wl-wp ' + (info ? info.cls : 'flat'), info ? info.text : '\u2014'));
+    } else {
+      c.classList.add('off');
+      c.appendChild(h('div', 'wl-wv', '\u2014'));
+      c.appendChild(h('div', 'wl-wr', 'No tape'));
+    }
+    return c;
+  }
+
+  function stockCard(g) {
+    const card = h('div', 'wl-sc');
+    const head = h('a', 'wl-sh');
+    head.href = '/t/' + encodeURIComponent(g.underlying);
     const l = h('div');
     l.appendChild(h('div', 'wl-sym', g.underlying));
-    l.appendChild(h('div', 'wl-sub', w ? w.symbol + (w.symbol === g.cheapest ? ' \u00b7 cheapest' : '') : 'no tape'));
-    const px = g.markPrice || (w && w.tokenPrice && w.tokenToShareRatio ? w.tokenPrice / w.tokenToShareRatio : null);
-    const p = w ? w.premium != null ? w.premium : w.premiumToOfficial : null;
-    const info = p == null ? null : pct(p * 100);
-    row.append(l, h('div', 'wl-amt wl-px', px ? fmtPrice(px) : '\u2014'), h('div', 'wl-pnl ' + (info ? info.cls : 'flat'), info ? info.text : '\u2014'));
-    return row;
+    if (g.name) l.appendChild(h('div', 'wl-sub', g.name));
+    const noYahoo = (g.wrappers || []).every((w) => w.noYahoo);
+    head.append(l, h('div', 'wl-px', noYahoo ? 'Tape only' : g.markPrice ? fmtPrice(g.markPrice) : '\u2014'));
+    card.appendChild(head);
+    const grid = h('div', 'wl-wg');
+    const list = ['xstocks', 'ondo', 'bstocks'].map((plat) => ({ plat, w: (g.wrappers || []).find((x) => x.platform === plat) }));
+    list.forEach(({ plat, w }) => grid.appendChild(wrapCard(plat, w)));
+    card.appendChild(grid);
+    return card;
   }
 
   function renderStocks() {
     const all = st.groups;
     const rows = st.stkOpen ? all : all.slice(0, STK_MAX);
     el.stk.textContent = '';
-    rows.forEach((g) => el.stk.appendChild(stockRow(g)));
+    rows.forEach((g) => el.stk.appendChild(stockCard(g)));
     el.stk.hidden = rows.length === 0;
     el.stkEmpty.hidden = rows.length > 0;
     el.stkEmpty.textContent = st.groupsLoaded ? 'No stocks available.' : 'Loading\u2026';
