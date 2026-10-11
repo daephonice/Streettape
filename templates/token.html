@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ token.symbol if token else underlying }} — StreetTape{% endblock %}
-{% block body_class %}hm tk{% endblock %}
+{% block body_class %}hm hp tk{% endblock %}
+
+{% block head_extra %}
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+{% endblock %}
 
 {% block header %}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -42,10 +46,10 @@
   {% endif %}
 
   <section class="tk-stats" id="tk-stats">
-    <div class="tk-stat"><span>Official mark</span><b id="tk-mark">–</b></div>
-    <div class="tk-stat"><span>Prem (official)</span><b id="tk-prem">–</b></div>
-    <div class="tk-stat"><span>Synthetic mark</span><b id="tk-fair">–</b></div>
-    <div class="tk-stat"><span>Prem (synthetic)</span><b id="tk-prem-fair">–</b></div>
+    <div class="tk-stat"><span>Official</span><b id="tk-mark">–</b></div>
+    <div class="tk-stat"><span>Prem</span><b id="tk-prem">–</b></div>
+    <div class="tk-stat"><span>Fair</span><b id="tk-fair">–</b></div>
+    <div class="tk-stat"><span>Fair prem</span><b id="tk-prem-fair">–</b></div>
   </section>
   <p class="tk-arb-note" id="tk-facts" hidden></p>
 
@@ -80,12 +84,6 @@
     </div>
   </section>
 
-  <section class="hm-card tk-arb" id="tk-floor" hidden>
-    <div class="tk-arb-head"><h2>Weekend floor</h2><span class="tk-arb-net" id="tk-floor-pay">—</span></div>
-    <p class="tk-arb-line" id="tk-floor-line"></p>
-    <p class="tk-arb-note">Quote only, from our stored session book. No premium, no contract, nothing is insured.</p>
-  </section>
-
   <section>
     <div class="tk-ranges" id="tk-ranges">
       <button class="tk-range" type="button" data-range="1H">1H</button>
@@ -101,6 +99,12 @@
       <p class="tk-nohist" id="tk-nohist" hidden>No price history yet</p>
     </div>
     <div class="tk-xaxis" id="tk-xaxis" hidden><span></span><span></span><span></span></div>
+  </section>
+
+  <section class="hm-card tk-arb" id="tk-floor" hidden>
+    <div class="tk-arb-head"><h2>Weekend floor</h2><span class="tk-arb-net" id="tk-floor-pay">—</span></div>
+    <p class="tk-arb-line" id="tk-floor-line"></p>
+    <p class="tk-arb-note">Quote only, from our stored session book. No premium, no contract, nothing is insured.</p>
   </section>
 
   <section class="tk-sec">
