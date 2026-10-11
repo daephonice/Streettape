@@ -30,21 +30,7 @@
     <a class="wl-act primary" id="wl-swap" href="/swap" aria-disabled="true">&rArr; Swap</a>
   </div>
 
-  <div class="hp-pair">
-    <div class="hp-box" id="hm-quick">
-      <h3>Buy cheapest</h3>
-      <p>Cheapest wrapper with a tape and share ratio.</p>
-      <div class="hp-pills">
-        <label class="hp-pick"><select id="qb-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select></label>
-        <span id="qb-amts">
-          <button type="button" data-usd="5" class="on">$5</button>
-          <button type="button" data-usd="10">$10</button>
-          <button type="button" data-usd="50">$50</button>
-        </span>
-      </div>
-      <button class="hp-cta" id="qb-go" type="button">Buy cheapest NVDA for $5</button>
-      <p class="hp-note" id="qb-note"></p>
-    </div>
+  <div class="hp-pair one">
     <div class="hp-box" id="hm-floor">
       <h3>Floor watch</h3>
       <p>Proposes a sell when the cushion is thin. Nothing signs.</p>
@@ -66,7 +52,7 @@
     <h2>Stocks</h2>
     {% if telegram_bot_url %}<a class="wl-tg" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Watch on Telegram</a>{% endif %}
   </div>
-  <div class="wl-hold" id="wl-stk" hidden></div>
+  <div class="wl-hold wl-stks" id="wl-stk" hidden></div>
   <div class="wl-empty" id="wl-stk-empty">Loading…</div>
   <button type="button" class="wl-more" id="wl-stk-all" hidden>View all</button>
 
@@ -82,9 +68,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
 <script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
-<script src="/static/js/quickbuy.js?v={{ static_v('js/quickbuy.js') }}"></script>
 <script src="/static/js/floorwatch.js?v={{ static_v('js/floorwatch.js') }}"></script>
 <script src="/static/js/walletpage.js?v={{ static_v('js/walletpage.js') }}"></script>
 {% endblock %}
