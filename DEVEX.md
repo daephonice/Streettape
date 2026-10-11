@@ -7,7 +7,7 @@ This file lives in the repo so a Railway deploy cannot wipe it. The download at 
 - Product: https://streettape.up.railway.app
 - Agent registration: https://streettape.up.railway.app/agent-registration.json
 - Chain: BSC mainnet (`binanceChainId=56`)
-- Stance: I quote, flag, and alert. The user signs. Nothing auto-executes.
+- Stance: Quote, flag, and alert. The user signs. Nothing auto-executes.
 
 > ## If I owned the platform
 >
@@ -210,7 +210,7 @@ Only live-key outcomes the sections above do not already have. One block per out
 
 - Session: WEEKEND.
 - What I hit: `baw auth signin` on one phone while the Agentic Wallet lived on another.
-- What came back: the signin link redirected to the phone that ran the command, not the phone that held the wallet. A QR drawn from `urlForWeb` and scanned from the wallet owner's phone got through. The pairing code expired if I waited. Once it worked, balance showed BNB 0.007086 ($5.31) on chain 56.
+- What came back: the signin link redirected to the phone that ran the command, not the phone that held the wallet. A QR drawn from `urlForWeb` and scanned from the wallet's phone got through. The pairing code expired if I waited. Once it worked, balance showed BNB 0.007086 ($5.31) on chain 56.
 - What I changed: nothing in code. Documented the friction.
 
 ### 2026-10-10 — Floor watch and routing rules
