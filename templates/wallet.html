@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block body_class %}hm{% endblock %}
+
+{% block header %}
+<header class="hm-header">
+  <div class="hm-col hm-header-inner">
+    <a href="/wallet" class="mkt-brand">
+      <span class="mkt-brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="30" height="30" fill="none">
+          <rect x="1" y="1" width="30" height="30" rx="8" stroke="#1475E1" stroke-width="1.4"/>
+          <path d="M8 21L13 12L17 18L24 9" stroke="#1475E1" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="mkt-wordmark">StreetTape</span>
+    </a>
+    <div class="hm-header-right">
+      <span class="sess-wrap">
+        <span class="sess-chip" id="sess-chip"><span class="sess-dot"></span><span id="sess-label">—</span></span>
+        <span class="sess-sub" id="sess-sub"></span>
+      </span>
+      <button class="mkt-connect-btn" id="mkt-connect-btn" type="button">Connect wallet</button>
+    </div>
+  </div>
+</header>
+{% endblock %}
+
+{% block content %}
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z" fill="currentColor"/></symbol>
+  <symbol id="i-verified" viewBox="0 0 24 24"><path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
+  <symbol id="i-stack" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="4" y="14" width="16" height="6" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="8" cy="7" r="1" fill="currentColor"/><circle cx="8" cy="17" r="1" fill="currentColor"/></symbol>
+</svg>
+
+<div class="hm-stack" id="hm-stack">
+<div class="hm-col" id="hm-dashboard">
+  <section class="hm-balance">
+    <div class="hm-total" id="hm-total">$0.00</div>
+    <div class="hm-change flat" id="hm-change">
+      <span id="hm-change-text">$0.00 (0%)</span>
+      <span class="hm-change-range">1D</span>
+      <svg class="hm-icon" width="16" height="16"><use href="#i-chevron"/></svg>
+    </div>
+  </section>
+
+  <div class="hm-actions locked" id="hm-actions">
+    <div class="hm-action">
+      <button class="hm-action-btn" id="hm-send-btn" type="button" aria-disabled="true" aria-label="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>
+      </button>
+      <span class="hm-action-label">Send</span>
+    </div>
+    <div class="hm-action">
+      <a class="hm-action-btn" id="hm-swap-btn" href="/swap" aria-label="Swap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 3 4 4-4 4"/><path d="M20 7H4"/><path d="m8 21-4-4 4-4"/><path d="M4 17h16"/></svg>
+      </a>
+      <span class="hm-action-label">Swap</span>
+    </div>
+  </div>
+  <p class="hm-lock-notice" id="hm-lock-notice">Connect Wallet to Access</p>
+
+  <section class="hm-quick" id="hm-quick">
+    <div class="hm-quick-row">
+      <select id="qb-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
+      <div class="hm-quick-amts" id="qb-amts">
+        <button type="button" data-usd="5" class="on">$5</button>
+        <button type="button" data-usd="10">$10</button>
+        <button type="button" data-usd="50">$50</button>
+              </div>
+    </div>
+    <button class="hm-quick-go" id="qb-go" type="button">Buy cheapest NVDA for $5</button>
+    <p class="hm-quick-note" id="qb-note"></p>
+    <p class="hm-quick-hint">Smallest order that clears the $5 minimum. Pick a stock, tap once, sign in your wallet.</p>
+  </section>
+
+  <section class="hm-quick" id="hm-floor">
+    <div class="hm-quick-row">
+      <select id="fw-sym" aria-label="Stock"><option value="NVDA">NVDA</option></select>
+      <div class="hm-quick-amts" id="fw-pcts">
+        <button type="button" data-pct="90">90%</button>
+        <button type="button" data-pct="95" class="on">95%</button>
+        <button type="button" data-pct="98">98%</button>
+      </div>
+    </div>
+    <button class="hm-quick-go" id="fw-go" type="button">Watch NVDA at 95% floor</button>
+    <p class="hm-quick-note" id="fw-note"></p>
+    <a class="tk-link" id="fw-link" href="#" hidden>Open sell sheet</a>
+  </section>
+
+  <section class="hm-stocks" id="hm-stocks">
+    <div class="hm-stocks-head">
+      <h2 class="hm-news-title">Stocks</h2>
+      {% if telegram_bot_url %}
+      <a class="tk-link tk-tg-link hm-stocks-tg" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.3-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71l-4.14-3.05-2 1.92c-.24.24-.42.42-.82.42z"/></svg>
+        <span>Watch Tokens on Telegram</span>
+      </a>
+      {% endif %}
+    </div>
+    <div class="hm-stk-rows" id="hm-stock-rows"></div>
+    <p class="hm-empty" id="hm-stock-empty">Loading…</p>
+    <button class="hm-n-toggle" id="hm-stock-toggle" type="button" hidden>
+      <span class="hm-n-toggle-text">View all</span>
+      <svg class="hm-n-toggle-icon" width="14" height="14"><use href="#i-chevron-down"/></svg>
+    </button>
+  </section>
+
+  <section class="hm-card">
+    <button class="hm-card-head hm-card-link" id="hm-hold-open" type="button" aria-label="View all holdings">
+      <h2>Portfolio</h2>
+      <span class="hm-viewall">View All</span>
+      <svg class="hm-icon" width="20" height="20"><use href="#i-chevron"/></svg>
+    </button>
+    <div class="hm-rows" id="hm-hold-rows"></div>
+    <p class="hm-empty" id="hm-hold-empty">Connect wallet</p>
+  </section>
+
+  <section class="hm-news">
+    <h2 class="hm-news-title">News</h2>
+    <div id="hm-news-list"></div>
+    <p class="hm-news-empty" id="hm-news-empty" hidden>No news available yet</p>
+  </section>
+
+  <footer class="hm-footer">
+    <p>Economic exposure only. Not shares, not for US persons, not advice. Swaps sign in your wallet. StreetTape does not custody funds.</p>
+  </footer>
+</div>
+</div>
+
+<div class="hld-root" id="hld-root" hidden>
+  <div class="hld-backdrop" id="hld-backdrop"></div>
+  <section class="hld-sheet" id="hld-sheet" role="dialog" aria-modal="true" aria-label="Holdings">
+    <div class="hld-handle"></div>
+    <div class="hld-head">
+      <h3 class="hld-title">Holdings</h3>
+      <button type="button" class="hld-close" id="hld-close" aria-label="Close">
+        <svg width="20" height="20"><use href="#i-close"/></svg>
+      </button>
+    </div>
+    <div class="hld-rows" id="hld-rows"></div>
+    <div class="hld-empty" id="hld-empty" hidden>
+      <svg class="hld-empty-ic" width="72" height="72"><use href="#i-stack"/></svg>
+      <p>No Holdings yet</p>
+    </div>
+    <button type="button" class="hld-disc" id="hld-disc">Disconnect wallet</button>
+  </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/swap.js?v={{ static_v('js/swap.js') }}"></script>
+<script src="/static/js/send.js?v={{ static_v('js/send.js') }}"></script>
+<script src="/static/js/quickbuy.js?v={{ static_v('js/quickbuy.js') }}"></script>
+<script src="/static/js/floorwatch.js?v={{ static_v('js/floorwatch.js') }}"></script>
+<script src="/static/js/home.js?v={{ static_v('js/home.js') }}"></script>
+{% endblock %}
