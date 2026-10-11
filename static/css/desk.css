@@ -1433,3 +1433,56 @@ body.hp a.wl-sh { color: var(--hp-text); }
 .wl-wp.flat { color: var(--hp-mute); }
 .wl-wr { margin-top: 2px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.02em; color: var(--hp-up); }
 .wl-w.off .wl-wr { color: var(--hp-dim); }
+
+/* ==========================================================================
+   Token page — new design system (body.hp.tk). Same --hp-* tokens as home/wallet/basket.
+   ========================================================================== */
+body.hp.tk { --hm-bg: var(--hp-bg); --hm-card: var(--hp-card); --hm-ctrl: rgba(255,255,255,.05); --hm-ctrl-on: rgba(255,255,255,.1); --hm-text: var(--hp-text); --hm-muted: var(--hp-dim); --hm-dim: var(--hp-mute); --hm-line: var(--hp-line); --hm-pos: var(--hp-up); --hm-neg: var(--hp-down); --hm-verified: var(--hp-accent); --accent: var(--hp-accent); --accent-2: var(--hp-accent); --pos: var(--hp-up); --neg: var(--hp-down); background: transparent; }
+body.hp.tk .tk-header, body.hp.tk .tk-wrap, body.hp.tk .tk-bar { zoom: 1; }
+body.hp.tk .tk-header { background: rgba(6,8,12,.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-bottom: 1px solid var(--hp-line); }
+body.hp.tk .tk-header-inner { max-width: 820px; padding: 0 20px; }
+body.hp.tk .tk-wrap { max-width: 820px; padding: 8px 20px 0; }
+body.hp.tk .tk-sym { font-weight: 700; letter-spacing: -.03em; }
+body.hp.tk .tk-share, body.hp.tk .tk-copy-menu { border: 1px solid var(--hp-line); background: var(--hp-card); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+body.hp.tk .tk-copy-one { background: rgba(255,255,255,.06); }
+body.hp.tk .tk-copy-one.done { background: var(--hp-accent); color: var(--hp-ink); }
+body.hp.tk .mkt-connect-btn:not(.connected) { font-family: inherit; height: auto; padding: 8px 14px; border-radius: 999px; background: var(--hp-text); color: #0a0c10; }
+body.hp.tk .tk-stats, body.hp.tk .tk-sec, body.hp.tk .tk-about, body.hp.tk .tk-ranges, body.hp.tk .tk-xaxis, body.hp.tk .tk-legal, body.hp.tk .tk-tape-sec { padding-left: 0; padding-right: 0; }
+body.hp.tk .tk-stats { gap: 8px; padding-top: 14px; }
+body.hp.tk .tk-stat { padding: 12px 6px; border-radius: 14px; background: var(--hp-card); border: 1px solid var(--hp-line); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--hp-mute); }
+body.hp.tk .tk-stat b { font-size: 15px; font-weight: 650; letter-spacing: 0; text-transform: none; }
+body.hp.tk .tk-stat:nth-child(3) b { color: var(--hp-amber); }
+body.hp.tk .tk-arb-note { color: var(--hp-mute); margin-top: 10px; }
+body.hp.tk .hm-card { background: var(--hp-card); border: 1px solid var(--hp-line); border-radius: 18px; padding: 18px; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+body.hp.tk .tk-arb, body.hp.tk .tk-pos { margin-top: 14px; }
+body.hp.tk .tk-arb-head h2, body.hp.tk .tk-pos-head h2 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+body.hp.tk .tk-arb-line, body.hp.tk .tk-arb-disclaimer { color: var(--hp-dim); }
+body.hp.tk .tk-arb-leg-btn.sell { background: var(--hp-down); color: #2a0a10; }
+body.hp.tk .tk-arb-leg-btn.buy { background: var(--hp-up); color: #052416; }
+body.hp.tk .tk-quick-btn, body.hp.tk .tk-chip { background: rgba(255,255,255,.05); border: 1px solid var(--hp-line); color: var(--hp-dim); border-radius: 999px; font-weight: 600; }
+body.hp.tk .tk-quick-btn { border-radius: 12px; color: var(--hp-text); }
+body.hp.tk .tk-chip:active, body.hp.tk .tk-chip.on { background: var(--hp-accent); color: var(--hp-ink); border-color: var(--hp-accent); }
+body.hp.tk .tk-ranges { padding-top: 18px; }
+body.hp.tk .tk-range { border-radius: 999px; color: var(--hp-mute); }
+body.hp.tk .tk-range.active { background: var(--hp-accent); color: var(--hp-ink); font-weight: 700; }
+body.hp.tk .tk-plot-wrap { border-radius: 18px; background: var(--hp-card); border: 1px solid var(--hp-line); overflow: hidden; }
+body.hp.tk .tk-axis span { background: rgba(6,8,12,.6); }
+body.hp.tk .tk-tip { background: rgba(16,20,28,.92); border-color: var(--hp-line); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+body.hp.tk .tk-end { box-shadow: 0 0 0 3px rgba(6,8,12,.85); }
+body.hp.tk .tk-dot { background: var(--hp-accent); box-shadow: 0 0 8px var(--hp-accent); }
+body.hp.tk .tk-pos-row { border-top-color: var(--hp-line); }
+body.hp.tk .tk-about { padding-top: 28px; }
+body.hp.tk .tk-about h2 { font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 28px; letter-spacing: -.03em; }
+body.hp.tk .tk-about-text { color: var(--hp-dim); }
+body.hp.tk .tk-readmore { color: var(--hp-accent); }
+body.hp.tk .tk-link { background: var(--hp-card); border: 1px solid var(--hp-line); border-radius: 999px; color: var(--hp-dim); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+body.hp.tk .tk-tg-link { color: var(--hp-text); }
+body.hp.tk .tk-legal { color: var(--hp-mute); }
+body.hp.tk .tk-bar { background: linear-gradient(to top, #06080c 62%, rgba(6,8,12,0)); }
+body.hp.tk .tk-bar .hm-col { max-width: 820px; padding: 0 20px; }
+body.hp.tk .tk-chips-wrap { background: transparent; }
+body.hp.tk .tk-act { height: 52px; border-radius: 14px; font-weight: 700; border: 0; }
+body.hp.tk .tk-act-sell, body.hp.tk .tk-act-sell:active { background: #ff6b81; color: #2a0a10; box-shadow: 0 0 0 1px rgba(255,107,129,.4), 0 8px 24px rgba(255,107,129,.2); }
+body.hp.tk .tk-act-buy, body.hp.tk .tk-act-buy:active { background: #3ee0a0; color: #052416; box-shadow: 0 0 0 1px rgba(62,224,160,.4), 0 8px 24px rgba(62,224,160,.2); }
+body.hp.tk .tk-act:disabled, body.hp.tk .tk-act.dead { opacity: .45; box-shadow: none; }
+body.hp.tk .bn { background: rgba(6,8,12,.85); }
