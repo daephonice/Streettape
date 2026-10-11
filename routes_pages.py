@@ -108,19 +108,23 @@ async def session_page(request: Request):
     return templates.TemplateResponse(request, "session.html", {"nav": "session"})
 
 
+def _basket_usd(v: float) -> float:
+    return float(v) if v in (25, 50, 100) else basket.DEFAULT_USD
+
+
 @router.get("/basket/ai", response_class=HTMLResponse)
-async def basket_ai_page(request: Request):
-    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("ai")})
+async def basket_ai_page(request: Request, usd: float = 50):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("ai", _basket_usd(usd)), "nav": "board"})
 
 
 @router.get("/basket/semis", response_class=HTMLResponse)
-async def basket_semis_page(request: Request):
-    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("semis")})
+async def basket_semis_page(request: Request, usd: float = 50):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("semis", _basket_usd(usd)), "nav": "board"})
 
 
 @router.get("/basket/defensive", response_class=HTMLResponse)
-async def basket_defensive_page(request: Request):
-    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("defensive")})
+async def basket_defensive_page(request: Request, usd: float = 50):
+    return templates.TemplateResponse(request, "basket.html", {"b": await basket.build("defensive", _basket_usd(usd)), "nav": "board"})
 
 
 @router.get("/board")
