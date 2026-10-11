@@ -23,8 +23,8 @@
   const PRICE_MS = 1000;
   const BALANCE_MS = 6000;
   const CHART_MS = 30000;
-  const UP = '#4ade80';
-  const DOWN = '#fb7185';
+  const UP = '#3ee0a0';
+  const DOWN = '#ff6b81';
   const PLAT_LABEL = { xstocks: 'x', ondo: 'Ondo', bstocks: 'b' };
 
   const $ = (id) => document.getElementById(id);
@@ -194,10 +194,10 @@
   }
 
   const SERIES_COLORS = {
-    mark:    '#94a3b8', // slate: cash/reference
+    mark:    '#a3adbd', // slate: cash/reference
     xstocks: '#60a5fa', // blue
     ondo:    '#a78bfa', // purple
-    bstocks: '#34d399', // green
+    bstocks: '#7df9d0', // green
   };
 
   function _wrapperPlatform(sym) {
@@ -406,7 +406,7 @@
     }
     legend.innerHTML = '';
     const LABEL = { mark: 'Cash', xstocks: 'xStocks', ondo: 'Ondo', bstocks: 'bStocks' };
-    const COLOR = { mark: '#94a3b8', xstocks: '#60a5fa', ondo: '#a78bfa', bstocks: '#34d399' };
+    const COLOR = { mark: '#94a3b8', xstocks: '#60a5fa', ondo: '#a78bfa', bstocks: '#7df9d0' };
     const hasMark = (multiChart.mark || []).length >= 2;
     if (hasMark) {
       const dot = `<span class="tk-legend-dot" style="background:${COLOR.mark}"></span>`;
