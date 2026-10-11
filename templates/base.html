@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="{% block viewport %}width=device-width, initial-scale=1.0, viewport-fit=cover{% endblock %}">
+  <meta name="viewport" content="{% block viewport %}width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover{% endblock %}">
   <title>{% block title %}StreetTape — mark vs tape for BNB tokenized stocks{% endblock %}</title>
   <meta name="description" content="Mark vs tape for bStocks, Ondo and xStocks on BNB Chain.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -21,6 +21,7 @@
 
   {% if nav %}{% include "_nav.html" %}{% endif %}
 
+  <script>['gesturestart','gesturechange','gestureend'].forEach(function(t){document.addEventListener(t,function(e){e.preventDefault();});});</script>
   <script src="/static/js/wallet.js?v={{ static_v('js/wallet.js') }}"></script>
   {% block scripts %}{% endblock %}
 </body>
