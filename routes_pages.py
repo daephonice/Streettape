@@ -134,7 +134,8 @@ async def board_redirect():
 
 @router.get("/wallet", response_class=HTMLResponse)
 async def wallet_page(request: Request):
-    return templates.TemplateResponse(request, "wallet.html", {"nav": "wallet"})
+    snap = rwa.get_cached_snapshot()
+    return templates.TemplateResponse(request, "wallet.html", {"nav": "wallet", "session": snap.get("session") or rwa.session_now()})
 
 
 @router.get("/stocks")
