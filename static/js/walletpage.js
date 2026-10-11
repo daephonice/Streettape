@@ -1,6 +1,7 @@
-/* /wallet. /api/prices + /api/assets + /api/balances/{addr} + /api/news + /api/clock. Send is wallet-gated. */
+/* /wallet. /api/prices + /api/assets + /api/balances/{addr} + /api/clock. Send is wallet-gated. */
 (function () {
   const LIST_MAX = 5;
+  const STK_MAX = 4;
   const PLAT = { xstocks: 'xStocks', ondo: 'Ondo', bstocks: 'bStocks' };
   const SESS = { 'CASH OPEN': 'sess-open', 'PRE-MARKET': 'sess-pre', 'AFTER-HOURS': 'sess-ah', 'WEEKEND': 'sess-we' };
   const $ = (id) => document.getElementById(id);
@@ -8,10 +9,10 @@
     total: $('wl-total'), chg: $('wl-chg'), chgD: $('wl-chg-d'), chgR: $('wl-chg-r'),
     actions: $('wl-actions'), send: $('wl-send'), swap: $('wl-swap'),
     hold: $('wl-hold'), empty: $('wl-empty'), all: $('wl-all'),
-    newsList: $('wl-news-list'), newsEmpty: $('wl-news-empty'), newsSum: $('wl-news-sum'), news: $('wl-news'),
+    stk: $('wl-stk'), stkEmpty: $('wl-stk-empty'), stkAll: $('wl-stk-all'),
     chip: $('sess-chip'), label: $('sess-label'), sub: $('sess-sub'),
   };
-  const st = { address: null, holdings: null, prices: {}, assets: {}, news: null, open: false };
+  const st = { address: null, holdings: null, prices: {}, assets: {}, open: false, groups: [], groupsLoaded: false, stkOpen: false };
   const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
   const fmtUsd = (v) => (v > 0 && v < 0.005 ? '<$0.01' : usd.format(v));
@@ -102,17 +103,42 @@
     el.all.textContent = st.open ? 'View less' : 'View all';
   }
 
-  function renderNews() {
-    const items = st.news || [];
-    el.newsList.textContent = '';
-    items.forEach((i) => {
-      const n = h('div', 'wl-news');
-      n.appendChild(h('div', 'wl-nt', i.body));
-      n.appendChild(h('div', 'wl-nm', ago(i.publishedAt) + ' · ' + i.symbol));
-      el.newsList.appendChild(n);
-    });
-    el.newsEmpty.hidden = st.news === null || items.length > 0;
-    el.newsSum.textContent = st.news === null ? 'loading\u2026' : items.length ? String(items.length) : 'none';
+  function stockRow(g) {
+    const ws = g.wrappers || [];
+    const w = ws.find((x) => x.symbol === g.cheapest) || ws.find((x) => x.hasTape && x.tokenPrice);
+    const row = h('a', 'wl-row');
+    row.href = '/t/' + encodeURIComponent(g.underlying);
+    const l = h('div');
+    l.appendChild(h('div', 'wl-sym', g.underlying));
+    l.appendChild(h('div', 'wl-sub', w ? w.symbol + (w.symbol === g.cheapest ? ' \u00b7 cheapest' : '') : 'no tape'));
+    const px = g.markPrice || (w && w.tokenPrice && w.tokenToShareRatio ? w.tokenPrice / w.tokenToShareRatio : null);
+    const p = w ? w.premium != null ? w.premium : w.premiumToOfficial : null;
+    const info = p == null ? null : pct(p * 100);
+    row.append(l, h('div', 'wl-amt wl-px', px ? fmtPrice(px) : '\u2014'), h('div', 'wl-pnl ' + (info ? info.cls : 'flat'), info ? info.text : '\u2014'));
+    return row;
+  }
+
+  function renderStocks() {
+    const all = st.groups;
+    const rows = st.stkOpen ? all : all.slice(0, STK_MAX);
+    el.stk.textContent = '';
+    rows.forEach((g) => el.stk.appendChild(stockRow(g)));
+    el.stk.hidden = rows.length === 0;
+    el.stkEmpty.hidden = rows.length > 0;
+    el.stkEmpty.textContent = st.groupsLoaded ? 'No stocks available.' : 'Loading\u2026';
+    el.stkAll.hidden = all.length <= STK_MAX;
+    el.stkAll.textContent = st.stkOpen ? 'View less' : 'View all';
+  }
+
+  async function tickBoard() {
+    if (document.hidden) return;
+    try {
+      const d = await getJSON('/api/board');
+      st.groups = d.groups || [];
+      st.groupsLoaded = true;
+      renderStocks();
+      if (d.session) renderSession(d.session);
+    } catch (e) { /* keep last */ }
   }
 
   function renderSession(s) {
@@ -154,11 +180,6 @@
     } catch (e) { /* keep last */ } finally { if (balFor === addr) balFor = null; }
   }
 
-  async function loadNews() {
-    try { st.news = (await getJSON('/api/news')).items || []; } catch (e) { if (st.news === null) st.news = []; }
-    renderNews();
-  }
-
   async function tickClock() {
     if (document.hidden) return;
     try { renderSession(await getJSON('/api/clock')); } catch (e) { /* keep last */ }
@@ -172,23 +193,20 @@
     });
   });
   el.swap.addEventListener('click', (e) => { if (!st.address) e.preventDefault(); });
+  el.stkAll.addEventListener('click', () => { st.stkOpen = !st.stkOpen; renderStocks(); });
   el.all.addEventListener('click', () => { st.open = !st.open; renderHoldings(); });
-  el.news.querySelector('.hp-fold-h').addEventListener('click', (e) => {
-    const open = el.news.classList.toggle('open');
-    e.currentTarget.setAttribute('aria-expanded', open ? 'true' : 'false');
-  });
 
   window.addEventListener('marktape:wallet', (e) => {
     if (e.detail.address === st.address) return;
     st.address = e.detail.address; st.holdings = null; renderAll(); tickBalances();
   });
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { tickPrices(); tickBalances(); tickClock(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { tickPrices(); tickBalances(); tickClock(); tickBoard(); } });
 
   st.address = window.MarktapeWallet ? window.MarktapeWallet.getAddress() : null;
-  renderAll(); renderNews();
-  tickPrices(); tickBalances(); loadNews(); tickClock();
+  renderAll(); renderStocks();
+  tickBoard(); tickPrices(); tickBalances(); tickClock();
   setInterval(tickPrices, 3000);
+  setInterval(tickBoard, 5000);
   setInterval(tickBalances, 6000);
-  setInterval(loadNews, 60000);
   setInterval(tickClock, 30000);
 })();
