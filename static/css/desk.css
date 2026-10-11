@@ -1070,3 +1070,112 @@ body.has-nav main { box-sizing: border-box; padding-bottom: calc(68px + env(safe
 .bk-title { margin: 12px 0 0; font-size: 22px; font-weight: 700; line-height: 1.2; }
 
 .hm-quick-hint { margin: 6px 0 0; font-size: 12px; color: var(--hm-muted); }
+
+/* ==========================================================================
+   Homepage ("/", home.html) redesign v3 — scoped to body.bd only.
+   Bottom nav markup untouched; blended via CSS.
+   ========================================================================== */
+body.bd {
+  --hm-bg: #06080c;
+  --hm-card: rgba(16, 20, 28, 0.72);
+  --hm-ctrl: rgba(255, 255, 255, 0.06);
+  --hm-text: #f7f8fa;
+  --hm-muted: #a3adbd;
+  --hm-dim: #6e7a8c;
+  --hm-line: rgba(255, 255, 255, 0.08);
+  --hm-neg: #ff6b81;
+  --hm-pos: #3ee0a0;
+  --hm-mint: #7df9d0;
+  --hm-mint-ink: #06241e;
+  --accent: #7df9d0;
+  font-family: 'Instrument Sans', 'Geist', -apple-system, sans-serif;
+}
+body.bd::before {
+  content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    radial-gradient(1200px 600px at 80% -20%, rgba(125, 249, 208, 0.16), transparent 50%),
+    radial-gradient(800px 500px at -10% 20%, rgba(99, 102, 241, 0.12), transparent 45%),
+    radial-gradient(600px 400px at 50% 110%, rgba(56, 189, 248, 0.08), transparent 40%),
+    #06080c;
+}
+body.bd::after {
+  content: ""; position: fixed; inset: 0; z-index: -1; opacity: 0.2; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+html:has(body.bd) { background: #06080c; }
+
+/* Header + brand */
+.bd .hm-header {
+  background: rgba(6, 8, 12, 0.6);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--hm-line);
+}
+.bd .mkt-wordmark { font-family: 'Instrument Sans', 'Geist', sans-serif; font-weight: 700; letter-spacing: -0.03em; font-size: 20px; }
+.bd .mkt-wordmark .st-w2 { font-family: 'Instrument Serif', serif; font-style: italic; font-weight: 400; font-size: 1.12em; color: var(--hm-mint); margin-left: 1px; letter-spacing: -0.01em; }
+.bd .mkt-brand-mark svg { filter: drop-shadow(0 0 10px rgba(125, 249, 208, 0.22)); }
+
+/* Hero */
+.bd .bd-hero { text-align: left; padding: 24px 0 14px; }
+.bd .bd-hero .sess-wrap { align-items: flex-start; }
+.bd .bd-hero .sess-sub { text-align: left; }
+.bd-h1 {
+  margin: 22px 0 12px;
+  font-family: 'Instrument Serif', serif; font-weight: 400;
+  font-size: clamp(48px, 12vw, 72px); line-height: 0.92; letter-spacing: -0.03em;
+}
+.bd-h1 span { font-style: italic; color: var(--hm-mint); }
+.bd .bd-hero-copy { margin: 0 0 4px; max-width: 460px; font-size: 16px; color: var(--hm-muted); }
+.bd .bd-hero-copy a { color: var(--hm-mint); text-decoration: underline; }
+.bd .bd-cmds { justify-content: flex-start; margin-top: 18px; }
+.bd .bd-cmd-out, .bd .bd-def { margin-left: 0; margin-right: 0; max-width: none; background: var(--hm-card); border-color: var(--hm-line); }
+.bd .bd-legend { text-align: left; }
+
+/* Surfaces */
+.bd .hm-quick, .bd .hm-card, .bd .bd-group {
+  background: var(--hm-card);
+  border: 1px solid var(--hm-line);
+  border-radius: 20px;
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+}
+.bd .bd-now { border-color: rgba(125, 249, 208, 0.2); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35); padding: 22px; }
+.bd .bd-now p:first-child { font-size: 22px; font-weight: 600; letter-spacing: -0.03em; }
+.bd .bd-now p { color: var(--hm-muted); }
+.bd .bd-w { background: rgba(255, 255, 255, 0.03); border-radius: 14px; }
+.bd .bd-w.is-cheap { border-color: rgba(62, 224, 160, 0.4); }
+.bd .bd-w.is-rich { border-color: rgba(255, 107, 129, 0.35); }
+.bd .bd-px { background: rgba(6, 8, 12, 0.45); border: 1px solid var(--hm-line); }
+.bd .bd-px-fair b { color: #ffc14d; }
+.bd .bd-g-title b { letter-spacing: -0.02em; font-size: 18px; }
+.bd .bd-g-spread { color: #ffc14d; background: rgba(255, 193, 77, 0.1); }
+.bd .bd-badge.pos { background: rgba(62, 224, 160, 0.15); }
+.bd .bd-badge.neg { background: rgba(255, 107, 129, 0.15); }
+.bd .bd-search { background: var(--hm-card); border-radius: 14px; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.bd .bd-book-title { letter-spacing: -0.02em; }
+.bd .bd-last-title { letter-spacing: 0.12em; color: var(--hm-dim); }
+
+/* Controls */
+.bd .hm-quick select { border: 1px solid var(--hm-line); }
+.bd .hm-quick-amts button { border: 1px solid var(--hm-line); }
+.bd .hm-quick-amts button.on { background: var(--hm-mint); color: var(--hm-mint-ink); border-color: var(--hm-mint); font-weight: 700; }
+.bd .hm-quick-go {
+  background: var(--hm-mint); color: var(--hm-mint-ink); font-weight: 700; border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(125, 249, 208, 0.4), 0 8px 24px rgba(125, 249, 208, 0.2);
+}
+.bd .hm-quick-go:hover:not(:disabled) { filter: brightness(1.06); }
+.bd .bd-chip { border-color: var(--hm-line); background: rgba(255, 255, 255, 0.04); color: var(--hm-muted); font-weight: 500; }
+.bd .bd-chip:hover { color: var(--hm-text); background: rgba(255, 255, 255, 0.07); }
+.bd .bd-chip.is-on { background: var(--hm-mint); color: var(--hm-mint-ink); border-color: var(--hm-mint); font-weight: 700; }
+.bd .bd-trade { background: rgba(125, 249, 208, 0.12); color: var(--hm-mint); font-weight: 700; }
+.bd .bd-trade-off { background: transparent; color: var(--hm-dim); border: 1px solid var(--hm-line); }
+.bd .bd-bk-btn { background: var(--hm-mint); color: var(--hm-mint-ink); font-weight: 700; }
+.bd .bd-basket-pill { color: var(--hm-pos); border-color: rgba(62, 224, 160, 0.35); background: rgba(62, 224, 160, 0.12); }
+
+/* Bottom nav — markup untouched, blended only */
+body.bd .bn {
+  background: rgba(6, 8, 12, 0.72);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border-top: 1px solid var(--hm-line);
+}
+body.bd .bn-item { font-family: 'Instrument Sans', 'Geist', sans-serif; letter-spacing: 0.02em; transition: color 0.15s ease, background 0.15s ease; }
+body.bd .bn-item.on { background: rgba(125, 249, 208, 0.1); color: var(--hm-mint); font-weight: 700; }
+body.bd .bn-item.on svg { filter: drop-shadow(0 0 6px rgba(125, 249, 208, 0.5)); }
