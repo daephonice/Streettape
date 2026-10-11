@@ -1584,3 +1584,56 @@ body.sb .sb-grid { gap: 10px; margin: 0 0 12px; }
 body.sb .sb-cell small { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--hp-mute); }
 body.sb .sb-cell b { display: block; margin-top: 3px; font-size: 16px; font-weight: 650; }
 body.sb .bd-last-row { margin: 0; padding: 8px 0; border-top: 1px solid var(--hp-line); font-size: 12.5px; line-height: 1.45; color: var(--hp-dim); }
+
+/* ==========================================================================
+   Redesign pass 3 — Home, Wallet, Basket get the same glass as Token / Swap / Session.
+   One surface recipe, one tile recipe, one pill recipe across every body.hp page.
+   ========================================================================== */
+body.hp { --hm-bg: var(--hp-bg); --hm-card: var(--hp-card); --hm-ctrl: rgba(255,255,255,.05); --hm-ctrl-on: rgba(255,255,255,.1); --hm-text: var(--hp-text); --hm-muted: var(--hp-dim); --hm-dim: var(--hp-mute); --hm-line: var(--hp-line); --hm-pos: var(--hp-up); --hm-neg: var(--hp-down); --hm-star: var(--hp-amber); --hm-verified: var(--hp-accent); --accent: var(--hp-accent); --accent-2: #5fe0b8; --pos: var(--hp-up); --neg: var(--hp-down); background: transparent; }
+
+/* Surfaces */
+body.hp .hp-gap, body.hp .hp-box, body.hp .hp-board, body.hp .hp-fold, body.hp .hp-out, body.hp .hp-mean,
+body.hp .bk-size, body.hp .bk-leg, body.hp .wl-hold, body.hp .wl-empty, body.hp .hm-card {
+  background: var(--hp-card); border: 1px solid var(--hp-line); border-radius: 18px;
+  -webkit-backdrop-filter: blur(14px) saturate(140%); backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.04);
+}
+body.hp .hp-gap { border-color: rgba(125,249,208,.2); box-shadow: 0 20px 60px rgba(0,0,0,.35), inset 0 1px 0 rgba(125,249,208,.08); }
+body.hp .hp-fold { background: var(--hp-card); }
+body.hp .wl-empty { border-style: dashed; box-shadow: none; }
+body.hp .hp-board, body.hp .hp-box, body.hp .bk-leg { padding: 18px; }
+
+/* Tiles (same as the token-page stat tiles) */
+body.hp .hp-nums { gap: 8px; }
+body.hp .hp-nums > div { flex: 1; min-width: 0; padding: 12px 10px; border-radius: 14px; background: rgba(255,255,255,.03); border: 1px solid var(--hp-line); font-size: 11px; letter-spacing: .08em; }
+body.hp .hp-nums strong { font-size: 20px; }
+body.hp .bk-g > div { padding: 10px; border-radius: 12px; background: rgba(255,255,255,.03); border: 1px solid var(--hp-line); }
+body.hp .wl-w, body.hp .wl-sc, body.hp .hp-bk-row, body.hp .hp-item { background: rgba(255,255,255,.03); border: 1px solid var(--hp-line); }
+body.hp .wl-sc { border-radius: 14px; }
+body.hp .hp-bk-row, body.hp .hp-item { border-radius: 14px; }
+
+/* Pills / chips */
+body.hp .hp-pills button, body.hp .hp-pills select, body.hp .hp-pick, body.hp .bk-pills a, body.hp .hp-tool, body.hp .hp-search, body.hp .hp-stale {
+  background: rgba(255,255,255,.05); border: 1px solid var(--hp-line); border-radius: 999px;
+}
+body.hp .hp-pills button, body.hp .hp-pick { padding: 7px 12px; }
+body.hp .hp-pills button.on, body.hp .bk-pills a.on, body.hp .hp-tool.is-on { background: var(--hp-accent); color: var(--hp-ink); border-color: var(--hp-accent); font-weight: 700; }
+body.hp .hp-tb, body.hp .hp-go { border-radius: 999px; }
+body.hp .hp-search:focus { border-color: rgba(125,249,208,.4); box-shadow: 0 0 0 3px rgba(125,249,208,.08); }
+
+/* Buttons: same mint + ink recipe, 14px radius */
+body.hp .hp-cta, body.hp .bk-cta, body.hp .wl-act.primary, body.hp a.wl-act.primary { border-radius: 14px; color: var(--hp-ink); font-weight: 700; }
+body.hp .bk-cta.off, body.hp .wl-actions.off .wl-act.primary { color: var(--hp-mute); }
+body.hp .wl-act { border-radius: 14px; box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+
+/* Type */
+body.hp .hp-box h3, body.hp .hp-fold-h h3, body.hp .wl-sec h2 { font-size: 15px; font-weight: 650; letter-spacing: -.01em; }
+body.hp .hp-eyebrow, body.hp .wl-k, body.hp .bk-l { font-size: 11px; letter-spacing: .12em; }
+body.hp .bk-lh h2, body.hp .hp-board-t b { letter-spacing: -.03em; }
+body.hp .hp-row { border-top-color: var(--hp-line); }
+
+/* Header + nav: same glass everywhere */
+body.hp .hm-header, body.hp .tk-header { background: rgba(6,8,12,.6); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-bottom: 1px solid var(--hp-line); }
+body.hp .bn { background: rgba(6,8,12,.72); -webkit-backdrop-filter: blur(20px) saturate(140%); backdrop-filter: blur(20px) saturate(140%); border-top: 1px solid var(--hp-line); }
+body.hp .bn-item { border-radius: 14px; }
+body.hp .bn-item.on { background: rgba(125,249,208,.1); color: var(--hp-accent); }
