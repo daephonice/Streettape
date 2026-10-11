@@ -68,17 +68,16 @@
     const sym = el('div', 'hp-c hp-sym');
     sym.appendChild(el('b', null, t.symbol));
     if (t.tokenToShareRatio) sym.appendChild(el('small', null, Number(t.tokenToShareRatio).toFixed(4) + ' sh'));
-    if (t.thin && t.hasTape) {
-      const tg = el('i', 'hp-tag', 'thin' + (t.liquidityUsd != null ? ' \u00b7 ' + usd2(t.liquidityUsd) : ''));
-      tg.title = 'Stale price, not a real gap.';
-      sym.appendChild(tg);
-    }
     row.appendChild(sym);
 
     const tape = el('div', 'hp-c');
     tape.appendChild(el('span', 'hp-v', t.hasTape ? money(t.tokenPrice) : '\u2014'));
     if (t.hasTape) {
-      tape.appendChild(pm(t.premiumToOfficial, 'vs official'));
+      if (t.thin) {
+        const tp = el('small', 'hp-mu', 'thin pool');
+        tp.title = 'Stale price, not a real gap.' + (t.liquidityUsd != null ? ' Liquidity ' + usd2(t.liquidityUsd) : '');
+        tape.appendChild(tp);
+      } else tape.appendChild(pm(t.premiumToOfficial, 'vs official'));
       if (t.cheapVsPrint && !cashOpen) {
         const m = el('i', 'hp-tag', 'cheap vs print');
         m.title = 'Cheap versus the last print. This is the weekend exposure a floor would insure. StreetTape does not sell the insurance. It shows the gap and the cheaper wrapper.';
@@ -241,7 +240,12 @@
     }
     if (sum) {
       const c = rows.filter((r) => r.state === 'clears').length;
-      sum.textContent = rows.length ? c + ' clear \u00b7 ' + (rows.length - c) + ' refused' : 'none live';
+      sum.textContent = '';
+      if (rows.length) {
+        sum.appendChild(el('span', 'hp-s-ok', c + ' clear'));
+        sum.appendChild(document.createTextNode(' \u00b7 '));
+        sum.appendChild(el('span', 'hp-s-no', (rows.length - c) + ' refused'));
+      } else sum.textContent = 'none live';
     }
     fillNums();
     renderBoard();
@@ -452,8 +456,23 @@
   }
 
   const CMDS = { rich: cmdRich, rotate: cmdRotate, defensive: cmdDefensive, flatten: cmdFlatten };
+  function closeOut() {
+    chips.forEach((x) => { x.classList.remove('is-on'); x.setAttribute('aria-expanded', 'false'); });
+    out.hidden = true;
+    out.textContent = '';
+  }
+  let rotShown = 0;
+  chips.forEach((c) => c.setAttribute('aria-expanded', 'false'));
   chips.forEach((c) => c.addEventListener('click', async () => {
-    chips.forEach((x) => x.classList.toggle('is-on', x === c));
+    const wasOn = c.classList.contains('is-on');
+    if (wasOn && c.dataset.cmd !== 'rotate') return closeOut();
+    if (wasOn && c.dataset.cmd === 'rotate' && rotShown >= Math.max(1, rotCycle().length)) {
+      rotShown = 0; rotRan = false; rotTicker = rotCycle()[0] || 'NVDA';
+      const t = $('bd-rot-t'); if (t) t.textContent = rotTicker;
+      return closeOut();
+    }
+    if (c.dataset.cmd === 'rotate') rotShown += 1;
+    chips.forEach((x) => { const on = x === c; x.classList.toggle('is-on', on); x.setAttribute('aria-expanded', on ? 'true' : 'false'); });
     out.hidden = false;
     out.textContent = '';
     out.appendChild(line('Running…', 'dim'));

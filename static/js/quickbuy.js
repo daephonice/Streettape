@@ -5,6 +5,8 @@
   if (!sym || !go) return;
   const on = amts && amts.querySelector('button.on');
   const st = { usd: on ? Number(on.dataset.usd) || 5 : 5, busy: false, prices: {}, assets: {}, holdings: {} };
+  let nt = null;
+  const setNote = (t) => { note.textContent = t; clearTimeout(nt); if (t) nt = setTimeout(() => { note.textContent = ''; }, 10000); };
   const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
   async function getJSON(url) {
@@ -45,11 +47,11 @@
     amts.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
     label();
   });
-  sym.addEventListener('change', () => { note.textContent = ''; label(); });
+  sym.addEventListener('change', () => { setNote(''); label(); });
 
   go.addEventListener('click', async () => {
     if (st.busy || !sym.value) return;
-    st.busy = true; go.disabled = true; note.textContent = 'Checking quote…';
+    st.busy = true; go.disabled = true; setNote('Checking quote…');
     try {
       const r = await getJSON(`/api/quickbuy/${encodeURIComponent(sym.value)}?usd=${st.usd}`);
       const rows = (r.candidates || []).map((c) => {
@@ -57,8 +59,8 @@
         const g = c.gapBps == null ? '' : ' ' + (c.gapBps > 0 ? '+' : '') + c.gapBps + ' bps';
         return `${c.symbol} ${px}${g} · ${c.win ? 'picked' : c.ok ? 'ok' : 'rejected: ' + c.reason}`;
       });
-      if (!r.ok) { note.textContent = [...rows, r.reason || 'Not available right now'].join('\n'); return; }
-      note.textContent = [...rows, 'You sign in your wallet.'].join('\n');
+      if (!r.ok) { setNote([...rows, r.reason || 'Not available right now'].join('\n')); return; }
+      setNote([...rows, 'You sign in your wallet.'].join('\n'));
       let address = await loadCtx();
       const ok = window.MarktapeSwap && window.MarktapeSwap.open({
         side: 'buy', symbol: String(r.symbol).toUpperCase(), label: r.symbol, title: r.underlying, stocks: [],
@@ -67,9 +69,9 @@
         connect: () => window.MarktapeWallet && window.MarktapeWallet.connectWithPicker(),
         pay: 'USDT', amount: st.usd,
       });
-      if (!ok) note.textContent = 'Could not open the swap sheet for this pair';
+      if (!ok) setNote('Could not open the swap sheet for this pair');
     } catch (e) {
-      note.textContent = 'Quote failed, try again';
+      setNote('Quote failed, try again');
     } finally { st.busy = false; go.disabled = false; }
   });
 
