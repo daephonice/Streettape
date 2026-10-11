@@ -63,19 +63,19 @@
   </div>
 
   <div class="wl-sec">
+    <h2>Stocks</h2>
+    {% if telegram_bot_url %}<a class="wl-tg" href="{{ telegram_bot_url }}" target="_blank" rel="noopener noreferrer">Watch on Telegram</a>{% endif %}
+  </div>
+  <div class="wl-hold" id="wl-stk" hidden></div>
+  <div class="wl-empty" id="wl-stk-empty">Loading…</div>
+  <button type="button" class="wl-more" id="wl-stk-all" hidden>View all</button>
+
+  <div class="wl-sec">
     <h2>Holdings</h2>
     <button type="button" class="wl-all" id="wl-all" hidden>View all</button>
   </div>
-  <div class="wl-hold" id="wl-hold" hidden></div>
-  <div class="wl-empty" id="wl-empty">Connect wallet to see holdings.</div>
-
-  <section class="hp-fold" id="wl-news">
-    <button type="button" class="hp-fold-h" aria-expanded="false"><h3>News</h3><span class="hp-sum" id="wl-news-sum">loading…</span></button>
-    <div class="hp-fold-b">
-      <div id="wl-news-list"></div>
-      <p class="hp-mute" id="wl-news-empty" hidden>No news available yet.</p>
-    </div>
-  </section>
+  <div class="wl-hold wl-tall" id="wl-hold" hidden></div>
+  <div class="wl-empty wl-tall" id="wl-empty">Connect wallet to see holdings.</div>
 
   <p class="hp-end">Economic exposure only. Not shares, not for US persons, not advice. Swaps sign in your wallet. StreetTape does not custody funds.</p>
 </div>
